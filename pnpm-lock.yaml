@@ -3975,6 +3975,17 @@ importers:
         specifier: workspace:^
         version: link:../../llm/token-meter
 
+  packages/compat/client-runtime: {}
+
+  packages/compat/host-apiproxy:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: link:../../../vendor/cordis
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/context/agent-instructions:
     dependencies:
       '@deepseek-ai/schemastery':

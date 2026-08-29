@@ -269,6 +269,8 @@
     { "path": "./packages/bundle/sdk-minimal" },
     { "path": "./packages/bundle/web-app" },
     { "path": "./packages/boot/app-boot" },
+    { "path": "./packages/compat/host-apiproxy" },
+    { "path": "./packages/compat/client-runtime" },
     { "path": "./packages/boot/cmdline" },
     { "path": "./packages/sdk/server" },
     { "path": "./packages/test-support/llm-replay" },

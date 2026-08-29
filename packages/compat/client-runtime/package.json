@@ -1,0 +1,25 @@
+{
+  "name": "@deepseek-ai/dsh-client-runtime",
+  "description": "Legacy client-runtime compatibility shim: provides the store primitives (createSnapshotStore, defineStore) that third-party client bundles require from @deepseek-ai/dsh-client-runtime/client, without registering the sessions/workspaces services the real runtime used to own (now owned by the api controllers). See .agents/notes/implemented/architecture/2026-08-28-legacy-plugin-compat-shims.md.",
+  "version": "0.1.2-alpha.1",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "license": "MIT"
+}
