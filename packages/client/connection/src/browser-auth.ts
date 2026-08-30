@@ -17,7 +17,6 @@ const COOKIE_PREFIX = 'dsh-auth-'
 const COOKIE_PAYLOAD_VERSION = 1
 const STORED_SECRET_VERSION = 1
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/
-const PROCESS_LAUNCH_TOKENS = new WeakMap<object, string>()
 
 interface StoredSecretPayload {
   readonly version: typeof STORED_SECRET_VERSION
@@ -49,12 +48,12 @@ function decodeBase64Url(value: string): Buffer | undefined {
   return encodeBase64Url(decoded) === value ? decoded : undefined
 }
 
-function processLaunchToken(owner: object): string {
-  const existing = PROCESS_LAUNCH_TOKENS.get(owner)
-  if (existing !== undefined) return existing
-  const created = encodeBase64Url(randomBytes(SECRET_BYTES))
-  PROCESS_LAUNCH_TOKENS.set(owner, created)
-  return created
+/**
+ * Stable per-deployment launch token derived from the durable signing secret,
+ * so the `dsh web` URL is identical across every restart of this Harness home.
+ */
+function launchToken(secret: Buffer): string {
+  return encodeBase64Url(createHmac('sha256', secret).update('dsh-web-launch-token').digest())
 }
 
 function header(
@@ -187,11 +186,11 @@ export class BrowserAuth {
   private readonly maxAgeMilliseconds: number
 
   private constructor(
-    processOwner: object,
+    _processOwner: object,
     private readonly secret: Buffer,
     maxAgeDays: number,
   ) {
-    this.launchToken = processLaunchToken(processOwner)
+    this.launchToken = launchToken(this.secret)
     this.maxAgeMilliseconds = maxAgeDays * DAY_MILLISECONDS
     if (!Number.isSafeInteger(this.maxAgeMilliseconds)
       || !Number.isSafeInteger(Date.now() + this.maxAgeMilliseconds)) {
@@ -231,10 +230,11 @@ export class BrowserAuth {
 
   /**
    * Authenticate an index request. A valid root query token mints the cookie
-   * and redirects to clean `/`; a valid cookie lets the caller serve the
-   * index; every other request receives the same minimal 401 response.
+   * and serves the index directly (the token stays in the URL so a launcher
+   * icon carrying it keeps re-authenticating); a valid cookie also lets the
+   * caller serve the index; every other request receives the same minimal 401.
    * @param req - incoming root or configured-index request.
-   * @param res - response owned when this method returns false.
+   * @param res - response to attach the mints cookie to when returning true.
    * @returns true only when the caller may serve index.html.
    */
   authorizeIndex(req: ConnectionIndexRequest, res: ConnectionIndexResponse): boolean {
@@ -253,25 +253,16 @@ export class BrowserAuth {
           issuedAt,
           expiresAt,
         }, this.secret)
-        res.writeHead(303, {
-          'cache-control': 'no-store',
-          'location': '/',
-          'referrer-policy': 'no-referrer',
-          'set-cookie': sessionCookie(
-            cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1000),
-          ),
-        })
-        res.end()
-        return false
+        // Serve the index directly (no redirect) so the token stays in the URL:
+        // a launcher icon whose URL carries the token re-mints the cookie on
+        // every load, so a phone never lands on the unauth screen.
+        res.setHeader('set-cookie', sessionCookie(
+          cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1000),
+        ))
+        return true
       }
       if (req.method === 'GET' && url.pathname === '/' && this.isAuthenticated(req)) {
-        res.writeHead(303, {
-          'cache-control': 'no-store',
-          'location': '/',
-          'referrer-policy': 'no-referrer',
-        })
-        res.end()
-        return false
+        return true
       }
       this.writeUnauthorized(req, res)
       return false
