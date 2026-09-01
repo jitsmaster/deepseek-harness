@@ -9,12 +9,13 @@ import { defineConfig } from 'tsdown'
  * consuming profile.
  */
 const here = dirname(fileURLToPath(import.meta.url))
+const hereSlash = here.replaceAll('\\', '/')
 
 export default defineConfig({
   entry: [
-    join(here, 'src/index.ts'),
-    join(here, 'src/compat-provider.ts'),
-    join(here, 'src/api/*.js'),
+    `${hereSlash}/src/index.ts`,
+    `${hereSlash}/src/compat-provider.ts`,
+    `${hereSlash}/src/api/*.js`,
   ],
   outDir: join(here, 'lib'),
   format: ['esm'],
