@@ -39,6 +39,9 @@ function response(): { value: ConnectionIndexResponse; state: ResponseState } {
         state.status = status
         if (headers !== undefined) state.headers = headers
       },
+      setHeader(name, value) {
+        state.headers = { ...state.headers, [name]: value }
+      },
       end(body) {
         if (body !== undefined) state.body = body
       },
@@ -80,7 +83,7 @@ function exchange(
   const launchUrl = auth.authenticatedUrl(`http://${authority}`)
   const target = new URL(launchUrl)
   const res = response()
-  expect(auth.authorizeIndex(request(`${target.pathname}${target.search}`, authority), res.value)).toBe(false)
+  expect(auth.authorizeIndex(request(`${target.pathname}${target.search}`, authority), res.value)).toBe(true)
   const setCookie = res.state.headers?.['set-cookie']
   if (setCookie === undefined) throw new Error('token exchange did not set a cookie')
   return { cookie: setCookie.split(';', 1)[0]!, launchUrl, state: res.state }
@@ -97,14 +100,10 @@ describe('BrowserAuth', () => {
     const first = await createAuth(store, 30, processOwner)
     const login = exchange(first)
 
-    expect(login.state).toMatchObject({
-      status: 303,
-      headers: {
-        'cache-control': 'no-store',
-        'location': '/',
-        'referrer-policy': 'no-referrer',
-      },
-    })
+    // The token exchange serves the index directly and mints the cookie; the
+    // token stays in the URL so a launcher icon keeps re-authenticating.
+    expect(login.state.status).toBeUndefined()
+    expect(login.state.headers?.['set-cookie']).toMatch(/^dsh-auth-/u)
     expect(login.state.headers?.['set-cookie']).toMatch(/; Max-Age=2592000; Path=\/; Expires=.*; HttpOnly; SameSite=Strict$/u)
     expect(login.state.headers?.['set-cookie']).not.toContain('Secure')
     expect(first.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBe(true)
@@ -119,25 +118,22 @@ describe('BrowserAuth', () => {
     expect(reloaded.authenticatedUrl('http://127.0.0.1:3080')).toBe(login.launchUrl)
     expect(reloaded.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBe(true)
 
+    // The launch token is stable per deployment: a new activation of the same
+    // Harness home keeps the same `dsh web` URL.
     const restarted = await createAuth(store)
     expect(new URL(restarted.authenticatedUrl('http://127.0.0.1:3080')).searchParams.get('token'))
-      .not.toBe(new URL(login.launchUrl).searchParams.get('token'))
+      .toBe(new URL(login.launchUrl).searchParams.get('token'))
     expect(restarted.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBe(true)
-    const staleUrl = new URL(login.launchUrl)
-    const redirected = response()
+    const tokenUrl = new URL(login.launchUrl)
+    const served = response()
     expect(restarted.authorizeIndex(request(
-      `${staleUrl.pathname}${staleUrl.search}`,
+      `${tokenUrl.pathname}${tokenUrl.search}`,
       '127.0.0.1:3080',
       { cookie: login.cookie },
-    ), redirected.value)).toBe(false)
-    expect(redirected.state).toEqual({
-      status: 303,
-      headers: {
-        'cache-control': 'no-store',
-        'location': '/',
-        'referrer-policy': 'no-referrer',
-      },
-    })
+    ), served.value)).toBe(true)
+    // The still-valid token re-mints the cookie and the index is served directly.
+    expect(served.state.status).toBeUndefined()
+    expect(served.state.headers?.['set-cookie']).toMatch(/^dsh-auth-/u)
   })
 
   it('accepts the cookie for index serving and gives every unauthenticated request one response', async () => {

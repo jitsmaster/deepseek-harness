@@ -42,6 +42,19 @@ function parseSettingsNamespace(value: string): SettingsNamespace {
   return value as SettingsNamespace
 }
 
+/**
+ * Legacy alias for plugins built against the pre-0.1.2-alpha.2 module surface:
+ * brand a raw string as a {@link SettingsNamespace}. Provider methods accept
+ * plain namespace strings and validate at runtime, so new consumers pass
+ * literals instead of branding first.
+ * @param value - candidate namespace; lowercase kebab-case, as in plugin short names.
+ * @returns the branded namespace.
+ * @throws {TypeError} when `value` does not match the namespace pattern.
+ */
+export function settingsNamespace(value: string): SettingsNamespace {
+  return parseSettingsNamespace(value)
+}
+
 /** When a namespace's changes take effect for its owner. */
 export type SettingsApplies = 'live' | 'restart'
 
@@ -888,6 +901,28 @@ export interface SettingsSectionHooks<T> {
    * @param value - the resolved section, schema-valid by construction.
    */
   validate?: (value: T) => void
+}
+
+/**
+ * Legacy alias for {@link SettingsProvider.installSection}, kept for plugins
+ * built against the pre-0.1.2-alpha.2 module surface. New consumers inject
+ * `settings` and call the provider method directly.
+ * @param ctx - consumer plugin context owning the wiring.
+ * @param ns - the consumer-owned settings namespace.
+ * @param schema - schema resolving the namespace (typically the plugin Config).
+ * @param entry - the consumer's composition entry config, used as `base`.
+ * @param hooks - source sink and change notification.
+ */
+export function installSettingsSection<T>(
+  ctx: Context,
+  ns: SettingsNamespace,
+  schema: z<T>,
+  entry: T,
+  hooks: SettingsSectionHooks<T>,
+): void {
+  ctx.inject(['settings'], (sctx) => {
+    sctx.settings.installSection(ctx, ns, schema, entry, hooks)
+  })
 }
 
 export default SettingsProvider
