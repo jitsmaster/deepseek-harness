@@ -450,7 +450,6 @@
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
-        searchProvider: deepseek-official
         fetchProvider: http
 
     - id: web-search-deepseek
