@@ -4,14 +4,14 @@
  * authorized and drive one sign-in conversation over a stateless RPC.
  * Modeled directly on `CredentialsController` in this same package.
  *
- * The `authorization/notice` and `authorization/prompt` events below relay a
- * running attempt's notices and prompts to whichever surface started it. They
- * are declared here rather than in `@deepseek-ai/dsh-authorization` because
- * their payloads are wire concepts the seam itself never needs: `promptId` is
- * a correlation id invented purely to answer one prompt back over a stateless
- * RPC, and the prompt payload has its `signal` stripped because an
- * `AbortSignal` cannot cross the wire. The seam owns the conversation, never
- * the protocol.
+ * The `authorization/notice` and `authorization/prompt` events relay a
+ * running attempt's notices and prompts to whichever surface started it.
+ * They are declared in `./types.ts` — this package's client-safe surface —
+ * rather than in `@deepseek-ai/dsh-authorization`, because their payloads are
+ * wire concepts the seam itself never needs: `promptId` is a correlation id
+ * invented purely to answer one prompt back over a stateless RPC, and the
+ * prompt payload has its `signal` stripped because an `AbortSignal` cannot
+ * cross the wire. The seam owns the conversation, never the protocol.
  *
  * @module @deepseek-ai/dsh-api-settings-controller/src/authorization.ts
  */
@@ -19,30 +19,17 @@
 import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import { AuthorizationDeclinedError, AuthorizationError } from '@deepseek-ai/dsh-authorization'
-import type {
-  AuthorizationEntry, AuthorizationMethod, AuthorizationNotice, AuthorizationOutcome, AuthorizationPrompt,
-} from '@deepseek-ai/dsh-authorization/types'
+import type { AuthorizationEntry, AuthorizationPrompt } from '@deepseek-ai/dsh-authorization/types'
 import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
+import type { AuthorizationEntryView, AuthorizationOutcomeView, WireAuthorizationPrompt } from './types.ts'
+
+export type { AuthorizationEntryView, AuthorizationOutcomeView } from './types.ts'
 
 /** Grammar for the joined `<scope>/<id>` wire form of a {@link CredentialKey}. */
 const keySchema = z.string().regex(/^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/)
-
-/** {@link AuthorizationPrompt} minus the field that cannot cross the wire. */
-export type WireAuthorizationPrompt = Omit<AuthorizationPrompt, 'signal'>
-
-/** The wire view of one registered flow: {@link AuthorizationEntry} projected field-by-field. */
-export interface AuthorizationEntryView {
-  readonly key: CredentialKey
-  readonly label: string
-  readonly methods: readonly AuthorizationMethod[]
-  readonly inFlight: boolean
-}
-
-/** The wire view of one finished `begin()` attempt. {@link AuthorizationOutcome} is already wire-safe verbatim. */
-export type AuthorizationOutcomeView = AuthorizationOutcome
 
 /** One attempt's pending prompts, keyed by the correlation id handed to the wire. */
 type PendingPrompts = Map<string, PromiseWithResolvers<string>>
@@ -51,23 +38,6 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Host owner of the `authorization` Remote namespace. */
     authorizationController: AuthorizationController
-  }
-
-  interface Events {
-    /**
-     * A running authorization attempt reported progress, or told the human
-     * what to do next. Fire-and-forget, same as the seam's own `notify`.
-     * @mode emit
-     */
-    'authorization/notice'(payload: { key: string; notice: AuthorizationNotice }): void
-    /**
-     * A running authorization attempt needs an answer before it can
-     * continue. `promptId` correlates this prompt with the `respond()` or
-     * `decline()` call that answers it; the prompt's own `signal` never
-     * crosses the wire.
-     * @mode emit
-     */
-    'authorization/prompt'(payload: { key: string; promptId: string; prompt: WireAuthorizationPrompt }): void
   }
 }
 
@@ -146,6 +116,25 @@ function mapAuthorizationError(key: string, method: string | undefined, error: u
  * Wraps `ctx.authorization` with the wire obligations the seam itself does
  * not carry: key branding, view projection, the prompt correlation-id
  * bridge, and the refusal mapping.
+ *
+ * Single-trusted-principal assumption: `authorization/notice` and
+ * `authorization/prompt` are `emit`-mode events, broadcast to every connected
+ * Remote client, not just the tab that started the attempt; and `respond()`,
+ * `decline()`, and `cancel()` authorize purely by matching `key`+`promptId`
+ * (or `key` alone, for `cancel()`) against this controller's own
+ * server-side map, with no check that the caller is the connection that
+ * began the attempt. This is deliberate and already covered by this
+ * package's "multi-tab" test (`authorization-controller.host.spec.ts`): every
+ * connected client is assumed to be the same trusted human's own browser
+ * tabs, so any tab can answer, decline, or cancel any pending prompt for a
+ * key, and that is treated as a feature (a sign-in started in one tab can be
+ * finished from another) rather than a defect. It is safe only because the
+ * Host currently assumes a single trusted principal per instance — see
+ * `packages/host/webserver/README.md`'s own note that binding a non-loopback
+ * address already exposes unprotected routes to that network. Supporting
+ * multiple untrusted principals on one Host would first need per-connection
+ * scoping here, e.g. a `waterfall`-mode event (like `approval/request`) that
+ * only the requesting connection observes, rather than a broadcast `emit`.
  */
 export class AuthorizationController extends TypertRemoteService {
   /** The conversation this controller exposes is the authorization seam's own. */
@@ -213,7 +202,7 @@ export class AuthorizationController extends TypertRemoteService {
         ...method === undefined ? {} : { method },
         signal,
         interaction: {
-          notify: notice => this.ctx.emit('authorization/notice', { key, notice }),
+          notify: (notice) => { this.ctx.emit('authorization/notice', { key, notice }) },
           prompt: prompt => this.relayPrompt(key, pending, prompt),
         },
       })
@@ -240,8 +229,17 @@ export class AuthorizationController extends TypertRemoteService {
    * @throws RemoteError `gateway/bad-request` for a malformed key, or `authorization/unknown-prompt`.
    */
   @Remote
-  async respond(key: string, promptId: string, value: string): Promise<void> {
-    this.takePendingPrompt(key, promptId).resolve(value)
+  respond(key: string, promptId: string, value: string): Promise<void> {
+    // Not `async`: nothing here ever awaits, but the RPC contract (and this
+    // package's own tests) still expect a lookup failure to surface as a
+    // *rejected* Promise rather than a synchronous throw, so the failure path
+    // is turned into one explicitly instead of relying on `async` to do it.
+    try {
+      this.takePendingPrompt(key, promptId).resolve(value)
+      return Promise.resolve()
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
   }
 
   /**
@@ -251,8 +249,15 @@ export class AuthorizationController extends TypertRemoteService {
    * @throws RemoteError `gateway/bad-request` for a malformed key, or `authorization/unknown-prompt`.
    */
   @Remote
-  async decline(key: string, promptId: string): Promise<void> {
-    this.takePendingPrompt(key, promptId).reject(new AuthorizationDeclinedError())
+  decline(key: string, promptId: string): Promise<void> {
+    // Not `async`: see `respond()`'s note above — the same synchronous-lookup
+    // failure must still surface as a rejected Promise, not a thrown error.
+    try {
+      this.takePendingPrompt(key, promptId).reject(new AuthorizationDeclinedError())
+      return Promise.resolve()
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
   }
 
   /**

@@ -39,27 +39,48 @@ export interface AuthorizationPromptOption {
  * A question a flow must have answered before it can continue. `secret` differs
  * from `text` only in presentation — a surface masks it and keeps it out of
  * logs — and `select` answers with the chosen option's `id`.
+ *
+ * Written as a union of full variants, each repeating `signal`, rather than as
+ * `{ signal?: ... } & (A | B | C)`: the intersection form makes `keyof
+ * AuthorizationPrompt` collapse to the fields common to every variant, so
+ * `Omit<AuthorizationPrompt, 'signal'>` would silently drop `placeholder` and
+ * `options` too. This form distributes correctly through a mapped/conditional
+ * `Omit`.
  */
-export type AuthorizationPrompt = {
-  /**
-   * Withdraws this prompt alone, leaving the flow running. A flow that races a
-   * typed code against a browser callback aborts the losing prompt here; the
-   * whole authorization is cancelled through the request's signal instead.
-   */
-  signal?: AbortSignal
-} & ({
-  kind: 'text'
-  message: string
-  placeholder?: string
-} | {
-  kind: 'secret'
-  message: string
-  placeholder?: string
-} | {
-  kind: 'select'
-  message: string
-  options: readonly AuthorizationPromptOption[]
-})
+export type AuthorizationPrompt =
+  | {
+    /**
+     * Withdraws this prompt alone, leaving the flow running. A flow that races a
+     * typed code against a browser callback aborts the losing prompt here; the
+     * whole authorization is cancelled through the request's signal instead.
+     */
+    signal?: AbortSignal
+    kind: 'text'
+    message: string
+    placeholder?: string
+  }
+  | {
+    /**
+     * Withdraws this prompt alone, leaving the flow running. A flow that races a
+     * typed code against a browser callback aborts the losing prompt here; the
+     * whole authorization is cancelled through the request's signal instead.
+     */
+    signal?: AbortSignal
+    kind: 'secret'
+    message: string
+    placeholder?: string
+  }
+  | {
+    /**
+     * Withdraws this prompt alone, leaving the flow running. A flow that races a
+     * typed code against a browser callback aborts the losing prompt here; the
+     * whole authorization is cancelled through the request's signal instead.
+     */
+    signal?: AbortSignal
+    kind: 'select'
+    message: string
+    options: readonly AuthorizationPromptOption[]
+  }
 
 /** How one authorization attempt ended, as its own caller sees it. */
 export type AuthorizationStatus = 'authorized' | 'cancelled'

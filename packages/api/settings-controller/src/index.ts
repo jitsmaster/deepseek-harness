@@ -24,9 +24,11 @@ import type {
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
+import { AuthorizationController } from './authorization.ts'
 import { CredentialsController } from './credentials.ts'
 import type { AgentPresetDirectoryOpenValue, SettingsDocumentOpenValue } from './types.ts'
 
+export { AuthorizationController } from './authorization.ts'
 export { CredentialsController } from './credentials.ts'
 export type * from './types.ts'
 
@@ -93,9 +95,13 @@ export class SettingsController extends TypertRemoteService {
   private readonly canOpenPath: () => boolean
 
   /**
-   * Register the settings namespace and mount the credentials namespace beside
-   * it. Both namespaces stay registered when a provider is absent so calls can
+   * Register the settings namespace and mount the credentials and
+   * authorization namespaces beside it. `CredentialsController`'s namespace
+   * stays registered even without a credentials provider, so calls can
    * return the configuration API's actionable missing-provider diagnostic.
+   * `AuthorizationController` declares a hard `inject('authorization')`
+   * dependency, so its namespace only mounts when the `authorization`
+   * service is present in the composition.
    * @param ctx - Host context where settings and credential providers may be mounted.
    */
   constructor(ctx: Context, config: Config = {}, internals: SettingsControllerInternals = {}) {
@@ -105,6 +111,7 @@ export class SettingsController extends TypertRemoteService {
     this.canOpenPath = internals.canOpenPath
       ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
     ctx.plugin(CredentialsController)
+    ctx.plugin(AuthorizationController)
   }
 
   /**
