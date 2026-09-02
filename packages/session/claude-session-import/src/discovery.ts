@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-subprocess'
 
 /** One `claude agents --json --all` entry, as surfaced to the import picker. */
 export interface DiscoveredSession {

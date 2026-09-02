@@ -29,7 +29,7 @@ type RawBlock = RawTextBlock | RawToolUseBlock | RawToolResultBlock | { type: st
 
 interface RawEntry {
   type: string
-  message?: { role: 'user' | 'assistant'; content: RawBlock[] | string }
+  message?: { role: string; content: RawBlock[] | string }
 }
 
 /** Render one non-text content block as a readable summary line. */
