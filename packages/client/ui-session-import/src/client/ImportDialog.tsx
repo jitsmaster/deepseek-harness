@@ -77,7 +77,6 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
     return () => { controller.abort() }
     // Deliberately runs once per mount: this dialog instance owns exactly one
     // discovery call for its lifetime.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const importSelected = (): void => {
