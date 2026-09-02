@@ -1,0 +1,2 @@
+not even json
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"still readable"}]}}

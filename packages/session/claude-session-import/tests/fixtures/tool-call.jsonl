@@ -1,0 +1,1 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"bash","input":{"command":"ls -la"}},{"type":"tool_result","content":"file1\nfile2"}]}}

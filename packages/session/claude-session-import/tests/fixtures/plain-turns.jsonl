@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"What does this repo do?"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"It is a Cordis-based agent harness."}]}}
