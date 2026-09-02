@@ -74,6 +74,7 @@
   "license": "MIT",
   "dependencies": {
     "@deepseek-ai/dsh-brand": "workspace:^",
+    "@deepseek-ai/dsh-claude-session-import": "workspace:^",
     "@deepseek-ai/dsh-deque": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
     "zod": "^4.4.3"

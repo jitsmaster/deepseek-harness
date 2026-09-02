@@ -36,6 +36,7 @@
     { "path": "../../util/native-command" },
     { "path": "../../preset/agent-presets" },
     { "path": "../../runtime-diagnostics/invariants" },
+    { "path": "../../session/claude-session-import" },
     { "path": "../../session/session-persistence" },
     { "path": "../../session/session-projection" },
     { "path": "../../session/session-projection-cache" },

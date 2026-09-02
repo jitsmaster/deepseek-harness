@@ -2,6 +2,8 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
+import { ClaudeSessionImportController } from '@deepseek-ai/dsh-claude-session-import'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
@@ -110,6 +112,12 @@ export class SessionController extends TypertRemoteService {
   /**
    * @param ctx - Host context containing the Session capability assembly.
    * @param config - cold-list observation policy.
+   *
+   * Mounts {@link ClaudeSessionImportController} beside this Session business
+   * API, wiring its `ensureSession` and `selectModel` internals to this
+   * controller's own `ApiSessionAgentController`: that class is private to
+   * this package, so those two operations have no production-safe default in
+   * `dsh-claude-session-import` and must be supplied here.
    */
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
@@ -132,6 +140,12 @@ export class SessionController extends TypertRemoteService {
       ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
     ctx.plugin(SessionFileReferences)
     ctx.plugin(SessionSkillCatalog)
+    ctx.plugin(ClaudeSessionImportController, {
+      ensureSession: (_ctx: Context, sessionId: SessionId, cwd: string) => this.agents.ensureSession(sessionId, cwd, false),
+      selectModel: (_ctx: Context, agent: Agent, selection: AgentModelSelection) => {
+        this.agents.selectForNextRequest(agent, selection)
+      },
+    })
 
     ctx.on('session/created', (session) => {
       ctx.emit('api-session/added', this.listState.summaryFor(session))

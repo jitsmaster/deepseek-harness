@@ -761,6 +761,9 @@ importers:
       '@deepseek-ai/dsh-brand':
         specifier: workspace:^
         version: link:../../util/brand
+      '@deepseek-ai/dsh-claude-session-import':
+        specifier: workspace:^
+        version: link:../../session/claude-session-import
       '@deepseek-ai/dsh-deque':
         specifier: workspace:^
         version: link:../../util/deque
