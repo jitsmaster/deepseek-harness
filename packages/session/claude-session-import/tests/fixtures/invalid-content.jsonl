@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"before bad entry"}]}}
+{"type":"system","message":{"role":"user","content":null}}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"after bad entry"}]}}

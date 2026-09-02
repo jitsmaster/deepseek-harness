@@ -31,8 +31,19 @@ describe('parseClaudeCodeTranscript', () => {
     ])
   })
 
-  it('skips malformed lines instead of failing the whole parse', () => {
+  it('skips malformed lines and renders unrecognized blocks as summaries', () => {
     const turns = parseClaudeCodeTranscript(fixture('malformed-block.jsonl'))
-    expect(turns).toEqual([{ role: 'user', text: 'still readable' }])
+    expect(turns).toEqual([
+      { role: 'user', text: 'still readable' },
+      { role: 'assistant', text: '(unrecognized event: some_future_block_shape)' },
+    ])
+  })
+
+  it('skips entries with invalid content structure without aborting parse', () => {
+    const turns = parseClaudeCodeTranscript(fixture('invalid-content.jsonl'))
+    expect(turns).toEqual([
+      { role: 'user', text: 'before bad entry' },
+      { role: 'user', text: 'after bad entry' },
+    ])
   })
 })

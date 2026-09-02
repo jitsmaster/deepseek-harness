@@ -1,2 +1,3 @@
 not even json
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"still readable"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"some_future_block_shape","stuff":true}]}}

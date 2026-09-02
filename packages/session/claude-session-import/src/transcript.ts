@@ -67,14 +67,15 @@ export function parseClaudeCodeTranscript(jsonl: string): readonly ImportedTurn[
     let entry: RawEntry
     try {
       entry = JSON.parse(line) as RawEntry
+      if (entry.message === undefined) continue
+      if (entry.message.role !== 'user' && entry.message.role !== 'assistant') continue
+      const text = textOf(entry.message.content)
+      if (text.trim().length === 0) continue
+      turns.push({ role: entry.message.role, text })
     } catch {
+      // Skip entries that fail JSON parsing or content extraction
       continue
     }
-    if (entry.message === undefined) continue
-    if (entry.message.role !== 'user' && entry.message.role !== 'assistant') continue
-    const text = textOf(entry.message.content)
-    if (text.trim().length === 0) continue
-    turns.push({ role: entry.message.role, text })
   }
   return turns
 }
