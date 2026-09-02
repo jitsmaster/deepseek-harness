@@ -47,6 +47,14 @@ export type {} from '@deepseek-ai/dsh-settings/types'
 export type {} from '@deepseek-ai/dsh-user-approval/types'
 export type {} from '@deepseek-ai/dsh-user-questions/types'
 export type {} from '@deepseek-ai/dsh-api-session-controller/types'
+// `authorization/settled` is declared in the seam's own main entry (a domain
+// fact, not a wire shape — see settings-controller/src/types.ts's doc comment
+// on that split); `authorization/notice`/`authorization/prompt` are declared
+// in settings-controller's client-safe `./types`, the one export this
+// package already registers for the Client face.
+export type {} from '@deepseek-ai/dsh-authorization'
+export type {} from '@deepseek-ai/dsh-authorization/types'
+export type {} from '@deepseek-ai/dsh-api-settings-controller/types'
 
 /**
  * The carrier's Client-facing types, re-exported so a business package names one
@@ -101,6 +109,20 @@ export type {
 } from '@deepseek-ai/dsh-cordis-host-runner/types'
 // Credential state vocabulary for the credentials namespace (values never ride it).
 export type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
+// Authorization flow vocabulary for the authorization namespace. The wire
+// projections in settings-controller/src/types.ts (AuthorizationEntryView,
+// AuthorizationOutcomeView) are structurally identical to (or a strict subset
+// of) these domain types, so callers can name the seam's own vocabulary
+// without a second, wire-flavored type set for those two. `WireAuthorizationPrompt`
+// is the one exception: `Omit<AuthorizationPrompt, 'signal'>` collapses the
+// discriminated union's per-variant required fields, so it is NOT assignable
+// to `AuthorizationPrompt` and must be named on its own for the
+// `authorization/prompt` event payload.
+export type {
+  AuthorizationEntry, AuthorizationMethod, AuthorizationNotice, AuthorizationOutcome,
+  AuthorizationPrompt, AuthorizationPromptOption, AuthorizationStatus,
+} from '@deepseek-ai/dsh-authorization/types'
+export type { WireAuthorizationPrompt } from '@deepseek-ai/dsh-api-settings-controller/types'
 // Redacted namespace vocabulary for the settings namespace (secrets never ride
 // it). It travels with its seam, whose `./types` the Client face already reads.
 export type {

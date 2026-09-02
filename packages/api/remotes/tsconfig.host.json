@@ -25,6 +25,12 @@
       "path": "../../credentials/credentials"
     },
     {
+      "path": "../../credentials/authorization"
+    },
+    {
+      "path": "../settings-controller"
+    },
+    {
       "path": "../../interaction/commands"
     },
     {
