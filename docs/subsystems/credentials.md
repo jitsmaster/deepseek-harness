@@ -122,6 +122,73 @@ async begin(request: AuthorizationRequest): Promise<AuthorizationOutcome>
 
 Source: [`packages/credentials/authorization/src/index.ts`](../../packages/credentials/authorization/src/index.ts)
 
+<a id="ctxauthorizationcontroller--authorizationcontroller"></a>
+
+### `ctx.authorizationController` — `AuthorizationController`
+
+Host service backing the generated `ctx.remote.authorization` namespace. Wraps `ctx.authorization` with the wire obligations the seam itself does not carry: key branding, view projection, the prompt correlation-id bridge, and the refusal mapping.
+
+Single-trusted-principal assumption: `authorization/notice` and `authorization/prompt` are `emit`-mode events, broadcast to every connected Remote client, not just the tab that started the attempt; and `respond()`, `decline()`, and `cancel()` authorize purely by matching `key`+`promptId` (or `key` alone, for `cancel()`) against this controller's own server-side map, with no check that the caller is the connection that began the attempt. This is deliberate and already covered by this package's "multi-tab" test (`authorization-controller.host.spec.ts`): every connected client is assumed to be the same trusted human's own browser tabs, so any tab can answer, decline, or cancel any pending prompt for a key, and that is treated as a feature (a sign-in started in one tab can be finished from another) rather than a defect. It is safe only because the Host currently assumes a single trusted principal per instance — see `packages/host/webserver/README.md`'s own note that binding a non-loopback address already exposes unprotected routes to that network. Supporting multiple untrusted principals on one Host would first need per-connection scoping here, e.g. a `waterfall`-mode event (like `approval/request`) that only the requesting connection observes, rather than a broadcast `emit`.
+
+```ts cordis-catalog
+/**
+ * Every registered flow, for a surface listing what can be authorized.
+ * @returns one entry per flow, in registration order.
+ */
+@Remote list(): AuthorizationEntryView[]
+
+/**
+ * One registered flow.
+ * @param key - joined `<scope>/<id>` credential key.
+ * @returns the entry, or undefined when no flow claims that key.
+ * @throws RemoteError `gateway/bad-request` when `key` is malformed.
+ */
+@Remote describe(key: string): AuthorizationEntryView | undefined
+
+/**
+ * Run one attempt to authorize a key, relaying its notices and prompts
+ * over the `authorization/notice`/`authorization/prompt` events.
+ * @param key - joined `<scope>/<id>` credential key.
+ * @param method - method id to run; defaults to the flow's first.
+ * @param signal - withdraws the attempt.
+ * @returns how the attempt ended.
+ * @throws RemoteError `gateway/bad-request` for a malformed key,
+ *   `gateway/cancelled` when `signal` is already aborted,
+ *   `authorization/no-flow`, `authorization/unknown-method`,
+ *   `authorization/already-in-flight`, `authorization/not-committed`, or
+ *   `gateway/internal` for anything else.
+ */
+@Remote async begin(key: string, method: string | undefined, signal: AbortSignal): Promise<AuthorizationOutcomeView>
+
+/**
+ * Answer a pending prompt from a running `begin()` attempt.
+ * @param key - joined `<scope>/<id>` credential key.
+ * @param promptId - correlation id from the matching `authorization/prompt` event.
+ * @param value - the human's typed answer, or the chosen option's id.
+ * @throws RemoteError `gateway/bad-request` for a malformed key, or `authorization/unknown-prompt`.
+ */
+@Remote respond(key: string, promptId: string, value: string): Promise<void>
+
+/**
+ * Decline a pending prompt, settling its `begin()` attempt as cancelled.
+ * @param key - joined `<scope>/<id>` credential key.
+ * @param promptId - correlation id from the matching `authorization/prompt` event.
+ * @throws RemoteError `gateway/bad-request` for a malformed key, or `authorization/unknown-prompt`.
+ */
+@Remote decline(key: string, promptId: string): Promise<void>
+
+/**
+ * Withdraw the attempt running for a key, if any; a harmless no-op
+ * otherwise. Separate from `begin()`'s own signal because a Cancel button
+ * is a second call, with no handle on the first call's signal.
+ * @param key - joined `<scope>/<id>` credential key.
+ * @throws RemoteError `gateway/bad-request` when `key` is malformed.
+ */
+@Remote cancel(key: string): void
+```
+
+Source: [`packages/api/settings-controller/src/authorization.ts`](../../packages/api/settings-controller/src/authorization.ts)
+
 <a id="ctxcredentials--credentialprovider-abstract-seam"></a>
 
 ### `ctx.credentials` — `CredentialProvider` (abstract seam)
@@ -256,6 +323,45 @@ Source: [`packages/api/settings-controller/src/credentials.ts`](../../packages/a
 <a id="authorization-events"></a>
 
 ### `authorization/*` events
+
+<a id="authorizationnotice--emit"></a>
+
+#### `authorization/notice` — emit
+
+A running authorization attempt reported progress, or told the human what to do next. Fire-and-forget, same as the seam's own `notify`.
+
+```ts cordis-catalog
+/**
+ * A running authorization attempt reported progress, or told the human
+ * what to do next. Fire-and-forget, same as the seam's own `notify`.
+ * @param payload - `key` naming the attempt's flow, and the `notice` it reported.
+ * @mode emit
+ */
+'authorization/notice'(payload: { key: string; notice: AuthorizationNotice }): void
+```
+
+Source: [`packages/api/settings-controller/src/types.ts`](../../packages/api/settings-controller/src/types.ts)
+
+<a id="authorizationprompt--emit"></a>
+
+#### `authorization/prompt` — emit
+
+A running authorization attempt needs an answer before it can continue. `promptId` correlates this prompt with the `respond()` or `decline()` call that answers it; the prompt's own `signal` never crosses the wire.
+
+```ts cordis-catalog
+/**
+ * A running authorization attempt needs an answer before it can
+ * continue. `promptId` correlates this prompt with the `respond()` or
+ * `decline()` call that answers it; the prompt's own `signal` never
+ * crosses the wire.
+ * @param payload - `key` naming the attempt's flow, the `promptId` correlating
+ *   the answering call, and the wire-safe `prompt` to answer.
+ * @mode emit
+ */
+'authorization/prompt'(payload: { key: string; promptId: string; prompt: WireAuthorizationPrompt }): void
+```
+
+Source: [`packages/api/settings-controller/src/types.ts`](../../packages/api/settings-controller/src/types.ts)
 
 <a id="authorizationsettled--emit"></a>
 

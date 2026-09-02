@@ -549,6 +549,51 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'authorizationController',
+    summary: 'Host service backing the generated `ctx.remote.authorization` namespace.',
+    description: 'Host service backing the generated `ctx.remote.authorization` namespace. Wraps `ctx.authorization` with the wire obligations the seam itself does not carry: key branding, view projection, the prompt correlation-id bridge, and the refusal mapping.\n\nSingle-trusted-principal assumption: `authorization/notice` and `authorization/prompt` are `emit`-mode events, broadcast to every connected Remote client, not just the tab that started the attempt; and `respond()`, `decline()`, and `cancel()` authorize purely by matching `key`+`promptId` (or `key` alone, for `cancel()`) against this controller\'s own server-side map, with no check that the caller is the connection that began the attempt. This is deliberate and already covered by this package\'s "multi-tab" test (`authorization-controller.host.spec.ts`): every connected client is assumed to be the same trusted human\'s own browser tabs, so any tab can answer, decline, or cancel any pending prompt for a key, and that is treated as a feature (a sign-in started in one tab can be finished from another) rather than a defect. It is safe only because the Host currently assumes a single trusted principal per instance — see `packages/host/webserver/README.md`\'s own note that binding a non-loopback address already exposes unprotected routes to that network. Supporting multiple untrusted principals on one Host would first need per-connection scoping here, e.g. a `waterfall`-mode event (like `approval/request`) that only the requesting connection observes, rather than a broadcast `emit`.',
+    methods: [
+      {
+        signature: '@Remote list(): AuthorizationEntryView[]',
+        description: 'Every registered flow, for a surface listing what can be authorized.',
+        parameters: [],
+        returns: 'one entry per flow, in registration order.',
+      },
+      {
+        signature: '@Remote describe(key: string): AuthorizationEntryView | undefined',
+        description: 'One registered flow.',
+        parameters: [{ name: 'key', description: 'joined `<scope>/<id>` credential key.' }],
+        returns: 'the entry, or undefined when no flow claims that key.',
+        throws: ['RemoteError `gateway/bad-request` when `key` is malformed.'],
+      },
+      {
+        signature: '@Remote async begin(key: string, method: string | undefined, signal: AbortSignal): Promise<AuthorizationOutcomeView>',
+        description: 'Run one attempt to authorize a key, relaying its notices and prompts over the `authorization/notice`/`authorization/prompt` events.',
+        parameters: [{ name: 'key', description: 'joined `<scope>/<id>` credential key.' }, { name: 'method', description: 'method id to run; defaults to the flow\'s first.' }, { name: 'signal', description: 'withdraws the attempt.' }],
+        returns: 'how the attempt ended.',
+        throws: ['RemoteError `gateway/bad-request` for a malformed key, `gateway/cancelled` when `signal` is already aborted, `authorization/no-flow`, `authorization/unknown-method`, `authorization/already-in-flight`, `authorization/not-committed`, or `gateway/internal` for anything else.'],
+      },
+      {
+        signature: '@Remote respond(key: string, promptId: string, value: string): Promise<void>',
+        description: 'Answer a pending prompt from a running `begin()` attempt.',
+        parameters: [{ name: 'key', description: 'joined `<scope>/<id>` credential key.' }, { name: 'promptId', description: 'correlation id from the matching `authorization/prompt` event.' }, { name: 'value', description: 'the human\'s typed answer, or the chosen option\'s id.' }],
+        throws: ['RemoteError `gateway/bad-request` for a malformed key, or `authorization/unknown-prompt`.'],
+      },
+      {
+        signature: '@Remote decline(key: string, promptId: string): Promise<void>',
+        description: 'Decline a pending prompt, settling its `begin()` attempt as cancelled.',
+        parameters: [{ name: 'key', description: 'joined `<scope>/<id>` credential key.' }, { name: 'promptId', description: 'correlation id from the matching `authorization/prompt` event.' }],
+        throws: ['RemoteError `gateway/bad-request` for a malformed key, or `authorization/unknown-prompt`.'],
+      },
+      {
+        signature: '@Remote cancel(key: string): void',
+        description: 'Withdraw the attempt running for a key, if any; a harmless no-op otherwise. Separate from `begin()`\'s own signal because a Cancel button is a second call, with no handle on the first call\'s signal.',
+        parameters: [{ name: 'key', description: 'joined `<scope>/<id>` credential key.' }],
+        throws: ['RemoteError `gateway/bad-request` when `key` is malformed.'],
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -3048,6 +3093,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'req', description: 'pending approval request.' }],
   },
   {
+    name: 'authorization/notice',
+    mode: 'emit',
+    signature: '\'authorization/notice\'(payload: { key: string; notice: AuthorizationNotice }): void',
+    summary: 'A running authorization attempt reported progress, or told the human what to do next.',
+    description: 'A running authorization attempt reported progress, or told the human what to do next. Fire-and-forget, same as the seam\'s own `notify`.',
+    parameters: [{ name: 'payload', description: '`key` naming the attempt\'s flow, and the `notice` it reported.' }],
+  },
+  {
+    name: 'authorization/prompt',
+    mode: 'emit',
+    signature: '\'authorization/prompt\'(payload: { key: string; promptId: string; prompt: WireAuthorizationPrompt }): void',
+    summary: 'A running authorization attempt needs an answer before it can continue.',
+    description: 'A running authorization attempt needs an answer before it can continue. `promptId` correlates this prompt with the `respond()` or `decline()` call that answers it; the prompt\'s own `signal` never crosses the wire.',
+    parameters: [{ name: 'payload', description: '`key` naming the attempt\'s flow, the `promptId` correlating the answering call, and the wire-safe `prompt` to answer.' }],
+  },
+  {
     name: 'authorization/settled',
     mode: 'emit',
     signature: '\'authorization/settled\'(key: CredentialKey, settlement: AuthorizationSettlement): void',
@@ -3560,6 +3621,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
   {
+    name: 'AuthorizationEntryView',
+    declaration: 'export interface AuthorizationEntryView {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly AuthorizationMethod[];\n    readonly inFlight: boolean;\n}',
+  },
+  {
     name: 'AuthorizationFlow',
     declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly [\n        AuthorizationMethod,\n        ...AuthorizationMethod[]\n    ];\n    run(session: AuthorizationSession): Promise<void>;\n}',
   },
@@ -3580,8 +3645,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AuthorizationOutcome {\n    status: AuthorizationStatus;\n}',
   },
   {
+    name: 'AuthorizationOutcomeView',
+    declaration: 'export type AuthorizationOutcomeView = AuthorizationOutcome;',
+  },
+  {
     name: 'AuthorizationPrompt',
-    declaration: 'export type AuthorizationPrompt = {\n    signal?: AbortSignal;\n} & ({\n    kind: \'text\';\n    message: string;\n    placeholder?: string;\n} | {\n    kind: \'secret\';\n    message: string;\n    placeholder?: string;\n} | {\n    kind: \'select\';\n    message: string;\n    options: readonly AuthorizationPromptOption[];\n});',
+    declaration: 'export type AuthorizationPrompt = {\n    signal?: AbortSignal;\n    kind: \'text\';\n    message: string;\n    placeholder?: string;\n} | {\n    signal?: AbortSignal;\n    kind: \'secret\';\n    message: string;\n    placeholder?: string;\n} | {\n    signal?: AbortSignal;\n    kind: \'select\';\n    message: string;\n    options: readonly AuthorizationPromptOption[];\n};',
   },
   {
     name: 'AuthorizationPromptOption',
@@ -5032,10 +5101,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionProjectionBaseline {\n    readonly asOfSeq: number;\n    readonly values: SessionProjectionValues;\n}',
   },
   {
-    name: 'SessionProjectionHints',
-    declaration: 'export interface SessionProjectionHints {\n    readonly asOfSeq: number;\n    readonly values: SessionProjectionValues;\n}',
-  },
-  {
     name: 'SessionProjectionMap',
     declaration: 'export interface SessionProjectionMap {\n}',
   },
@@ -5142,10 +5207,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionStartSource',
     declaration: 'export type SessionStartSource = \'startup\' | \'resume\' | \'clear\' | \'compact\';',
-  },
-  {
-    name: 'SessionSummary',
-    declaration: 'export interface SessionSummary {\n    readonly sessionId: SessionId;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly projections?: SessionProjectionHints;\n}',
   },
   {
     name: 'SessionSurface',
@@ -6064,6 +6125,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WebUpgradeRoute {\n    path: string;\n    handler: (req: IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>;\n}',
   },
   {
+    name: 'WireAuthorizationPrompt',
+    declaration: 'export type WireAuthorizationPrompt = DistributiveOmit<AuthorizationPrompt, \'signal\'>;',
+  },
+  {
     name: 'WorkflowAgentEndInfo',
     declaration: 'export interface WorkflowAgentEndInfo extends WorkflowAgentInfo {\n    outcome: WorkflowAgentOutcome;\n}',
   },
@@ -6170,10 +6235,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceValue',
     declaration: 'export interface WorkspaceValue {\n    readonly workspace: WorkspaceView;\n}',
-  },
-  {
-    name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
 ]
 
