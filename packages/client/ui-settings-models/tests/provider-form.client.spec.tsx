@@ -14,6 +14,8 @@ import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/
 import { ModelsSettingsStore, deriveKeyRef, protocolChoices } from '../src/client/store.ts'
 import { createModelsOperations } from '../src/client/operations.ts'
 import type { ModelsOperations } from '../src/client/operations.ts'
+import { createAuthorizationOperations } from '../src/client/authorization-operations.ts'
+import type { AuthorizationOperations } from '../src/client/authorization-operations.ts'
 import { en } from '../src/client/locales.ts'
 import { settingsSchema } from './settings-schema.client.ts'
 
@@ -138,6 +140,13 @@ function scriptedFace(options: {
       set,
       unset: vi.fn(),
     },
+    authorization: {
+      describe: vi.fn(() => Promise.resolve(remoteOk(undefined))),
+      begin: vi.fn(),
+      respond: vi.fn(),
+      decline: vi.fn(),
+      cancel: vi.fn(),
+    },
   }
   return { face, discover, mutate, set, namespace }
 }
@@ -169,6 +178,16 @@ function operationsWith(face: object): ModelsOperations {
   if (existing !== undefined) return existing
   const bound = createModelsOperations(ctxWith(face))
   operations.set(face, bound)
+  return bound
+}
+
+/** The cards' injected authorization operations, bound once per face like {@link operationsWith}. */
+const authOperations = new WeakMap<object, AuthorizationOperations>()
+function authOperationsWith(face: object): AuthorizationOperations {
+  const existing = authOperations.get(face)
+  if (existing !== undefined) return existing
+  const bound = createAuthorizationOperations(ctxWith(face))
+  authOperations.set(face, bound)
   return bound
 }
 
@@ -207,6 +226,7 @@ async function mountSection(options: Parameters<typeof scriptedFace>[0] = {}) {
     controller,
     useSnapshot: bindSnapshotSelector(controller.store),
     operations: operationsWith(scripted.face),
+    authOperations: authOperationsWith(scripted.face),
     schema: settingsSchema,
     t,
     renderSlot: () => null,

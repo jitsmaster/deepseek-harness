@@ -24,6 +24,7 @@ import type { WelcomeNoticeInjected } from './WelcomeNotice.tsx'
 import { decodeWelcomeSection, WelcomeNoticeStore } from './welcome-store.ts'
 import { ModelsSettingsStore } from './store.ts'
 import { createModelsOperations } from './operations.ts'
+import { createAuthorizationOperations } from './authorization-operations.ts'
 import { createSettingsSchemaOperations } from './schema-operations.ts'
 import { en, zh, type ModelsKey } from './locales.ts'
 import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '../onboarding-copy.ts'
@@ -62,7 +63,7 @@ export function refreshIfLoaded(controller: ModelsSettingsStore): void {
  * constrained; registration depends on each slot through `slots.inject()`.
  */
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings',
+  'slots', 'locale', 'remote', 'remote.authorization', 'remote.credentials', 'remote.llm', 'remote.settings',
   'settingsScope', 'settingsSchema',
 ]
 
@@ -79,6 +80,7 @@ export function apply(ctx: ClientContext): void {
   // Bound once here, where the Remote namespaces are declared in this plugin's
   // own `inject`; the cards receive callbacks and never a context.
   const operations = createModelsOperations(ctx)
+  const authOperations = createAuthorizationOperations(ctx)
   const controller = new ModelsSettingsStore(ctx, schema, ctx.settingsScope.describe())
   // Registration-time text (the nav label thunk) and the inject faces share
   // one bound translate; copy freshness rides the locale revision.
@@ -87,6 +89,7 @@ export function apply(ctx: ClientContext): void {
     controller,
     hooks: { snapshot: controller.store },
     operations,
+    authOperations,
     schema,
     t,
   })
@@ -119,6 +122,7 @@ export function apply(ctx: ClientContext): void {
     const disposers = [
       ctx.remote.$on('settings/document-updated', () => { refreshModels() }),
       ctx.remote.$on('credentials/reference-updated', refreshModels),
+      ctx.remote.$on('authorization/settled', refreshModels),
       ctx.remote.$on('llm/adapters-updated', refreshModels),
       ctx.on('connection/reset', refreshModels),
     ]

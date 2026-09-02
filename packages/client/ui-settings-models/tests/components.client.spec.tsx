@@ -21,6 +21,8 @@ import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/
 import { deriveKeyRef, ModelsSettingsStore } from '../src/client/store.ts'
 import { createModelsOperations } from '../src/client/operations.ts'
 import type { ModelsOperations } from '../src/client/operations.ts'
+import { createAuthorizationOperations } from '../src/client/authorization-operations.ts'
+import type { AuthorizationOperations } from '../src/client/authorization-operations.ts'
 import type { ProviderRow } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
 import { settingsSchema } from './settings-schema.client.ts'
@@ -203,6 +205,13 @@ function scriptedFace(overrides: {
       set,
       unset,
     },
+    authorization: {
+      describe: vi.fn(() => Promise.resolve(remoteOk(undefined))),
+      begin: vi.fn(),
+      respond: vi.fn(),
+      decline: vi.fn(),
+      cancel: vi.fn(),
+    },
   }
   return { face, update, mutate, set, unset }
 }
@@ -234,6 +243,16 @@ function operationsWith(face: object): ModelsOperations {
   if (existing !== undefined) return existing
   const bound = createModelsOperations(ctxWith(face))
   operations.set(face, bound)
+  return bound
+}
+
+/** The cards' injected authorization operations, bound once per face like {@link operationsWith}. */
+const authOperations = new WeakMap<object, AuthorizationOperations>()
+function authOperationsWith(face: object): AuthorizationOperations {
+  const existing = authOperations.get(face)
+  if (existing !== undefined) return existing
+  const bound = createAuthorizationOperations(ctxWith(face))
+  authOperations.set(face, bound)
   return bound
 }
 
@@ -270,6 +289,7 @@ async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
     controller,
     useSnapshot: bindSnapshotSelector(controller.store),
     operations: operationsWith(face),
+    authOperations: authOperationsWith(face),
     schema: settingsSchema,
     t,
     renderSlot: renderSlot as unknown as ModelsSectionProps['renderSlot'],
@@ -405,6 +425,7 @@ describe('ModelsSection', () => {
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       schema={settingsSchema}
       t={t}
       renderSlot={() => null}
@@ -430,6 +451,7 @@ describe('ModelsSection', () => {
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       schema={settingsSchema}
       t={t}
       renderSlot={() => null}
@@ -512,6 +534,7 @@ describe('ModelsSection', () => {
       schema={settingsSchema}
       settingsPath={[]}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       t={t}
       readOnly={false}
       credentialOnly
@@ -765,6 +788,7 @@ describe('ModelsSection', () => {
       schema={settingsSchema}
       settingsPath={[]}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       t={t}
       readOnly={false}
       onClose={() => {}}
@@ -995,6 +1019,7 @@ describe('ModelsSection', () => {
       schema={settingsSchema}
       settingsPath={[]}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       t={t}
       readOnly={false}
       onClose={() => {}}
@@ -1156,6 +1181,7 @@ describe('ModelsSection', () => {
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       schema={settingsSchema}
       t={t}
       renderSlot={() => null}
@@ -1290,6 +1316,7 @@ describe('ModelsSection', () => {
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
       operations={operationsWith(face.face)}
+      authOperations={authOperationsWith(face.face)}
       schema={settingsSchema}
       t={t}
       renderSlot={() => null}
@@ -1313,6 +1340,7 @@ describe('ModelsSection', () => {
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       schema={settingsSchema}
       t={t}
       renderSlot={() => null}
@@ -1375,6 +1403,7 @@ describe('ModelsSection', () => {
       controller={controller}
       useSnapshot={bindSnapshotSelector(controller.store)}
       operations={operationsWith(face)}
+      authOperations={authOperationsWith(face)}
       schema={settingsSchema}
       t={t}
       renderSlot={() => null}

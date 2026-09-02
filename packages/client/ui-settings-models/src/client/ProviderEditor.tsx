@@ -1,11 +1,15 @@
 /**
- * One provider's editor card, hand-written per adapter family: the primary
- * field is a single write-only **API key** input (the page never asks for an
- * environment-variable name — a typed key stores through `credentials/set`
- * under the profile's reference, deriving `<ROUTE>_API_KEY` when the profile
- * has none. The pi-ai profile records that derivation as `apiKeyEnv` only when
- * a key is entered; a blank key materializes a reference-free profile for
- * provider-native authentication);
+ * One provider's editor card, hand-written per adapter family. The API-key
+ * input keeps working unconditionally for every layout — a typed key stores
+ * through `credentials/set` under the profile's reference, deriving
+ * `<ROUTE>_API_KEY` when the profile has none. The pi-ai profile records that
+ * derivation as `apiKeyEnv` only when a key is entered; a blank key
+ * materializes a reference-free profile for provider-native authentication.
+ * A pi-ai route whose registered flow offers one or more authorization
+ * methods (oauth being the common case) also gets a sign-in affordance above
+ * that field, opening `AuthorizationDialog`; signing in never writes the
+ * API-key field, and the field's own behavior is unchanged whether or not
+ * that affordance renders.
  * the collapsed 自定义设置 area carries the per-family extras (`baseURL` for
  * both families, DeepSeek's id/name/context-window model catalog, and the
  * display name and wire protocol of a pi-ai route the adapter does not ship —
@@ -21,12 +25,15 @@
  * see instead of rebuilding the whole subtree from a partial descriptor.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect, useMemo, useRef, useState,
+} from 'react'
 import type { ReactNode } from 'react'
 import type {
-  CredentialInfo, SettingsNamespaceView, SettingsPathOpView,
+  AuthorizationEntry, CredentialInfo, SettingsNamespaceView, SettingsPathOpView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { AuthorizationDialog } from './AuthorizationDialog.tsx'
 import {
   DeepSeekModelsEditor, modelDrafts, validateDeepSeekModels,
 } from './DeepSeekModelsEditor.tsx'
@@ -35,6 +42,7 @@ import { EditorFooter } from './EditorFooter.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import { deriveKeyRef, protocolChoices } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
+import type { AuthorizationOperations } from './authorization-operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -69,6 +77,12 @@ export interface ProviderEditorProps {
   settingsPath: readonly string[]
   /** The Host operations this card writes and interrogates through. */
   operations: ModelsOperations
+  /**
+   * The Host operations a pi-ai sign-in dialog is driven through. Absent
+   * call sites (e.g. the DeepSeek onboarding step, whose layout never offers
+   * an `oauth` method) render no sign-in affordance.
+   */
+  authOperations?: AuthorizationOperations
   /** Section copy. */
   t: (key: keyof typeof en) => string
   /** Disable writes (read-only settings provider). */
@@ -156,10 +170,13 @@ function refFor(
  * @returns the editor card.
  */
 export function ProviderEditor(props: ProviderEditorProps): ReactNode {
-  const { namespace, schema, settingsPath, operations, t } = props
+  const { namespace, schema, settingsPath, operations, authOperations, t } = props
   const [draft, setDraft] = useState<Record<string, unknown>>(() => draftAt(schema, namespace, settingsPath))
   const [keyDraft, setKeyDraft] = useState('')
   const [keyState, setKeyState] = useState<CredentialInfo | undefined>(undefined)
+  const [authEntry, setAuthEntry] = useState<AuthorizationEntry | undefined>(undefined)
+  const [authMethod, setAuthMethod] = useState<string | undefined>(undefined)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   // A settings success advances both retry baselines immediately. Keeping the
@@ -169,12 +186,22 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     () => schema.getPath(namespace.user, settingsPath),
   )
   const [expectedRevision, setExpectedRevision] = useState(() => namespace.revision)
+  // Tracks unmount for the AuthorizationDialog onClose handler below, whose
+  // describeCredential/describeAuthorization continuations can resolve after
+  // the card is gone — the same hazard the two effects above guard with a
+  // `stale` flag, translated to a ref since this call site is an event
+  // handler rather than an effect body.
+  const unmountedRef = useRef(false)
+  useEffect(() => () => { unmountedRef.current = true }, [])
   const root = useMemo(() => schema.rehydrate(namespace.schema), [namespace.schema, schema])
   const node = useMemo(() => schema.nodeAtPath(root, settingsPath), [root, schema, settingsPath])
   const fallback = schema.getPath(namespace.value, settingsPath)
   const disabled = props.readOnly || busy
   const layout = layoutOf(namespace.ns)
   const keyRef = refFor(schema, namespace, settingsPath, props.provider)
+  // Only the pi-ai layout has a flow an `authorization` key could address;
+  // undefined here means the sign-in affordance never renders below.
+  const authKey = layout === 'pi-ai' ? `${namespace.ns}/${props.provider}` : undefined
   // The same schema read the create card makes, so the choices offered here
   // and there cannot drift apart: both come from the adapter's own `Config`.
   // Only the pi-ai layout has a per-route protocol for the read to find, and
@@ -195,6 +222,20 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     })
     return () => { stale = true }
   }, [operations, keyRef])
+
+  useEffect(() => {
+    if (authKey === undefined || authOperations === undefined) { setAuthEntry(undefined); return }
+    let stale = false
+    // A Remote reject (e.g. the `authorization` namespace never mounted because
+    // its host service is absent) is treated the same as an `{ok:false}` describe
+    // response above: no authorization entry, not an unhandled rejection.
+    void authOperations.describeAuthorization(authKey).then((entry) => {
+      if (!stale) setAuthEntry(entry)
+    }).catch(() => {
+      if (!stale) setAuthEntry(undefined)
+    })
+    return () => { stale = true }
+  }, [authOperations, authKey])
 
   const stringAt = (source: unknown, key: string): string | undefined => {
     const value = schema.getPath(source, [key])
@@ -347,6 +388,11 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       : keyState?.configured === true && props.credentialRequired !== true
         ? t('keyStored')
         : family === 'pi-ai' ? t('keyPlaceholderNative') : t('keyPlaceholder')
+    // Computed once so the radio `checked` prop and the sign-in button's
+    // `onClick` can never read a different method for the same render — both
+    // derive "what will be signed in with" the same way: the explicit
+    // selection, or else the flow's first method.
+    const selectedMethodId = authMethod ?? authEntry?.methods[0]?.id
     /** What both family editors take: the rows, whose layer owns them, and the two writes. */
     const catalogProps = {
       models,
@@ -360,6 +406,48 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     }
     return (
       <>
+        {family === 'pi-ai' && authEntry !== undefined && authEntry.methods.length > 0
+          ? (
+            <div className={styles['field']}>
+              {authEntry.methods.length > 1
+                ? (
+                  <span className={styles['fieldLabel']}>
+                    {authEntry.methods.map(candidate => (
+                      <label key={candidate.id}>
+                        <input
+                          type="radio"
+                          name={`authMethod-${props.provider}`}
+                          value={candidate.id}
+                          checked={selectedMethodId === candidate.id}
+                          disabled={disabled || authEntry.inFlight}
+                          onChange={() => { setAuthMethod(candidate.id) }}
+                        />
+                        {' '}
+                        {candidate.label}
+                      </label>
+                    ))}
+                  </span>
+                )
+                : null}
+              <button
+                type="button"
+                className={styles['secondaryButton']}
+                disabled={disabled || authEntry.inFlight}
+                onClick={() => {
+                  if (selectedMethodId === undefined) return
+                  setAuthMethod(selectedMethodId)
+                  setAuthDialogOpen(true)
+                }}
+              >
+                {authEntry.inFlight
+                  ? t('authSigningIn')
+                  : authEntry.methods.length === 1
+                    ? authEntry.methods[0]?.label ?? t('authContinue')
+                    : t('authContinue')}
+              </button>
+            </div>
+          )
+          : null}
         <div className={styles['field']}>
           <span className={styles['fieldLabel']}>{t('keyInput')}</span>
           <input
@@ -511,6 +599,37 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         onCancel={() => { props.onClose(false) }}
         onSubmit={() => { void apply() }}
       />
+      {authDialogOpen && authKey !== undefined && authMethod !== undefined && authOperations !== undefined
+        ? (
+          <AuthorizationDialog
+            authKey={authKey}
+            method={authMethod}
+            label={authEntry?.label ?? props.displayName}
+            operations={authOperations}
+            t={t}
+            onClose={(outcome) => {
+              setAuthDialogOpen(false)
+              setAuthMethod(undefined)
+              if (outcome?.status === 'authorized') {
+                // The sign-in never wrote the API-key field: only the
+                // credential and authorization "already configured" hints
+                // need a fresh read, exactly as if the card were reopened.
+                setKeyState(undefined)
+                void operations.describeCredential(keyRef).then((described) => {
+                  if (!unmountedRef.current) setKeyState(described)
+                })
+                // See the mount-effect above: a Remote reject here (namespace
+                // never mounted) collapses to "no authorization entry" too.
+                void authOperations.describeAuthorization(authKey).then((entry) => {
+                  if (!unmountedRef.current) setAuthEntry(entry)
+                }).catch(() => {
+                  if (!unmountedRef.current) setAuthEntry(undefined)
+                })
+              }
+            }}
+          />
+        )
+        : null}
     </div>
   )
 }
