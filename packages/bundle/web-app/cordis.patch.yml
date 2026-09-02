@@ -236,6 +236,11 @@
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
 
+    # Fills ui-workspace's sidebar.workspaces.importFlow hole with the
+    # discover + import dialog over the claudeSessionImport Remote namespace.
+    - id: ui-session-import
+      name: '@deepseek-ai/dsh-client-ui-session-import'
+
     # Input triggers: the '/' | '@' pipeline (ui-input-trigger), the command surface over
     # it (ui-commands), and the reference sources (ui-skill / ui-reference).
     - id: ui-input-trigger

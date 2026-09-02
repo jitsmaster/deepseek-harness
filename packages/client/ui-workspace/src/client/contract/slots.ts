@@ -51,12 +51,29 @@ export interface DirectoryFlowOwnerProps {
   onError: (message: string) => void
 }
 
+/**
+ * Owner share of the sidebar's Claude Code import-flow hole: the complete
+ * conversation between the "Import from Claude Code" trigger and the
+ * discover/import dialog. The occupant reads `open` to mount its dialog and
+ * reports exactly one outcome per open.
+ */
+export interface ImportFlowOwnerProps {
+  /** True while the import dialog is requested; flipping back to false withdraws it. */
+  open: boolean
+  /** The operator imported a Claude Code session; the owner navigates to the new Session. */
+  onImported: (sessionId: SessionId) => void
+  /** The operator dismissed the dialog without importing anything. */
+  onClose: () => void
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /** Claude Code import-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
+    'sidebar.workspaces.importFlow': { kind: 'single'; scope: 'root'; owner: ImportFlowOwnerProps }
   }
 }
 
@@ -96,6 +113,8 @@ export type WorkspaceBrowserInjected = {
      * saw. Select the field the surface needs (`info => info.home`).
      */
     hostInfo: HostObservable<RemoteHostFacts>
+    /** True while the sidebar's Claude Code import-flow hole is occupied. */
+    importFlow: HostObservable<boolean>
   }
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
@@ -147,7 +166,7 @@ export type WorkspaceBrowserInjected = {
 /** Full browser props: shell owner share + viewing store + injected actions + the locale seat. */
 export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
-  & PropsRenderSlots<'sidebar.workspaces.directoryFlow'>
+  & PropsRenderSlots<'sidebar.workspaces.directoryFlow' | 'sidebar.workspaces.importFlow'>
   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & PropsHooks<WorkspaceBrowserInjected['hooks']>

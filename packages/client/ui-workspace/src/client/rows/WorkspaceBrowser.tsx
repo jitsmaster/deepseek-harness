@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, IconCloseFill14, IconPersonalizationOutline16,
+  Button, IconCloseFill14, IconDownloadOutline16, IconPersonalizationOutline16,
   IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -821,6 +821,7 @@ export function WorkspaceBrowser({
   searchResultLimit,
   useDirectoryFlow,
   useHostInfo,
+  useImportFlow,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -831,6 +832,10 @@ export function WorkspaceBrowser({
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
+  // Same pattern for the Claude Code import-flow hole: an unoccupied hole
+  // leaves the header with no import affordance at all.
+  const importFlowAvailable = useImportFlow(occupied => occupied)
+  const [importOpen, setImportOpen] = useState(false)
   const groupBy = useStore(s => s.groupBy)
   const orderBy = useStore(s => s.orderBy)
   const groupExpansion = useStore(s => s.groupExpansion)
@@ -1160,6 +1165,21 @@ export function WorkspaceBrowser({
               </button>
             </Tooltip>
           )}
+          {/* Same posture as the Add-workspace button above: a composition
+              with no import occupant has nothing to offer here, so the
+              region hides the trigger rather than opening an empty dialog. */}
+          {wide && importFlowAvailable && (
+            <Tooltip label={t('claudeImport.add')} side="bottom" delayMs={500}>
+              <button
+                type="button"
+                className={css.iconButton}
+                aria-label={t('claudeImport.add')}
+                onClick={() => { setImportOpen(true) }}
+              >
+                <IconDownloadOutline16 size={16} />
+              </button>
+            </Tooltip>
+          )}
         </div>
         {/* Add flow + its error dialog (same package — direct composition). */}
         <WorkspacePickFlow
@@ -1178,6 +1198,18 @@ export function WorkspaceBrowser({
           }}
           onClose={() => { setWsPickerOpen(false) }}
         />
+        {/* Import flow: a composed package's client half fills this hole
+            (same directory-flow-hole pattern as WorkspacePickFlow above). A
+            successful import reuses `open` — the same navigation call every
+            other session row already opens through. */}
+        {renderSlot('sidebar.workspaces.importFlow', {
+          open: importOpen,
+          onImported: (sessionId) => {
+            setImportOpen(false)
+            open(sessionId)
+          },
+          onClose: () => { setImportOpen(false) },
+        })}
       </div>
 
       {/* The collapsed rail keeps search as its own 36px control. */}
