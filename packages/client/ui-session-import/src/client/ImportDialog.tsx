@@ -8,9 +8,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { en, type SessionImportKey } from './locales.ts'
+import styles from './ImportDialog.module.css'
 
 /** Wire view of one discovered Claude Code CLI session (`list()`'s rows). */
 export interface DiscoveredSessionView {
@@ -98,12 +99,20 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
     )
   }
 
+  const selectRow = (id: string): void => { setSelectedId(id) }
+  const onRowKeyDown = (id: string) => (event: KeyboardEvent<HTMLTableRowElement>): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    selectRow(id)
+  }
+
   return (
     <Modal
       open
       onClose={onClose}
       closeLabel={t('dialog.close')}
       title={t('dialog.title')}
+      className={styles['dialog'] ?? ''}
       footer={(
         <>
           <Button variant="outline" disabled={busy} onClick={onClose}>{t('dialog.cancel')}</Button>
@@ -118,21 +127,26 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
         : sessions.length === 0
           ? <p>{t('dialog.empty')}</p>
           : (
-            <ul>
-              {sessions.map(session => (
-                <li key={session.id}>
-                  <button
-                    type="button"
-                    aria-pressed={session.id === selectedId}
-                    onClick={() => { setSelectedId(session.id) }}
-                  >
-                    <span>{session.name}</span>
-                    <span>{session.cwd}</span>
-                    <span>{session.status}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className={styles['tableScroll']}>
+              <table className={styles['table']} role="grid">
+                <tbody>
+                  {sessions.map(session => (
+                    <tr
+                      key={session.id}
+                      className={styles['row']}
+                      tabIndex={0}
+                      aria-selected={session.id === selectedId}
+                      onClick={() => { selectRow(session.id) }}
+                      onKeyDown={onRowKeyDown(session.id)}
+                    >
+                      <td className={styles['cellName']}>{session.name}</td>
+                      <td className={styles['cellCwd']} title={session.cwd}>{session.cwd}</td>
+                      <td className={styles['cellStatus']}>{session.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
       {failure !== undefined && <p role="alert">{failure}</p>}
     </Modal>

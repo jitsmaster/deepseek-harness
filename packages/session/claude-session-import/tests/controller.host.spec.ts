@@ -14,7 +14,7 @@ function bootController(overrides: Partial<ClaudeSessionImportInternals> = {}): 
       type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
     })),
     ensureSession: overrides.ensureSession ?? (async () => {
-      const agent = { session: { header: { cwd: '/tmp' } }, inject: vi.fn() }
+      const agent = { session: { header: { cwd: '/tmp' } }, followup: vi.fn() }
       return agent as unknown as Agent
     }),
     resolveCallConfig: overrides.resolveCallConfig ?? (async (_ctx, config) => config),
@@ -43,15 +43,15 @@ describe('the claudeSessionImport Remote namespace', () => {
     expect(result).toEqual({ sessions: [] })
   })
 
-  it('creates a session and injects the parsed transcript as one message', async () => {
-    const inject = vi.fn()
+  it('creates a session and starts a followup turn with the parsed transcript as one message', async () => {
+    const followup = vi.fn()
     const controller = bootController({
-      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject }) as unknown as Agent,
+      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, followup }) as unknown as Agent,
     })
     const result = await controller.createFrom('s1', new AbortController().signal)
     expect(result.sessionId).toEqual(expect.any(String))
-    expect(inject).toHaveBeenCalledTimes(1)
-    const [message] = inject.mock.calls[0] as [{ content: { type: string; text: string }[] }]
+    expect(followup).toHaveBeenCalledTimes(1)
+    const [message] = followup.mock.calls[0] as [{ content: { type: string; text: string }[] }]
     expect(message.content[0]?.text).toContain('**User:** hi')
   })
 
@@ -87,7 +87,7 @@ describe('the claudeSessionImport Remote namespace, mounted the way production d
     } as unknown as Context['subprocess'])
     ctx.provide('llm', {} as unknown as Context['llm'])
     const fiber = ctx.plugin(ClaudeSessionImportController, {
-      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject: vi.fn() }) as unknown as Agent,
+      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, followup: vi.fn() }) as unknown as Agent,
       selectModel: vi.fn(),
     })
     await fiber
@@ -105,11 +105,11 @@ describe('the claudeSessionImport Remote namespace, mounted the way production d
     ctx.provide('llm', {
       resolveCallConfig: async (config: unknown) => config,
     } as unknown as Context['llm'])
-    const inject = vi.fn()
+    const followup = vi.fn()
     const fiber = ctx.plugin(ClaudeSessionImportController, {
       discover: async () => [DISCOVERED],
       readTranscript: () => JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } }),
-      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject }) as unknown as Agent,
+      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, followup }) as unknown as Agent,
       selectModel: vi.fn(),
     })
     await fiber

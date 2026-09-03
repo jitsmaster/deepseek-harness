@@ -147,8 +147,20 @@ export class ClaudeSessionImportController extends TypertRemoteService {
     }
     this.selectModel(this.ctx, agent, selection)
     const rendered = renderImportedTranscript(turns)
-    agent.inject(createUserMessage({
-      content: [{ type: 'text', text: `Imported from Claude Code session "${discovered.name}":\n\n${rendered}` }],
+    // followup(), not inject(): inject() queues silently for the next
+    // pre-step without waking the driver, so a brand-new (idle) agent would
+    // leave it parked forever with nothing to ever wake it — the imported
+    // content would never become visible, durable history. followup() starts
+    // a real first turn immediately, matching "seeded as its opening context".
+    agent.followup(createUserMessage({
+      content: [{
+        type: 'text',
+        text: `Imported from Claude Code session "${discovered.name}". This transcript is `
+          + 'historical context only, shown so the operator can see it — it is not an '
+          + 'instruction to resume or continue any in-progress work. Do not take any '
+          + "action or use any tools; just wait for the operator's next message.\n\n"
+          + rendered,
+      }],
       source: { kind: 'plugin', plugin: 'claude-session-import', form: 'notice', summary: 'Imported a prior Claude Code conversation' },
     }))
     return { sessionId: newSessionId }
