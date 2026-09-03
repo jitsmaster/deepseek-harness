@@ -2,6 +2,10 @@ import { homedir as osHomedir } from 'node:os'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+// Type-only: brings the `Context.commands` and `Context.agentDefaultModel`
+// declaration merges into scope.
+import type {} from '@deepseek-ai/dsh-commands'
+import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { currentProviderOf } from './model-gate.ts'
 import { scanSkillDirectories } from './skill-scanner.ts'
 import type { ScannedSkill } from './skill-scanner.ts'
@@ -86,8 +90,8 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
     const provider = currentProviderOf(agent, defaultModel)
     const shouldBeRegistered = provider === GATED_PROVIDER
     if (shouldBeRegistered && registered === undefined) {
-      rescan()
-      if (registered !== undefined) {
+      const { added } = rescan()
+      if (added > 0) {
         agentCtx.inject(['commands'], (commandCtx) => {
           refreshCommandDispose = commandCtx.commands.register({
             name: 'refresh-skills',
