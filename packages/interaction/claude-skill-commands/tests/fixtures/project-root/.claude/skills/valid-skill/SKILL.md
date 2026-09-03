@@ -1,4 +1,4 @@
-﻿---
+---
 name: valid-skill
 description: A valid test skill
 ---

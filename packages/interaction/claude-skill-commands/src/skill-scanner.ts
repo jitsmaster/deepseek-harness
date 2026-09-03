@@ -1,4 +1,4 @@
-﻿import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { load } from 'js-yaml'
 
@@ -16,24 +16,38 @@ function parseSkillFile(path: string): ScannedSkill | undefined {
   let raw: string
   try {
     raw = readFileSync(path, 'utf8')
-  } catch {
+  } catch (_err) {
+    console.warn(`Skipped unreadable SKILL.md: ${path}`)
     return undefined
   }
-  // Strip UTF-8 BOM if present
+  // Strip UTF-8 BOM if present (a Windows editor like Notepad can save UTF-8 text with a BOM)
   raw = raw.replace(/^﻿/, '')
   const match = FRONTMATTER.exec(raw)
-  if (match === null) return undefined
+  if (match === null) {
+    console.warn(`Skipped SKILL.md with no frontmatter: ${path}`)
+    return undefined
+  }
   const [, frontmatterYaml, body] = match
   let frontmatter: unknown
   try {
     frontmatter = load(frontmatterYaml ?? '')
-  } catch {
+  } catch (_err) {
+    console.warn(`Skipped SKILL.md with invalid YAML frontmatter at ${path}: ${_err instanceof Error ? _err.message : 'unknown error'}`)
     return undefined
   }
-  if (typeof frontmatter !== 'object' || frontmatter === null) return undefined
+  if (typeof frontmatter !== 'object' || frontmatter === null) {
+    console.warn(`Skipped SKILL.md with non-object frontmatter at ${path}`)
+    return undefined
+  }
   const { name, description } = frontmatter as { name?: unknown; description?: unknown }
-  if (typeof name !== 'string' || name.trim().length === 0) return undefined
-  if (typeof description !== 'string' || description.trim().length === 0) return undefined
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    console.warn(`Skipped SKILL.md with missing or blank name at ${path}`)
+    return undefined
+  }
+  if (typeof description !== 'string' || description.trim().length === 0) {
+    console.warn(`Skipped SKILL.md with missing or blank description at ${path}`)
+    return undefined
+  }
   return { name, description, body: (body ?? '').trim() }
 }
 

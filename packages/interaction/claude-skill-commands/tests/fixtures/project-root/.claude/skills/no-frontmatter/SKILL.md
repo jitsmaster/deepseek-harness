@@ -1,3 +1,3 @@
-﻿# No Frontmatter
+# No Frontmatter
 
 no-frontmatter-marker

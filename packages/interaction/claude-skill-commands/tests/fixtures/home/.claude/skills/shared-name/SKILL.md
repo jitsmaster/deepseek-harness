@@ -1,4 +1,4 @@
-﻿---
+---
 name: shared-name
 description: user version
 ---
