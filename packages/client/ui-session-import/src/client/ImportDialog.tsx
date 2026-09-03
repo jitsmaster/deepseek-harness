@@ -63,6 +63,14 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
   const unmountedRef = useRef(false)
   useEffect(() => () => { unmountedRef.current = true }, [])
 
+  // Synchronous re-entrancy guard for importSelected(): `busy` (useState)
+  // only takes effect on React's next commit, so two Import clicks/Enter
+  // presses dispatched before that commit would both read busy === false
+  // and both call operations.createFrom() — which is not idempotent (each
+  // call mints a brand-new DSH session). A ref is written synchronously, so
+  // the second call sees it immediately.
+  const importInFlightRef = useRef(false)
+
   useEffect(() => {
     const controller = new AbortController()
     operations.list(controller.signal).then(
@@ -81,17 +89,20 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
   }, [])
 
   const importSelected = (): void => {
-    if (selectedId === undefined || busy) return
+    if (selectedId === undefined || importInFlightRef.current) return
+    importInFlightRef.current = true
     setBusy(true)
     setFailure(undefined)
     const controller = new AbortController()
     operations.createFrom(selectedId, controller.signal).then(
       (result) => {
+        importInFlightRef.current = false
         if (unmountedRef.current) return
         setBusy(false)
         onImported(result.sessionId)
       },
       (error: unknown) => {
+        importInFlightRef.current = false
         if (unmountedRef.current) return
         setBusy(false)
         setFailure(error instanceof Error ? error.message : String(error))
