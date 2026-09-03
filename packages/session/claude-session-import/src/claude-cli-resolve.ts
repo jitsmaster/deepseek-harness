@@ -32,15 +32,25 @@ export function parseCmdShimTarget(shimContent: string): string | undefined {
 
 /**
  * Resolve the argv prefix needed to launch the operator's `claude` CLI
- * directly, working around Windows' shim indirection. Never throws: any
- * resolution or read failure falls back to the plain resolved path, leaving
- * the caller's own spawn to fail (and be handled there) as before.
+ * directly, working around Windows' shim indirection. Never throws: a
+ * resolution failure (e.g. `claude` isn't on PATH at all) falls back to the
+ * bare `claude` command name, and a shim-read or -parse failure falls back to
+ * the already-resolved path — either way, the caller's own spawn is left to
+ * fail (and be handled there) as it would have before this resolution step
+ * existed.
  * @param ctx - Host context carrying `ctx.subprocess`.
  * @param signal - withdraws the resolution.
  * @returns one or two argv entries to prepend to the CLI's own arguments.
  */
 export async function resolveClaudeCliArgv(ctx: Context, signal: AbortSignal): Promise<string[]> {
-  const resolved = await ctx.subprocess.resolveExecutable('claude', undefined, signal)
+  let resolved: string
+  try {
+    resolved = await ctx.subprocess.resolveExecutable('claude', undefined, signal)
+  } catch {
+    // Nothing more specific was ever resolved, so there's no "plain resolved
+    // path" to fall back to — hand back the bare command name instead.
+    return ['claude']
+  }
   if (!/\.(?:cmd|bat)$/i.test(resolved)) return [resolved]
   let shimContent: string
   try {

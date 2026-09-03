@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
-import { ClaudeSessionImportController, type ClaudeSessionImportInternals } from '../src/index.ts'
+import { ClaudeSessionImportController, RAW_TRANSCRIPT_MAX_BYTES, readTranscriptCapped, type ClaudeSessionImportInternals } from '../src/index.ts'
 
 const DISCOVERED = { id: 's1', name: 'my-task', cwd: '/home/arnold/proj', status: 'done', startedAt: '2026-09-01T00:00:00Z' }
 
@@ -131,5 +133,50 @@ describe('the claudeSessionImport Remote namespace, mounted the way production d
     if (controller === undefined) throw new Error('claudeSessionImportController did not mount')
     const result = await controller.createFrom('s1', new AbortController().signal)
     expect(result.sessionId).toEqual(expect.any(String))
+  })
+})
+
+describe('readTranscriptCapped (the default readTranscript, guarding against an unbounded synchronous read)', () => {
+  it('refuses a transcript file above the raw byte cap instead of reading it into memory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'claude-session-import-'))
+    try {
+      const path = join(dir, 'oversized.jsonl')
+      writeFileSync(path, 'x'.repeat(RAW_TRANSCRIPT_MAX_BYTES + 1))
+      expect(() => readTranscriptCapped(path)).toThrow(/exceeding the .*-byte cap/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads a transcript file at or below the raw byte cap normally', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'claude-session-import-'))
+    try {
+      const path = join(dir, 'ok.jsonl')
+      const content = JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } })
+      writeFileSync(path, content)
+      expect(readTranscriptCapped(path)).toBe(content)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('createFrom, wired to the real default readTranscript (not a test stub)', () => {
+  it('rejects with claude-session-import/transcript-unreadable when the transcript file exceeds the raw byte cap', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'claude-session-import-'))
+    try {
+      const path = join(dir, 'oversized.jsonl')
+      writeFileSync(path, 'x'.repeat(RAW_TRANSCRIPT_MAX_BYTES + 1))
+      // readTranscript is only ever called by createFrom with the real
+      // homedir-derived transcript path, which this test cannot control
+      // directly — so this delegates to the real readTranscriptCapped
+      // against a controlled oversized file, proving the cap is honored and
+      // that createFrom wraps its throw into the documented RemoteError.
+      const controller = bootController({ readTranscript: () => readTranscriptCapped(path) })
+      const failure = await controller.createFrom('s1', new AbortController().signal).catch((error: unknown) => error)
+      expect(remoteErrorOf(failure)).toMatchObject({ code: 'claude-session-import/transcript-unreadable' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

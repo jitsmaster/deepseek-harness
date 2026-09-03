@@ -6,7 +6,7 @@
  */
 
 import { homedir } from 'node:os'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
@@ -27,6 +27,38 @@ const IMPORTED_SESSION_MODEL: Readonly<Pick<LlmCallConfig, 'provider' | 'model'>
   model: 'claude-sonnet-5',
 }
 
+// A Claude Code transcript is JSONL text, one line per event, and carries more
+// overhead per turn than the flattened text `renderImportedTranscript` produces
+// (role/type envelopes, plus embedded tool_use/tool_result payloads for tool
+// turns) — so this raw-file ceiling is set well above transcript.ts's
+// RENDERED_TRANSCRIPT_MAX_CHARS (200,000), at roughly 4x, to comfortably admit
+// any transcript that renders to a normal size. Reading a file above this cap
+// synchronously (see `readTranscriptCapped` below) would block the whole host
+// process's event loop — every other concurrent DSH session, not just this
+// import — for the read's duration, so a pathological file is refused outright
+// rather than read. Same convention as discovery.ts's STDOUT_MAX_BYTES /
+// STDERR_MAX_BYTES and session-persistence-sqlite/codec.ts's
+// MAX_PACKED_DATA_BYTES: cap externally-sourced data at the point it enters the
+// process.
+export const RAW_TRANSCRIPT_MAX_BYTES = 800_000
+
+/**
+ * Default `ClaudeSessionImportInternals.readTranscript`: reads one transcript
+ * file synchronously, refusing (rather than reading) any file larger than
+ * {@link RAW_TRANSCRIPT_MAX_BYTES}. `statSync` first so the size check never
+ * itself pays for reading an oversized file into memory.
+ * @param path - absolute path to the transcript file.
+ * @returns the file's raw UTF-8 contents.
+ * @throws when the file is missing/unreadable, or exceeds the byte cap.
+ */
+export function readTranscriptCapped(path: string): string {
+  const { size } = statSync(path)
+  if (size > RAW_TRANSCRIPT_MAX_BYTES) {
+    throw new Error(`transcript at ${path} is ${size} bytes, exceeding the ${RAW_TRANSCRIPT_MAX_BYTES}-byte cap on a single synchronous read`)
+  }
+  return readFileSync(path, 'utf8')
+}
+
 /**
  * Host integrations replaceable by direct unit tests.
  *
@@ -42,7 +74,7 @@ const IMPORTED_SESSION_MODEL: Readonly<Pick<LlmCallConfig, 'provider' | 'model'>
 export interface ClaudeSessionImportInternals {
   /** Discover the operator's Claude Code CLI sessions. Defaults to {@link listClaudeCodeSessions}. */
   discover?: (ctx: Context, signal: AbortSignal) => Promise<readonly DiscoveredSession[]>
-  /** Read one transcript file's raw contents. Defaults to `readFileSync(path, 'utf8')`. */
+  /** Read one transcript file's raw contents. Defaults to {@link readTranscriptCapped}. */
   readTranscript?: (path: string) => string
   /**
    * Create or resume the brand-new DSH session that receives the imported
@@ -88,7 +120,7 @@ export class ClaudeSessionImportController extends TypertRemoteService {
   constructor(ctx: Context, internals: ClaudeSessionImportInternals) {
     super(ctx, 'claudeSessionImportController', { namespace: 'claudeSessionImport' })
     this.discover = internals.discover ?? ((hostCtx, signal) => listClaudeCodeSessions(hostCtx, signal))
-    this.readTranscript = internals.readTranscript ?? (path => readFileSync(path, 'utf8'))
+    this.readTranscript = internals.readTranscript ?? readTranscriptCapped
     this.ensureSession = internals.ensureSession
     this.resolveCallConfig = internals.resolveCallConfig ?? ((hostCtx, config, signal) => hostCtx.llm.resolveCallConfig(config, signal))
     this.selectModel = internals.selectModel

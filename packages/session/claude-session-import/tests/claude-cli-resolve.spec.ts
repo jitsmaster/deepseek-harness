@@ -88,6 +88,11 @@ describe('resolveClaudeCliArgv', () => {
     expect(argv).toEqual([join(tmpdir(), 'claude-cli-resolve-nonexistent', 'claude.cmd')])
   })
 
+  it('falls back to the bare "claude" command name, without throwing, when resolveExecutable itself fails', async () => {
+    const ctx = stubbedCtx(async () => { throw new Error('subprocess-local: command "claude" was not found on PATH') })
+    await expect(resolveClaudeCliArgv(ctx, new AbortController().signal)).resolves.toEqual(['claude'])
+  })
+
   it('falls back to the resolved shim path when its content does not match the known template', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'claude-cli-resolve-'))
     try {

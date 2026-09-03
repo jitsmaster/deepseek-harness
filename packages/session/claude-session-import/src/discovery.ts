@@ -61,8 +61,12 @@ const SHUTDOWN_GRACE_MS = 5_000
 /**
  * List the operator's Claude Code CLI sessions via `claude agents --json --all`.
  * Never throws: a missing binary or unparsable output both degrade to an
- * empty list, per this feature's error-handling contract.
- * @param ctx - Host context carrying `ctx.subprocess`.
+ * empty list, per this feature's error-handling contract — but each failure
+ * mode is logged via `ctx.logger.warn` so an operator debugging "why doesn't
+ * my session show up" has a signal (per the architecture spec's promised
+ * "claude binary missing/not on PATH: discovery returns an empty list with a
+ * clear ... message"), rather than a silently empty result.
+ * @param ctx - Host context carrying `ctx.subprocess` and `ctx.logger`.
  * @param signal - withdraws the discovery call.
  * @returns discovered sessions, or an empty list on any failure.
  */
@@ -80,19 +84,30 @@ export async function listClaudeCodeSessions(
       graceMs: SHUTDOWN_GRACE_MS,
       signal,
     })
-  } catch {
+  } catch (error) {
+    ctx.logger.warn(`claude-session-import: Claude Code CLI not found or could not be spawned: ${error instanceof Error ? error.message : String(error)}`)
     return []
   }
   const outcome = await handle.done.catch(() => undefined)
-  if (outcome === undefined || outcome.exitCode !== 0) return []
+  if (outcome === undefined || outcome.exitCode !== 0) {
+    ctx.logger.warn(`claude-session-import: \`claude agents --json --all\` did not exit successfully (${outcome === undefined ? 'process did not settle' : `exit code ${outcome.exitCode}`})`)
+    return []
+  }
   const read = handle.collected.stdout?.readFrom(0)
-  if (read === undefined) return []
+  if (read === undefined) {
+    ctx.logger.warn('claude-session-import: `claude agents --json --all` produced no collected stdout')
+    return []
+  }
   let parsed: unknown
   try {
     parsed = JSON.parse(read.text)
-  } catch {
+  } catch (error) {
+    ctx.logger.warn(`claude-session-import: could not parse \`claude agents --json --all\` output as JSON: ${error instanceof Error ? error.message : String(error)}`)
     return []
   }
-  if (!Array.isArray(parsed)) return []
+  if (!Array.isArray(parsed)) {
+    ctx.logger.warn('claude-session-import: `claude agents --json --all` output was not a JSON array of the expected shape')
+    return []
+  }
   return parsed.filter(isRawAgentEntry).map(toDiscoveredSession)
 }
