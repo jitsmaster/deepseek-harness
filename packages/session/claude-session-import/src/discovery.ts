@@ -46,6 +46,18 @@ function toDiscoveredSession(raw: RawAgentEntry): DiscoveredSession {
   }
 }
 
+// `claude agents --json --all` emits one JSON array covering every
+// discovered session, which can grow large with many sessions — capped well
+// above realistic output so discovery only fails closed (empty list) on a
+// truly pathological process.
+const STDOUT_MAX_BYTES = 4 * 1024 * 1024
+// Diagnostic text only (never parsed), so a much smaller cap than stdout is
+// enough to capture a useful error without holding onto unbounded output.
+const STDERR_MAX_BYTES = 64 * 1024
+// How long the process gets to exit after being asked to stop before this
+// discovery call gives up and treats it as failed.
+const SHUTDOWN_GRACE_MS = 5_000
+
 /**
  * List the operator's Claude Code CLI sessions via `claude agents --json --all`.
  * Never throws: a missing binary or unparsable output both degrade to an
@@ -64,8 +76,8 @@ export async function listClaudeCodeSessions(
     handle = ctx.subprocess.spawn({
       argv: [...cliArgv, 'agents', '--json', '--all'],
       cwd: process.cwd(),
-      stdio: { stdin: 'ignore', stdout: { maxBytes: 4 * 1024 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
-      graceMs: 5_000,
+      stdio: { stdin: 'ignore', stdout: { maxBytes: STDOUT_MAX_BYTES }, stderr: { maxBytes: STDERR_MAX_BYTES } },
+      graceMs: SHUTDOWN_GRACE_MS,
       signal,
     })
   } catch {

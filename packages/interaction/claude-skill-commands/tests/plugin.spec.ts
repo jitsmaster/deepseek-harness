@@ -10,6 +10,18 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { apply as applyClaudeSkillCommands } from '../src/index.ts'
 
+// `vi.spyOn` cannot redefine a native ESM module's exports (Node freezes the
+// namespace object), so `readdirSync` call counts are observed by wrapping
+// it in a `vi.fn` at mock time instead. `vi.hoisted` lifts the shared
+// `vi.fn` above this file's own `node:fs` import so the `vi.mock` factory
+// below (also hoisted) can close over it.
+const { mockReaddirSync } = vi.hoisted(() => ({ mockReaddirSync: vi.fn() }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  mockReaddirSync.mockImplementation(actual.readdirSync)
+  return { ...actual, readdirSync: mockReaddirSync }
+})
+
 function fixturesProject(): string {
   return fileURLToPath(new URL('./fixtures/project-root', import.meta.url))
 }
@@ -124,6 +136,61 @@ describe('claude-skill-commands per-agent registration', () => {
       expect(ctx.commands.list(agent).some(c => c.name === 'new-skill')).toBe(false)
     } finally {
       rmSync(project, { recursive: true, force: true })
+    }
+  })
+
+  it('registers /refresh-skills even when zero skills exist anywhere, and refresh picks up one added later', async () => {
+    // Neither directory has a `.claude/skills` at all (unlike `fixturesHome()`,
+    // whose fixture always has skills) — the exact condition Fix 1 covers.
+    const project = mkdtempSync(join(tmpdir(), 'claude-skill-commands-empty-project-'))
+    const home = mkdtempSync(join(tmpdir(), 'claude-skill-commands-empty-home-'))
+    try {
+      const ctx = await bootHost(home)
+      const agent = agentWithProvider(ctx, project, 'anthropic')
+      ctx.emit('agent/created', { agent })
+      await tickPreStep(ctx, agent)
+
+      // The gate opened even though the initial scan found nothing, so
+      // /refresh-skills must already be reachable.
+      expect(ctx.commands.list(agent).some(c => c.name === 'refresh-skills')).toBe(true)
+
+      const skillDir = join(project, '.claude', 'skills', 'new-skill')
+      mkdirSync(skillDir, { recursive: true })
+      writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: new-skill\ndescription: Added later\n---\n\nRefreshed in.\n')
+
+      const execution = await ctx.commands.execute(agent, '/refresh-skills', [], new AbortController().signal)
+      expect(execution?.result.kind).toBe('success')
+      expect(ctx.commands.list(agent).some(c => c.name === 'new-skill')).toBe(true)
+    } finally {
+      rmSync(project, { recursive: true, force: true })
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('does not rescan the filesystem on every pre-step tick while the gate stays open with no skill-count change', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'claude-skill-commands-empty-project-'))
+    const home = mkdtempSync(join(tmpdir(), 'claude-skill-commands-empty-home-'))
+    try {
+      const ctx = await bootHost(home)
+      const agent = agentWithProvider(ctx, project, 'anthropic')
+      ctx.emit('agent/created', { agent })
+      mockReaddirSync.mockClear()
+
+      // First tick: the gate transitions closed -> open, so exactly one
+      // rescan (a readdirSync per scanned directory) is expected.
+      await tickPreStep(ctx, agent)
+      const callsAfterFirstTick = mockReaddirSync.mock.calls.length
+      expect(callsAfterFirstTick).toBeGreaterThan(0)
+
+      // Further ticks with the gate already open and no skill-count change
+      // must not rescan again — before the fix, `registered` stayed
+      // `undefined` (zero skills found) so every tick re-ran `rescan()`.
+      await tickPreStep(ctx, agent)
+      await tickPreStep(ctx, agent)
+      expect(mockReaddirSync.mock.calls.length).toBe(callsAfterFirstTick)
+    } finally {
+      rmSync(project, { recursive: true, force: true })
+      rmSync(home, { recursive: true, force: true })
     }
   })
 })

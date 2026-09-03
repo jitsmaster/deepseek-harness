@@ -64,11 +64,23 @@ function registerSkillCommand(agentCtx: Context, agent: Agent, skill: ScannedSki
  * @param homedir - the directory `~/.claude/skills` is read from.
  */
 function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
+  // The currently-registered skill commands, or `undefined` when none are
+  // registered right now. This can be `undefined` either because the gate is
+  // closed or because the gate is open but zero skills exist on disk — those
+  // are different states, so gate-transition detection below does not use
+  // this variable; see `gateOpen`.
   let registered: Map<string, () => void> | undefined
   let refreshCommandDispose: (() => void) | undefined
+  // Whether the provider gate was open as of the last `agent/pre-step` tick.
+  // Tracked independently of `registered`/`refreshCommandDispose` so a
+  // zero-skill directory (which leaves `registered` `undefined`) is not
+  // mistaken for a gate that just opened — that conflation used to make
+  // `rescan()` (a filesystem walk) run on every single step, forever, and
+  // left `/refresh-skills` unregistered whenever zero skills existed at gate-open time.
+  let gateOpen = false
 
   function rescan(): { added: number; removed: number } {
-    const skills = scanSkillDirectories(agent.session.header.cwd ?? process.cwd(), homedir)
+    const skills = scanSkillDirectories(agent.session.header.cwd, homedir, (message) => { agentCtx.logger.warn(message) })
     const found = new Map(skills.map(skill => [skill.name, skill]))
     const current = registered ?? new Map<string, () => void>()
     let added = 0
@@ -89,23 +101,28 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
     if (defaultModel === undefined) return decision
     const provider = currentProviderOf(agent, defaultModel)
     const shouldBeRegistered = provider === GATED_PROVIDER
-    if (shouldBeRegistered && registered === undefined) {
-      const { added } = rescan()
-      if (added > 0) {
-        agentCtx.inject(['commands'], (commandCtx) => {
-          refreshCommandDispose = commandCtx.commands.register({
-            name: 'refresh-skills',
-            description: 'Re-scan Claude Code skill directories and update registered commands',
-            handler: () => {
-              const { added, removed } = rescan()
-              return { kind: 'success', text: `Refreshed skills: +${added}, -${removed}.` }
-            },
-          })
+    if (shouldBeRegistered && !gateOpen) {
+      gateOpen = true
+      // Scan once on gate-open regardless of how many skills are found —
+      // `/refresh-skills` must be reachable even when the initial scan finds
+      // none, so an operator can add a skill later and pick it up.
+      rescan()
+      agentCtx.inject(['commands'], (commandCtx) => {
+        refreshCommandDispose = commandCtx.commands.register({
+          name: 'refresh-skills',
+          description: 'Re-scan Claude Code skill directories and update registered commands',
+          handler: () => {
+            const { added, removed } = rescan()
+            return { kind: 'success', text: `Refreshed skills: +${added}, -${removed}.` }
+          },
         })
+      })
+    } else if (!shouldBeRegistered && gateOpen) {
+      gateOpen = false
+      if (registered !== undefined) {
+        for (const dispose of registered.values()) dispose()
+        registered = undefined
       }
-    } else if (!shouldBeRegistered && registered !== undefined) {
-      for (const dispose of registered.values()) dispose()
-      registered = undefined
       refreshCommandDispose?.()
       refreshCommandDispose = undefined
     }
