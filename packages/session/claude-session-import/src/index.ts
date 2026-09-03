@@ -72,6 +72,8 @@ declare module '@deepseek-ai/cordis' {
  * .agents/notes/proposed/architecture/2026-09-02-claude-code-session-import.md.
  */
 export class ClaudeSessionImportController extends TypertRemoteService {
+  static inject = ['subprocess', 'llm']
+
   private readonly discover: NonNullable<ClaudeSessionImportInternals['discover']>
   private readonly readTranscript: NonNullable<ClaudeSessionImportInternals['readTranscript']>
   private readonly ensureSession: ClaudeSessionImportInternals['ensureSession']

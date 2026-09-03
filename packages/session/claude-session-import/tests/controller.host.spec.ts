@@ -78,3 +78,44 @@ describe('the claudeSessionImport Remote namespace', () => {
     expect(selection).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5' })
   })
 })
+
+describe('the claudeSessionImport Remote namespace, mounted the way production does (ctx.plugin, not direct construction)', () => {
+  it('reaches ctx.subprocess through the real default discover without a missing-inject error', async () => {
+    const ctx = new Context()
+    ctx.provide('subprocess', {
+      resolveExecutable: async () => { throw new Error('subprocess-local: command "claude" was not found on PATH') },
+    } as unknown as Context['subprocess'])
+    ctx.provide('llm', {} as unknown as Context['llm'])
+    const fiber = ctx.plugin(ClaudeSessionImportController, {
+      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject: vi.fn() }) as unknown as Agent,
+      selectModel: vi.fn(),
+    })
+    await fiber
+    const controller = ctx.get('claudeSessionImportController')
+    if (controller === undefined) throw new Error('claudeSessionImportController did not mount')
+    const result = await controller.list(new AbortController().signal)
+    expect(result).toEqual({ sessions: [] })
+  })
+
+  it('reaches ctx.llm through the real default resolveCallConfig without a missing-inject error', async () => {
+    const ctx = new Context()
+    ctx.provide('subprocess', {
+      resolveExecutable: async () => { throw new Error('not found') },
+    } as unknown as Context['subprocess'])
+    ctx.provide('llm', {
+      resolveCallConfig: async (config: unknown) => config,
+    } as unknown as Context['llm'])
+    const inject = vi.fn()
+    const fiber = ctx.plugin(ClaudeSessionImportController, {
+      discover: async () => [DISCOVERED],
+      readTranscript: () => JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } }),
+      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject }) as unknown as Agent,
+      selectModel: vi.fn(),
+    })
+    await fiber
+    const controller = ctx.get('claudeSessionImportController')
+    if (controller === undefined) throw new Error('claudeSessionImportController did not mount')
+    const result = await controller.createFrom('s1', new AbortController().signal)
+    expect(result.sessionId).toEqual(expect.any(String))
+  })
+})

@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-subprocess'
+import { resolveClaudeCliArgv } from './claude-cli-resolve.ts'
 
 /** One `claude agents --json --all` entry, as surfaced to the import picker. */
 export interface DiscoveredSession {
@@ -10,18 +11,39 @@ export interface DiscoveredSession {
   readonly startedAt: string
 }
 
-interface RawSessionList {
-  sessions?: unknown
+/**
+ * Raw entry shape `claude agents --json --all` actually emits: a bare JSON
+ * array (not `{ sessions: [...] }`). `sessionId` holds the full UUID used as
+ * the transcript filename (see {@link claudeCodeTranscriptPath}) while `id`
+ * is only an 8-char display prefix; `state` (not `status`) carries the
+ * lifecycle label; `startedAt` is a Unix-epoch-ms number, not an ISO string.
+ */
+interface RawAgentEntry {
+  sessionId: string
+  name: string
+  cwd: string
+  state: string
+  startedAt: number
 }
 
-function isDiscoveredSession(value: unknown): value is DiscoveredSession {
+function isRawAgentEntry(value: unknown): value is RawAgentEntry {
   if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Partial<DiscoveredSession>
-  return typeof candidate.id === 'string'
+  const candidate = value as Partial<RawAgentEntry>
+  return typeof candidate.sessionId === 'string'
     && typeof candidate.name === 'string'
     && typeof candidate.cwd === 'string'
-    && typeof candidate.status === 'string'
-    && typeof candidate.startedAt === 'string'
+    && typeof candidate.state === 'string'
+    && typeof candidate.startedAt === 'number'
+}
+
+function toDiscoveredSession(raw: RawAgentEntry): DiscoveredSession {
+  return {
+    id: raw.sessionId,
+    name: raw.name,
+    cwd: raw.cwd,
+    status: raw.state,
+    startedAt: new Date(raw.startedAt).toISOString(),
+  }
 }
 
 /**
@@ -38,8 +60,9 @@ export async function listClaudeCodeSessions(
 ): Promise<readonly DiscoveredSession[]> {
   let handle
   try {
+    const cliArgv = await resolveClaudeCliArgv(ctx, signal)
     handle = ctx.subprocess.spawn({
-      argv: ['claude', 'agents', '--json', '--all'],
+      argv: [...cliArgv, 'agents', '--json', '--all'],
       cwd: process.cwd(),
       stdio: { stdin: 'ignore', stdout: { maxBytes: 4 * 1024 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
       graceMs: 5_000,
@@ -52,12 +75,12 @@ export async function listClaudeCodeSessions(
   if (outcome === undefined || outcome.exitCode !== 0) return []
   const read = handle.collected.stdout?.readFrom(0)
   if (read === undefined) return []
-  let parsed: RawSessionList
+  let parsed: unknown
   try {
-    parsed = JSON.parse(read.text) as RawSessionList
+    parsed = JSON.parse(read.text)
   } catch {
     return []
   }
-  if (!Array.isArray(parsed.sessions)) return []
-  return parsed.sessions.filter(isDiscoveredSession)
+  if (!Array.isArray(parsed)) return []
+  return parsed.filter(isRawAgentEntry).map(toDiscoveredSession)
 }
