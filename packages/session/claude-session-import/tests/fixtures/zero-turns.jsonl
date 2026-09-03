@@ -1,0 +1,2 @@
+{"type":"system","message":{"role":"system","content":[{"type":"text","text":"session started"}]}}
+{"type":"summary","summary":"unrelated metadata entry with no message field at all"}

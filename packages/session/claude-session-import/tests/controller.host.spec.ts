@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { ClaudeSessionImportController, type ClaudeSessionImportInternals } from '../src/index.ts'
 
 const DISCOVERED = { id: 's1', name: 'my-task', cwd: '/home/arnold/proj', status: 'done', startedAt: '2026-09-01T00:00:00Z' }
+
+function fixture(name: string): string {
+  return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8')
+}
 
 function bootController(overrides: Partial<ClaudeSessionImportInternals> = {}): ClaudeSessionImportController {
   const ctx = new Context()
@@ -64,6 +70,14 @@ describe('the claudeSessionImport Remote namespace', () => {
   it('rejects createFrom when the transcript cannot be read', async () => {
     const controller = bootController({
       readTranscript: () => { throw new Error('ENOENT') },
+    })
+    const failure = await controller.createFrom('s1', new AbortController().signal).catch((error: unknown) => error)
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'claude-session-import/transcript-unreadable' })
+  })
+
+  it('rejects createFrom when the transcript parses to zero usable turns, instead of silently importing an empty session', async () => {
+    const controller = bootController({
+      readTranscript: () => fixture('zero-turns.jsonl'),
     })
     const failure = await controller.createFrom('s1', new AbortController().signal).catch((error: unknown) => error)
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'claude-session-import/transcript-unreadable' })

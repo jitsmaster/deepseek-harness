@@ -137,6 +137,20 @@ export class ClaudeSessionImportController extends TypertRemoteService {
         { cause: error },
       )
     }
+    // A transcript that is readable but drifts out of the recognized shape
+    // (not JSONL, or no entry carries a user/assistant message role) parses
+    // to zero turns without ever throwing above. Left unchecked, createFrom
+    // would silently create a session whose "import" is only the boilerplate
+    // notice with no actual transcript — a garbled-looking import the spec
+    // forbids. Same failure class as an unreadable file from the caller's
+    // point of view, so it reuses that error code.
+    if (turns.length === 0) {
+      throw new RemoteError(
+        'claude-session-import/transcript-unreadable',
+        `the transcript for "${sessionId}" at ${path} parsed to zero usable turns`,
+        { sessionId },
+      )
+    }
     const newSessionId = brandString<SessionId>(`session-${randomUUID()}`)
     const agent = await this.ensureSession(this.ctx, newSessionId, discovered.cwd)
     const resolved = await this.resolveCallConfig(this.ctx, { ...IMPORTED_SESSION_MODEL })

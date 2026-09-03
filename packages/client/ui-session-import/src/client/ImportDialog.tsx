@@ -10,17 +10,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { DiscoveredSessionView } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, type SessionImportKey } from './locales.ts'
 import styles from './ImportDialog.module.css'
-
-/** Wire view of one discovered Claude Code CLI session (`list()`'s rows). */
-export interface DiscoveredSessionView {
-  readonly id: string
-  readonly name: string
-  readonly cwd: string
-  readonly status: string
-  readonly startedAt: string
-}
 
 /** The two Host Remote calls this dialog drives. */
 export interface ImportOperations {

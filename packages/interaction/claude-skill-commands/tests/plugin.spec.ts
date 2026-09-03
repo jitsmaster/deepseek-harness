@@ -104,7 +104,7 @@ describe('claude-skill-commands per-agent registration', () => {
     const execution = await ctx.commands.execute(agent, '/valid-skill do the thing', [], new AbortController().signal)
 
     expect(execution?.result.kind).toBe('success')
-    expect(agent.steer).toHaveBeenCalledTimes(1)
+    expect((agent.steer as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1)
     const [message] = (agent.steer as ReturnType<typeof vi.fn>).mock.calls[0] as [{ content: { type: string; text: string }[] }]
     expect(message.content[0]?.text).toContain('# Valid Skill')
     expect(message.content[0]?.text).toContain('ARGUMENTS: do the thing')

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { parseClaudeCodeTranscript, renderImportedTranscript } from '../src/transcript.ts'
+import { parseClaudeCodeTranscript, renderImportedTranscript, RENDERED_TRANSCRIPT_MAX_CHARS } from '../src/transcript.ts'
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8')
@@ -45,5 +45,20 @@ describe('parseClaudeCodeTranscript', () => {
       { role: 'user', text: 'before bad entry' },
       { role: 'user', text: 'after bad entry' },
     ])
+  })
+
+  it('does not truncate a rendered transcript at or below the cap', () => {
+    const text = 'a'.repeat(RENDERED_TRANSCRIPT_MAX_CHARS - '**User:** '.length)
+    const rendered = renderImportedTranscript([{ role: 'user', text }])
+    expect(rendered.length).toBe(RENDERED_TRANSCRIPT_MAX_CHARS)
+    expect(rendered).not.toContain('truncated')
+  })
+
+  it('truncates a rendered transcript over the cap and appends an operator-visible note', () => {
+    const text = 'a'.repeat(RENDERED_TRANSCRIPT_MAX_CHARS)
+    const rendered = renderImportedTranscript([{ role: 'user', text }])
+    expect(rendered.length).toBeLessThanOrEqual(RENDERED_TRANSCRIPT_MAX_CHARS + 200)
+    expect(rendered).toContain('[transcript truncated')
+    expect(rendered.startsWith(`**User:** ${'a'.repeat(RENDERED_TRANSCRIPT_MAX_CHARS - '**User:** '.length)}`)).toBe(true)
   })
 })

@@ -27,6 +27,14 @@ interface RawToolResultBlock {
 
 type RawBlock = RawTextBlock | RawToolUseBlock | RawToolResultBlock | { type: string }
 
+// A real Claude Code session can carry a lot of tool output; rendered whole
+// and folded into one `agent.followup()` message with no cap, an oversized
+// first turn risks context-window overflow or an unexpectedly expensive
+// first call. Counts UTF-16 code units (this repo's existing char-cap
+// convention — see e.g. SESSION_SEARCH_QUERY_MAX_CHARS in
+// api/session-controller/src/list.ts), not bytes.
+export const RENDERED_TRANSCRIPT_MAX_CHARS = 200_000
+
 interface RawEntry {
   type: string
   message?: { role: string; content: RawBlock[] | string }
@@ -87,7 +95,10 @@ export function parseClaudeCodeTranscript(jsonl: string): readonly ImportedTurn[
  * @returns the turns joined as `"**User:** ...\n\n**Claude:** ..."`.
  */
 export function renderImportedTranscript(turns: readonly ImportedTurn[]): string {
-  return turns
+  const rendered = turns
     .map(turn => `**${turn.role === 'user' ? 'User' : 'Claude'}:** ${turn.text}`)
     .join('\n\n')
+  if (rendered.length <= RENDERED_TRANSCRIPT_MAX_CHARS) return rendered
+  const omitted = rendered.length - RENDERED_TRANSCRIPT_MAX_CHARS
+  return `${rendered.slice(0, RENDERED_TRANSCRIPT_MAX_CHARS)}\n\n[transcript truncated — ${omitted} characters omitted]`
 }
