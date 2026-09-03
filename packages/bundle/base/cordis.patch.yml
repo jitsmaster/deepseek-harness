@@ -113,6 +113,9 @@
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
 
+    - id: claude-skill-commands
+      name: '@deepseek-ai/dsh-claude-skill-commands'
+
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
       config:

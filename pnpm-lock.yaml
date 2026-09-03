@@ -1106,6 +1106,9 @@ importers:
       '@deepseek-ai/dsh-claude-session-import':
         specifier: workspace:^
         version: link:../../session/claude-session-import
+      '@deepseek-ai/dsh-claude-skill-commands':
+        specifier: workspace:^
+        version: link:../../interaction/claude-skill-commands
       '@deepseek-ai/dsh-command-compact':
         specifier: workspace:^
         version: link:../../compaction/command-compact
@@ -6277,6 +6280,34 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+
+  packages/interaction/claude-skill-commands:
+    dependencies:
+      js-yaml:
+        specifier: ^4.2.0
+        version: 4.3.1
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-commands':
+        specifier: workspace:^
+        version: link:../commands
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-scope':
+        specifier: workspace:^
+        version: link:../../core/scope
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
 
   packages/interaction/commands:
     dependencies:
