@@ -704,6 +704,9 @@ importers:
       '@deepseek-ai/dsh-authorization':
         specifier: workspace:^
         version: link:../../credentials/authorization
+      '@deepseek-ai/dsh-claude-session-import':
+        specifier: workspace:^
+        version: link:../../session/claude-session-import
       '@deepseek-ai/dsh-client-connection':
         specifier: workspace:^
         version: link:../../client/connection

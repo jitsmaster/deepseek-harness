@@ -43,8 +43,16 @@ export function apply(ctx: Context): void {
 
   const injected = (): ImportFlowInjected => ({
     operations: {
-      list: signal => ctx.remote.claudeSessionImport.list(signal),
-      createFrom: (sessionId, signal) => ctx.remote.claudeSessionImport.createFrom(sessionId, signal),
+      list: async (signal) => {
+        const response = await ctx.remote.claudeSessionImport.list(signal)
+        if (!response.ok) throw response.error
+        return response.value
+      },
+      createFrom: async (sessionId, signal) => {
+        const response = await ctx.remote.claudeSessionImport.createFrom(sessionId, signal)
+        if (!response.ok) throw response.error
+        return response.value
+      },
     },
     t: ctx.locale.bind(NS),
   })

@@ -594,6 +594,26 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'claudeSessionImportController',
+    summary: 'Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session.',
+    description: 'Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call — see .agents/notes/proposed/architecture/2026-09-02-claude-code-session-import.md.',
+    methods: [
+      {
+        signature: '@Remote async list(signal: AbortSignal): Promise<ClaudeSessionImportListValue>',
+        description: 'List the operator\'s Claude Code CLI sessions.',
+        parameters: [{ name: 'signal', description: 'withdraws the discovery call.' }],
+        returns: 'discovered sessions; empty when `claude` is unavailable.',
+      },
+      {
+        signature: '@Remote async createFrom(sessionId: string, signal: AbortSignal): Promise<ClaudeSessionImportCreateValue>',
+        description: 'Import one Claude Code CLI session into a brand-new native DSH session, defaulting its model to IMPORTED_SESSION_MODEL.',
+        parameters: [{ name: 'sessionId', description: 'the id `list()` reported.' }, { name: 'signal', description: 'withdraws discovery; the transcript read, session creation, and model selection that follow are not cancellable once discovery settles.' }],
+        returns: 'the new DSH session\'s id.',
+        throws: ['RemoteError `claude-session-import/not-found` when `sessionId` is not currently reported by `list()`, or `claude-session-import/transcript-unreadable` when the transcript cannot be read or parsed.'],
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -3701,6 +3721,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ChunkRowEvent = {\n    [Kind in ChunkRow[\'type\']]: {\n        readonly type: `chunkrow/${Kind}`;\n        readonly seq: number;\n        readonly time: number;\n        readonly data: Extract<ChunkRow, {\n            readonly type: Kind;\n        }>[\'data\'];\n    };\n}[ChunkRow[\'type\']];',
   },
   {
+    name: 'ClaudeSessionImportCreateValue',
+    declaration: 'export interface ClaudeSessionImportCreateValue {\n    readonly sessionId: string;\n}',
+  },
+  {
+    name: 'ClaudeSessionImportListValue',
+    declaration: 'export interface ClaudeSessionImportListValue {\n    readonly sessions: readonly DiscoveredSessionView[];\n}',
+  },
+  {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly size: number;\n}',
   },
@@ -3995,6 +4023,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DirectoryRegistrationHandle',
     declaration: 'export interface DirectoryRegistrationHandle {\n    (): void;\n    replace(entries: readonly LlmConfigurableProvider[]): void;\n}',
+  },
+  {
+    name: 'DiscoveredSessionView',
+    declaration: 'export interface DiscoveredSessionView {\n    readonly id: string;\n    readonly name: string;\n    readonly cwd: string;\n    readonly status: string;\n    readonly startedAt: string;\n}',
   },
   {
     name: 'Domain',
