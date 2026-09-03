@@ -1,17 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
-import { ClaudeSessionImportController } from '../src/index.ts'
+import { ClaudeSessionImportController, type ClaudeSessionImportInternals } from '../src/index.ts'
 
 const DISCOVERED = { id: 's1', name: 'my-task', cwd: '/home/arnold/proj', status: 'done', startedAt: '2026-09-01T00:00:00Z' }
 
-function bootController(overrides: {
-  discover?: () => Promise<readonly typeof DISCOVERED[]>
-  readTranscript?: () => string
-  ensureSession?: () => Promise<{ session: { header: { cwd: string } }; inject: (message: unknown) => void }>
-  resolveCallConfig?: (ctx: Context, config: { provider: string; model: string }) => Promise<{ provider: string; model: string }>
-  selectModel?: (ctx: Context, agent: unknown, selection: { provider: string; model: string }) => void
-} = {}): ClaudeSessionImportController {
+function bootController(overrides: Partial<ClaudeSessionImportInternals> = {}): ClaudeSessionImportController {
   const ctx = new Context()
   return new ClaudeSessionImportController(ctx, {
     discover: overrides.discover ?? (async () => [DISCOVERED]),
@@ -20,7 +15,7 @@ function bootController(overrides: {
     })),
     ensureSession: overrides.ensureSession ?? (async () => {
       const agent = { session: { header: { cwd: '/tmp' } }, inject: vi.fn() }
-      return agent as unknown as Awaited<ReturnType<NonNullable<typeof overrides.ensureSession>>>
+      return agent as unknown as Agent
     }),
     resolveCallConfig: overrides.resolveCallConfig ?? (async (_ctx, config) => config),
     selectModel: overrides.selectModel ?? vi.fn(),
@@ -51,7 +46,7 @@ describe('the claudeSessionImport Remote namespace', () => {
   it('creates a session and injects the parsed transcript as one message', async () => {
     const inject = vi.fn()
     const controller = bootController({
-      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject }),
+      ensureSession: async () => ({ session: { header: { cwd: '/tmp' } }, inject }) as unknown as Agent,
     })
     const result = await controller.createFrom('s1', new AbortController().signal)
     expect(result.sessionId).toEqual(expect.any(String))
