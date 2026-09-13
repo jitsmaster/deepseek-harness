@@ -93,6 +93,8 @@ export interface ConnectionIndexRequest extends ConnectionTrustRequest {
 /** Root/index response operations owned by the browser-token exchange. */
 export interface ConnectionIndexResponse {
   writeHead(status: number, headers?: Readonly<Record<string, string>>): unknown
+  /** Set one response header before the caller writes the status line. */
+  setHeader(name: string, value: string): unknown
   end(body?: string): unknown
 }
 
