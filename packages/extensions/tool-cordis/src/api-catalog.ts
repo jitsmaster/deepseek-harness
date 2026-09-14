@@ -596,7 +596,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'claudeSessionImportController',
     summary: 'Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session.',
-    description: 'Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call — see .agents/notes/proposed/architecture/2026-09-02-claude-code-session-import.md.',
+    description: 'Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call — see .agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.md.',
     methods: [
       {
         signature: '@Remote async list(signal: AbortSignal): Promise<ClaudeSessionImportListValue>',

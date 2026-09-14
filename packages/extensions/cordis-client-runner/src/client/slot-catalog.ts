@@ -650,7 +650,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.hero.workspace.directoryFlow\', () => ctx.slots.register(\n      { name: \'conversation.hero.workspace.directoryFlow\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-workspace/src/client/contract/slots.ts:57',
+    source: 'packages/client/ui-workspace/src/client/contract/slots.ts:72',
   },
   {
     key: 'conversation.input.attachments',
@@ -2112,7 +2112,37 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.workspaces.directoryFlow\', () => ctx.slots.register(\n      { name: \'sidebar.workspaces.directoryFlow\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-workspace/src/client/contract/slots.ts:59',
+    source: 'packages/client/ui-workspace/src/client/contract/slots.ts:74',
+  },
+  {
+    key: 'sidebar.workspaces.importFlow',
+    kind: 'single',
+    scope: 'root',
+    summary: 'Claude Code import-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry).',
+    doc: 'Claude Code import-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry).',
+    registerOptions: [],
+    ownerProps: [
+      '/**\n * Owner share of the sidebar\'s Claude Code import-flow hole: the complete\n * conversation between the "Import from Claude Code" trigger and the\n * discover/import dialog. The occupant reads `open` to mount its dialog and\n * reports exactly one outcome per open.\n */\nexport interface ImportFlowOwnerProps {\n  /** True while the import dialog is requested; flipping back to false withdraws it. */\n  open: boolean\n  /** The operator imported a Claude Code session; the owner navigates to the new Session. */\n  onImported: (sessionId: SessionId) => void\n  /** The operator dismissed the dialog without importing anything. */\n  onClose: () => void\n}',
+    ],
+    ownerPropsReferences: [
+      'SessionId',
+    ],
+    standardProps: [
+      'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
+      'useSessions: UseSessions',
+      'useSessionPendingInteraction: UseSessionPendingInteraction',
+      'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
+    ],
+    keyDomain: '',
+    hookContext: '',
+    slotInject: '',
+    declaredBy: 'an entry in \'sidebar.workspaces\' (client-ui-workspace), so it exists while that entry is mounted',
+    occupants: [
+      'client-ui-session-import ImportFlow',
+    ],
+    replaceRisk: 'shadows-shipped-ui',
+    example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.workspaces.importFlow\', () => ctx.slots.register(\n      { name: \'sidebar.workspaces.importFlow\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
+    source: 'packages/client/ui-workspace/src/client/contract/slots.ts:76',
   },
   {
     key: 'tool.call.toolview',
