@@ -59,3 +59,20 @@
   color: var(--dsw-alias-label-secondary);
   text-transform: capitalize;
 }
+
+.sectionHeader {
+  padding: 6px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  text-transform: uppercase;
+  text-align: left;
+}
+
+/* Matches `.table td`'s specificity (0,1,1) via the `td` element selector so this
+   border-bottom actually applies as written, instead of always losing to `.table td`
+   regardless of source order (a plain `.sectionHeader` class selector is only 0,1,0). */
+td.sectionHeader {
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}

@@ -7,11 +7,12 @@
  * `unmountedRef` guard, and a footer action.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DiscoveredSessionView } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, type SessionImportKey } from './locales.ts'
+import { groupAndSortSessions } from './session-grouping.ts'
 import styles from './ImportDialog.module.css'
 
 /** The two Host Remote calls this dialog drives. */
@@ -102,12 +103,40 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
     )
   }
 
+  // Hoisted out of the render ternary below (rather than an inline IIFE) to
+  // match this codebase's established pattern for derived render values (see
+  // AuthorizationDialog.tsx, DirectoryBrowser.tsx). Cheap to compute even
+  // when unused, so it's unconditional; `sessions` may still be `undefined`
+  // while discovery is in flight.
+  //
+  // Memoized on `sessions` alone (not recomputed for `selectedId`/`busy`/
+  // `failure` changes): the bucketing pass plus two O(n log n) sorts has no
+  // reason to rerun on renders the session list itself is uninvolved in.
+  const { running, done } = useMemo(() => groupAndSortSessions(sessions ?? []), [sessions])
+
   const selectRow = (id: string): void => { setSelectedId(id) }
   const onRowKeyDown = (id: string) => (event: KeyboardEvent<HTMLTableRowElement>): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     selectRow(id)
   }
+
+  // Shared row markup for both the running and done sections below —
+  // only which group/order a session renders in differs.
+  const sessionRow = (session: DiscoveredSessionView): ReactNode => (
+    <tr
+      key={session.id}
+      className={styles['row']}
+      tabIndex={0}
+      aria-selected={session.id === selectedId}
+      onClick={() => { selectRow(session.id) }}
+      onKeyDown={onRowKeyDown(session.id)}
+    >
+      <td className={styles['cellName']}>{session.name}</td>
+      <td className={styles['cellCwd']} title={session.cwd}>{session.cwd}</td>
+      <td className={styles['cellStatus']}>{session.status}</td>
+    </tr>
+  )
 
   return (
     <Modal
@@ -132,22 +161,34 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
           : (
             <div className={styles['tableScroll']}>
               <table className={styles['table']} role="grid">
-                <tbody>
-                  {sessions.map(session => (
-                    <tr
-                      key={session.id}
-                      className={styles['row']}
-                      tabIndex={0}
-                      aria-selected={session.id === selectedId}
-                      onClick={() => { selectRow(session.id) }}
-                      onKeyDown={onRowKeyDown(session.id)}
-                    >
-                      <td className={styles['cellName']}>{session.name}</td>
-                      <td className={styles['cellCwd']} title={session.cwd}>{session.cwd}</td>
-                      <td className={styles['cellStatus']}>{session.status}</td>
+                {running.length > 0 && (
+                  <tbody>
+                    {/* A synthetic group-divider row, not a data row: `role="rowheader"`
+                        would misrepresent this as labeling sibling data cells in the same
+                        row (it doesn't have any), and `role="columnheader"` would wrongly
+                        imply it labels a column. `role="gridcell"` inside a `role="row"`
+                        keeps it a distinguishable, announced cell in the grid's
+                        accessibility tree (unlike `role="presentation"`, which would strip
+                        it entirely), with `aria-label` naming the section for screen
+                        readers while the visible text serves sighted users. */}
+                    <tr role="row">
+                      <td colSpan={3} role="gridcell" aria-label={t('sections.running')} className={styles['sectionHeader']}>
+                        {t('sections.running')}
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
+                    {running.map(sessionRow)}
+                  </tbody>
+                )}
+                {done.length > 0 && (
+                  <tbody>
+                    <tr role="row">
+                      <td colSpan={3} role="gridcell" aria-label={t('sections.done')} className={styles['sectionHeader']}>
+                        {t('sections.done')}
+                      </td>
+                    </tr>
+                    {done.map(sessionRow)}
+                  </tbody>
+                )}
               </table>
             </div>
           )}
