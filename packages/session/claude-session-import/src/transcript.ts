@@ -2,7 +2,7 @@
  * One reconstructed turn from a Claude Code CLI transcript, text-only.
  * Tool calls and results are folded into readable text by
  * {@link parseClaudeCodeTranscript} rather than kept structured — see
- * .agents/notes/proposed/architecture/2026-09-02-claude-code-session-import.md.
+ * .agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.md.
  */
 export interface ImportedTurn {
   readonly role: 'user' | 'assistant'
@@ -88,6 +88,30 @@ export function parseClaudeCodeTranscript(jsonl: string): readonly ImportedTurn[
   return turns
 }
 
+// Security fix: a turn's own `text` may embed a literal `**User:**` or
+// `**Claude:**` substring — either typed by the model/user, or folded in
+// from tool output upstream in `textOf` — which is exactly the shape this
+// module uses as a turn-boundary marker. Left unescaped, that substring
+// would impersonate a fake turn boundary to any downstream reader of the
+// rendered transcript (e.g. an operator or another LLM call treating
+// `**User:**` as "a new user turn starts here"). Backslash-escaping each
+// asterisk in the matched marker neutralizes it to inert markdown emphasis
+// while leaving the rest of the turn's text untouched.
+const EMBEDDED_BOUNDARY_MARKER_PATTERN = /\*\*(User|Claude):\*\*/g
+
+/**
+ * Escape any embedded turn-boundary-marker-shaped text within one turn's own
+ * content. Exported so callers rendering other operator-visible text ahead of
+ * a rendered transcript (e.g. the imported session's header, which
+ * interpolates the untrusted `DiscoveredSession.name`) can neutralize the same
+ * marker shape before it reaches the same boundary-sensitive document.
+ * @param text - untrusted text that may embed a `**User:**`/`**Claude:**`-shaped substring.
+ * @returns `text` with every embedded marker's asterisks backslash-escaped, inert to markdown emphasis.
+ */
+export function escapeEmbeddedBoundaryMarkers(text: string): string {
+  return text.replace(EMBEDDED_BOUNDARY_MARKER_PATTERN, (_match, role: string) => `\\*\\*${role}:\\*\\*`)
+}
+
 /**
  * Render reconstructed turns as one plain-text block, suitable as the sole
  * content of a single injected {@link import('@deepseek-ai/dsh-llm').UserMessage}.
@@ -96,7 +120,7 @@ export function parseClaudeCodeTranscript(jsonl: string): readonly ImportedTurn[
  */
 export function renderImportedTranscript(turns: readonly ImportedTurn[]): string {
   const rendered = turns
-    .map(turn => `**${turn.role === 'user' ? 'User' : 'Claude'}:** ${turn.text}`)
+    .map(turn => `**${turn.role === 'user' ? 'User' : 'Claude'}:** ${escapeEmbeddedBoundaryMarkers(turn.text)}`)
     .join('\n\n')
   if (rendered.length <= RENDERED_TRANSCRIPT_MAX_CHARS) return rendered
   const omitted = rendered.length - RENDERED_TRANSCRIPT_MAX_CHARS

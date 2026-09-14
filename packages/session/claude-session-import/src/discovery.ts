@@ -1,6 +1,20 @@
+import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { resolveClaudeCliArgv } from './claude-cli-resolve.ts'
+
+// `sessionId` is used verbatim as a transcript filename component (see
+// `claudeCodeTranscriptPath`); requiring canonical UUID shape (defense in
+// depth against a malformed or hostile `claude agents --json --all` output)
+// rules out path-traversal-shaped values before they ever reach the
+// filesystem layer.
+//
+// NOTE: this is a byte-for-byte duplicate of `UUID_PATTERN` in
+// `packages/identity/anonymous-user-id/src/index.ts`. Not extracted into a
+// shared utility (too large a refactor for this scope) — kept as a plain
+// comment so the two definitions don't silently drift without a future
+// maintainer noticing the duplication.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** One `claude agents --json --all` entry, as surfaced to the import picker. */
 export interface DiscoveredSession {
@@ -15,14 +29,22 @@ export interface DiscoveredSession {
  * Raw entry shape `claude agents --json --all` actually emits: a bare JSON
  * array (not `{ sessions: [...] }`). `sessionId` holds the full UUID used as
  * the transcript filename (see {@link claudeCodeTranscriptPath}) while `id`
- * is only an 8-char display prefix; `state` (not `status`) carries the
- * lifecycle label; `startedAt` is a Unix-epoch-ms number, not an ISO string.
+ * is only an 8-char display prefix; `startedAt` is a Unix-epoch-ms number,
+ * not an ISO string.
+ *
+ * The lifecycle label is carried differently depending on `kind`: a
+ * `kind: 'background'` entry carries `state` (e.g. `done`/`stopped`/`failed`/
+ * `blocked`), and sometimes also `status` if a live process happens to be
+ * attached; a `kind: 'interactive'` entry carries only `status` (e.g.
+ * `idle`/`busy`) and never `state`. Both fields are therefore optional here,
+ * with at least one required by {@link isRawAgentEntry}.
  */
 interface RawAgentEntry {
   sessionId: string
   name: string
   cwd: string
-  state: string
+  state?: string
+  status?: string
   startedAt: number
 }
 
@@ -32,16 +54,70 @@ function isRawAgentEntry(value: unknown): value is RawAgentEntry {
   return typeof candidate.sessionId === 'string'
     && typeof candidate.name === 'string'
     && typeof candidate.cwd === 'string'
-    && typeof candidate.state === 'string'
+    && (typeof candidate.state === 'string' || typeof candidate.status === 'string')
     && typeof candidate.startedAt === 'number'
+}
+
+/**
+ * Defense-in-depth shape validation beyond {@link isRawAgentEntry}'s basic
+ * `typeof` checks: `sessionId` flows into a filesystem path
+ * (`claudeCodeTranscriptPath`, which slugs it, but a non-UUID value is still
+ * a signal of a malformed or hostile source), and `cwd` flows into a new
+ * session's working-directory scope (`ensureSession` in `index.ts`) — an
+ * unresolved relative `cwd` there would resolve unpredictably against the
+ * host process's own working directory, so a malformed or hostile value
+ * (e.g. a relative path shaped like `../../secrets`) must be rejected here
+ * rather than trusted downstream. Each rejection is logged so an operator
+ * debugging "why doesn't my session show up" has a signal, consistent with
+ * this file's other failure-mode warnings.
+ * @param raw - Entry that already passed {@link isRawAgentEntry}.
+ * @param ctx - Host context carrying `ctx.logger`.
+ * @returns whether the entry's `sessionId`/`cwd` are well-formed enough to trust.
+ */
+function isValidatedAgentEntry(raw: RawAgentEntry, ctx: Context): boolean {
+  if (!UUID_PATTERN.test(raw.sessionId)) {
+    ctx.logger.warn(`claude-session-import: skipping entry with non-UUID-shaped sessionId "${raw.sessionId}"`)
+    return false
+  }
+  const cwd = raw.cwd.trim()
+  if (cwd.length === 0 || !isAbsolute(cwd)) {
+    ctx.logger.warn(`claude-session-import: skipping entry with a non-absolute or empty cwd "${raw.cwd}"`)
+    return false
+  }
+  // `startedAt` flows straight into `new Date(...).toISOString()` in
+  // `toDiscoveredSession`, which throws a RangeError for a value outside
+  // Date's representable range (e.g. a bogus epoch-ms value from a malformed
+  // `claude agents --json --all` entry) — validated here so one such entry
+  // fails closed (skipped, with a warning) instead of crashing the whole
+  // `listClaudeCodeSessions` call for every discovered session.
+  if (Number.isNaN(new Date(raw.startedAt).getTime())) {
+    ctx.logger.warn(`claude-session-import: skipping entry with an invalid startedAt (${raw.startedAt})`)
+    return false
+  }
+  return true
 }
 
 function toDiscoveredSession(raw: RawAgentEntry): DiscoveredSession {
   return {
     id: raw.sessionId,
     name: raw.name,
-    cwd: raw.cwd,
-    status: raw.state,
+    // Trimmed, matching what `isValidatedAgentEntry` actually validated: that
+    // function checks `raw.cwd.trim()` for non-emptiness/absoluteness, so a
+    // whitespace-padded cwd (e.g. "  D:/dev/DSH\t") passes validation against
+    // the trimmed copy but the untrimmed original would otherwise flow
+    // downstream into `claudeCodeTranscriptPath(...)` and `ensureSession`'s
+    // cwd argument (see index.ts), producing a wrong transcript path/
+    // directory scope despite having passed the absolute-path check.
+    cwd: raw.cwd.trim(),
+    // `state` (background entries) takes priority over `status` (interactive
+    // entries, or a background entry with a live process attached) — a
+    // background entry carrying both reflects the process's authoritative
+    // lifecycle state in `state`, with `status` only a secondary liveness
+    // signal that must not override it.
+    // No `?? ''` fallback: `isRawAgentEntry`'s guard already requires at
+    // least one of `state`/`status` to be a string, so one is always present.
+    // oxlint-disable-next-line typescript/no-non-null-assertion
+    status: raw.state ?? raw.status!,
     startedAt: new Date(raw.startedAt).toISOString(),
   }
 }
@@ -109,5 +185,8 @@ export async function listClaudeCodeSessions(
     ctx.logger.warn('claude-session-import: `claude agents --json --all` output was not a JSON array of the expected shape')
     return []
   }
-  return parsed.filter(isRawAgentEntry).map(toDiscoveredSession)
+  return parsed
+    .filter(isRawAgentEntry)
+    .filter(raw => isValidatedAgentEntry(raw, ctx))
+    .map(toDiscoveredSession)
 }
