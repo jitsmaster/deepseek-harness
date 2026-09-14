@@ -25,6 +25,37 @@ export interface ModelSelectionRef {
 }
 
 /**
+ * Resolve which of three prioritized sources currently applies for a live
+ * Agent's model selection: an explicit `pending` value (e.g. a `/model`
+ * switch already committed to durable state) always wins; else a value
+ * observed on the last logged request; else a deployment default. Both are
+ * computed lazily, and only as far as needed, so a caller that already has a
+ * `pending` value never pays for reading the logged request or the default.
+ *
+ * Centralizing this precedence rule keeps `session-controller`'s
+ * `ApiSessionAgentController.selectionFor()` and
+ * `claude-skill-commands`'s `currentProviderOf()` from drifting apart —
+ * both read the same "pending wins, else logged, else default" rule off a
+ * durable `modelSelection` projection, one to install a full
+ * {@link ModelSelection} and the other to report just its `provider`.
+ * @param pending - explicit pending value, when a switch is already decided.
+ * @param computeLogged - lazily produces the value observed on the last
+ *   logged request, or `undefined` when none has logged yet. Not called when
+ *   `pending` is already set.
+ * @param computeFallback - lazily produces the deployment default. Not
+ *   called when `pending` or `computeLogged()` already supplies a value.
+ * @returns the resolved value.
+ */
+export function resolveCurrentSelection<T>(
+  pending: T | undefined,
+  computeLogged: () => T | undefined,
+  computeFallback: () => T,
+): T {
+  if (pending !== undefined) return pending
+  return computeLogged() ?? computeFallback()
+}
+
+/**
  * Couple one mutable selection to Agent-scoped prompt assembly and request routing.
  * Prompt assembly snapshots the selected model before delegating, then applies
  * its provider/model pair and effort to request config so a

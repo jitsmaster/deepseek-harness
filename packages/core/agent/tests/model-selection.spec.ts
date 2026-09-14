@@ -1,13 +1,42 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import {
   agentEvents,
   installModelSelection,
+  resolveCurrentSelection,
   type Agent,
   type ModelSelectionRef,
 } from '../src/index.ts'
 import { ReasoningEffortId, type LlmCallConfig } from '@deepseek-ai/dsh-llm'
+
+describe('resolveCurrentSelection()', () => {
+  it('returns the pending value without calling either lazy source', () => {
+    const computeLogged = vi.fn(() => ({ provider: 'logged' }))
+    const computeFallback = vi.fn(() => ({ provider: 'fallback' }))
+
+    const result = resolveCurrentSelection({ provider: 'pending' }, computeLogged, computeFallback)
+
+    expect(result).toEqual({ provider: 'pending' })
+    expect(computeLogged).not.toHaveBeenCalled()
+    expect(computeFallback).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the logged value when no pending value is set', () => {
+    const computeFallback = vi.fn(() => ({ provider: 'fallback' }))
+
+    const result = resolveCurrentSelection(undefined, () => ({ provider: 'logged' }), computeFallback)
+
+    expect(result).toEqual({ provider: 'logged' })
+    expect(computeFallback).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the default when neither pending nor logged values are set', () => {
+    const result = resolveCurrentSelection(undefined, () => undefined, () => ({ provider: 'fallback' }))
+
+    expect(result).toEqual({ provider: 'fallback' })
+  })
+})
 
 describe('installModelSelection()', () => {
   it('snapshots prompt variables and request routing together, then disposes both listeners', async () => {
