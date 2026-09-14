@@ -26,7 +26,11 @@ export type * from './types.ts'
 
 export const name = 'commands'
 
-const COMMAND_NAME = /^[a-z][a-z0-9_-]*$/u
+// Exported so dependent packages (e.g. `@deepseek-ai/dsh-claude-skill-commands`,
+// which validates a skill's frontmatter `name` against this same shape before
+// ever handing it to `register()`) can assert their copy stays in sync with
+// this canonical pattern, instead of drifting silently.
+export const COMMAND_NAME = /^[a-z][a-z0-9_-]*$/u
 
 /** Shared frozen attachments value for image-free invocations. */
 const NO_ATTACHMENTS: readonly ImageBlock[] = Object.freeze([])

@@ -21,6 +21,12 @@
       "path": "../../core/agent-default-model"
     },
     {
+      "path": "../../session/session-projection"
+    },
+    {
+      "path": "../../api/session-controller/tsconfig.host.json"
+    },
+    {
       "path": "../commands"
     },
     {
