@@ -20,6 +20,23 @@ describe('SessionController facade', () => {
     expect(SessionController.inject).not.toContain('tools')
   })
 
+  it('mounts ClaudeSessionImportController once the subprocess and llm services it requires are provided', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    ctx.provide('sessionPersistence', testSessionPersistence(ctx, {
+      list: () => Promise.resolve([]),
+      inspect: () => Promise.reject(new Error('unused in this test')),
+    }) as never)
+    createSessionTestController(ctx, defaults)
+    // ClaudeSessionImportController's Cordis fiber needs both `subprocess`
+    // and `llm` to resolve; without the harness's `subprocess` stub this
+    // fiber sits pending forever and the seat below never appears.
+    await vi.waitFor(() => {
+      expect(ctx.get('claudeSessionImportController')).toBeDefined()
+    })
+  })
+
   it('owns Host service methods and publishes Agent lifecycle projections', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

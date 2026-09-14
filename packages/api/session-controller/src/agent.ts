@@ -2,9 +2,9 @@
 
 import { mkdir } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
-import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, resolveCurrentSelection } from '@deepseek-ai/dsh-agent'
 import type {
-  Agent, AgentOptions, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef,
+  Agent, AgentHandle, AgentOptions, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef,
 } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
@@ -134,7 +134,13 @@ export async function inspectApiSession(
 /** Owns every operation that may create, resume, or configure a Web Agent. */
 export class ApiSessionAgentController {
   private readonly resumes = new Map<SessionId, Promise<Agent>>()
-  private readonly creations = new Map<SessionId, Promise<Agent>>()
+  private readonly creations = new Map<SessionId, Promise<AgentHandle>>()
+  // Handles this controller itself activated (created or resumed) this call, as
+  // opposed to `adoptedHandle(...)` wrapping an Agent that was already live
+  // beforehand. Only the former may be safely disposed on a post-activation
+  // validation failure — disposing an already-live Agent would tear down a
+  // Session this call did not bring up.
+  private readonly freshlyActivatedHandles = new WeakSet<AgentHandle>()
   private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
 
@@ -230,8 +236,57 @@ export class ApiSessionAgentController {
     checkPersistedIdentity: boolean,
     presetId?: string,
   ): Promise<Agent> {
+    return (await this.ensureSessionHandle(sessionId, cwd, checkPersistedIdentity, presetId)).agent
+  }
+
+  /**
+   * Resolve one requested identity, creating or resuming it once, returning the
+   * full disposable {@link AgentHandle}. Use this instead of {@link ensureSession}
+   * when the caller must be able to tear down exactly the Agent it activated
+   * here (e.g. rolling back a partially-seeded Session) rather than the weaker
+   * `agent.cancel(...)`, which cancels queued/active activity but leaves the
+   * Session registered and lingering.
+   *
+   * Exception: if this call's own creation/resume attempt rejects, but a live
+   * Agent for the identity is already found (some other, concurrent path
+   * created or resumed it — not this call), the returned handle falls back to
+   * the weaker cancel()-only {@link adoptedHandle}, even though this caller is
+   * the primary. There is no way to recover a real disposer for an Agent this
+   * call did not itself activate, so the strong-disposer guarantee above does
+   * not hold in that specific race.
+   *
+   * The in-flight lock tracked in `this.creations` spans creation *through*
+   * the primary's own post-creation validation and any resulting dispose —
+   * not just creation. That entry is only removed once that whole sequence
+   * has settled, so neither a joiner nor a new caller arriving after the
+   * entry is gone can ever observe a handle the primary is still deciding
+   * whether to tear down.
+   * @param sessionId - requested Session identity.
+   * @param cwd - directory the Session must own.
+   * @param checkPersistedIdentity - whether to inspect a cold identity before creation.
+   * @param presetId - optional Agent preset the Session must own.
+   * @returns the matching live ordinary Agent's handle.
+   */
+  async ensureSessionHandle(
+    sessionId: SessionId,
+    cwd: string,
+    checkPersistedIdentity: boolean,
+    presetId?: string,
+  ): Promise<AgentHandle> {
     let creation = this.creations.get(sessionId)
+    // Whichever call finds no in-flight entry is the primary: it alone owns the
+    // real handle's disposer. Every other concurrent call for this sessionId is
+    // a joiner sharing the same resolved handle, and must not be able to tear
+    // down the session out from under the primary (or other joiners).
+    const isPrimary = creation === undefined
     if (creation === undefined) {
+      // The whole creation-through-validation-through-possible-dispose
+      // sequence for the PRIMARY's own (cwd, presetId) runs inside this one
+      // shared promise, and the map entry is only removed once it fully
+      // settles (see `.finally` below). This closes the window where a
+      // joiner, or a new caller arriving after the entry would otherwise
+      // already be gone, could observe a handle the primary is still
+      // deciding whether to tear down.
       creation = this.createOrAdopt(sessionId, cwd, checkPersistedIdentity, presetId)
         .catch((error: unknown) => {
           const live = this.ctx.agents.get(sessionId)
@@ -239,7 +294,11 @@ export class ApiSessionAgentController {
             if (hasApiSessionSubagentOwner(this.ctx, live.session, live)) {
               throw new ApiSessionSubagentOwnership(sessionId)
             }
-            return live
+            // This call's own creation/resume failed, but a concurrently-activated
+            // Agent already exists for this id. Per the doc-comment exception on
+            // `ensureSessionHandle`, the primary caller gets this weaker,
+            // cancel()-only handle rather than the promised strong disposer.
+            return adoptedHandle(live)
           }
           const attached = this.ctx.sessions.get(sessionId)
           if (attached !== undefined && hasApiSessionSubagentOwner(this.ctx, attached, undefined)) {
@@ -247,10 +306,57 @@ export class ApiSessionAgentController {
           }
           throw error
         })
+        .then(async (handle) => {
+          try {
+            this.validateResolvedHandle(sessionId, handle.agent, cwd, presetId)
+          } catch (error: unknown) {
+            // A genuinely fresh handle that fails the primary's own
+            // post-creation validation is an orphan unless torn down here.
+            // Only a handle this call itself activated (not one already live
+            // beforehand, wrapped by `adoptedHandle`) is safe to dispose.
+            if (this.freshlyActivatedHandles.has(handle)) {
+              // Best-effort teardown of a now-orphaned, freshly-activated
+              // handle after validation already failed. A disposer failure
+              // here is deliberately swallowed rather than thrown: surfacing
+              // it would replace or mask the original validation error
+              // rethrown right below, which is the failure callers actually
+              // need to see.
+              await handle.dispose().catch(() => {})
+            }
+            throw error
+          }
+          return handle
+        })
         .finally(() => { this.creations.delete(sessionId) })
       this.creations.set(sessionId, creation)
     }
-    const agent = await creation
+    const handle = await creation
+    if (isPrimary) return handle
+    // Joiner: the shared promise above already ran the PRIMARY's own
+    // (cwd, presetId) validation — if that failed, this line is unreachable
+    // because the shared promise rejected and `await creation` above already
+    // threw. A joiner's own (cwd, presetId) can still legitimately differ
+    // from the primary's, so re-validate independently against this joiner's
+    // own args — but a joiner must never dispose on failure; only the
+    // primary owns that, and it already ran (and already disposed, if
+    // needed) above.
+    this.validateResolvedHandle(sessionId, handle.agent, cwd, presetId)
+    return { agent: handle.agent, dispose: () => Promise.resolve() }
+  }
+
+  /**
+   * Validate a resolved handle's Agent against the caller's requested identity.
+   * @param sessionId - requested Session identity.
+   * @param agent - live Agent resolved for the identity.
+   * @param cwd - directory the Session must own.
+   * @param presetId - optional Agent preset the Session must own.
+   */
+  private validateResolvedHandle(
+    sessionId: SessionId,
+    agent: Agent,
+    cwd: string,
+    presetId: string | undefined,
+  ): void {
     if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
@@ -260,7 +366,6 @@ export class ApiSessionAgentController {
     if (agent.session.header.cwd !== cwd) {
       throw new ApiSessionCwdConflict(sessionId, cwd, agent.session.header.cwd)
     }
-    return agent
   }
 
   /**
@@ -281,20 +386,25 @@ export class ApiSessionAgentController {
     const defaultModel = this.ctx.agentDefaultModel
     const selection: InstalledSelection = {
       get current(): AgentModelSelection {
-        if (picked !== undefined) return picked
-        const loggedHeader = agent.session.requestHeader()
-        if (loggedHeader === undefined) return defaultModel.currentSelection()
-        const logged = loggedHeader.config
-        return {
-          provider: logged.provider,
-          model: logged.model,
-          // An effort the adapter defaulted is not a conversation choice: restoring
-          // it as one would make an unchanged default read as a request change.
-          ...(logged.reasoningEffort === undefined
-            || loggedHeader.adapterDefaults?.reasoningEffort === true
-            ? {}
-            : { reasoningEffort: logged.reasoningEffort }),
-        }
+        return resolveCurrentSelection<AgentModelSelection>(
+          picked,
+          () => {
+            const loggedHeader = agent.session.requestHeader()
+            if (loggedHeader === undefined) return undefined
+            const logged = loggedHeader.config
+            return {
+              provider: logged.provider,
+              model: logged.model,
+              // An effort the adapter defaulted is not a conversation choice: restoring
+              // it as one would make an unchanged default read as a request change.
+              ...(logged.reasoningEffort === undefined
+                || loggedHeader.adapterDefaults?.reasoningEffort === true
+                ? {}
+                : { reasoningEffort: logged.reasoningEffort }),
+            }
+          },
+          () => defaultModel.currentSelection(),
+        )
       },
       set current(next: AgentModelSelection) {
         picked = next
@@ -391,10 +501,10 @@ export class ApiSessionAgentController {
   }
 
   private async resume(sessionId: SessionId, supplied?: SessionObservation): Promise<Agent> {
-    if (supplied !== undefined) return this.resumeObserved(sessionId, supplied)
+    if (supplied !== undefined) return (await this.resumeObserved(sessionId, supplied)).agent
     try {
       using observation = await this.ctx.sessionQuery.observeSession(sessionId)
-      return await this.resumeObserved(sessionId, observation)
+      return (await this.resumeObserved(sessionId, observation)).agent
     } catch (error: unknown) {
       if (error instanceof SessionQueryError
         && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
@@ -407,7 +517,7 @@ export class ApiSessionAgentController {
   private async resumeObserved(
     sessionId: SessionId,
     observation: SessionObservation,
-  ): Promise<Agent> {
+  ): Promise<AgentHandle> {
     if (observation.header.id !== sessionId || observation.header.cwd === undefined) {
       throw new ApiSessionNotFound(`session "${sessionId}" not found`)
     }
@@ -420,11 +530,11 @@ export class ApiSessionAgentController {
     if (published !== undefined && hasApiSessionSubagentOwner(this.ctx, published, live)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    return (await this.ctx.agents.resume({
+    return this.ctx.agents.resume({
       resumeSessionId: sessionId,
       agentOptions: this.agentOptions(),
       setup: composition.setup,
-    })).agent
+    })
   }
 
   private async createOrAdopt(
@@ -432,13 +542,13 @@ export class ApiSessionAgentController {
     cwd: string,
     checkPersistedIdentity: boolean,
     presetId: string | undefined,
-  ): Promise<Agent> {
+  ): Promise<AgentHandle> {
     const attached = this.ctx.sessions.get(sessionId)
     const live = this.ctx.agents.get(sessionId)
     if (attached !== undefined && hasApiSessionSubagentOwner(this.ctx, attached, live)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    if (live !== undefined) return live
+    if (live !== undefined) return adoptedHandle(live)
 
     if (checkPersistedIdentity) {
       try {
@@ -452,11 +562,19 @@ export class ApiSessionAgentController {
         const storedPreset = this.presetForObservation(observation)
         this.assertPresetUnchanged(sessionId, presetId, storedPreset)
         const composition = await this.composeAgent(storedPreset)
-        return (await this.ctx.agents.resume({
+        // Reached only when `live === undefined` above: this resume brings the
+        // Agent into memory for the FIRST time (no pre-existing live loop to
+        // protect), exactly parallel to the sibling `create()` path below --
+        // so, like `create()`, it must be tracked in `freshlyActivatedHandles`
+        // so a post-resume validation failure (cwd/preset drift) disposes this
+        // orphaned Agent instead of leaking it.
+        const resumed = await this.ctx.agents.resume({
           resumeSessionId: sessionId,
           agentOptions: this.agentOptions(),
           setup: composition.setup,
-        })).agent
+        })
+        this.freshlyActivatedHandles.add(resumed)
+        return resumed
       } catch (error: unknown) {
         if (!(error instanceof SessionQueryError)
           || error.code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
@@ -469,7 +587,7 @@ export class ApiSessionAgentController {
       throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
     }
     const composition = await this.composeAgent(presetId)
-    return (await this.ctx.agents.create({
+    const created = await this.ctx.agents.create({
       sessionId,
       agentOptions: this.agentOptions(),
       meta: {
@@ -477,7 +595,9 @@ export class ApiSessionAgentController {
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
       },
       setup: composition.setup,
-    })).agent
+    })
+    this.freshlyActivatedHandles.add(created)
+    return created
   }
 
   private agentOptions(): AgentOptions {
@@ -510,6 +630,28 @@ export class ApiSessionAgentController {
   ): void {
     if (requested === undefined || requested === existing) return
     throw new ApiSessionPresetConflict(sessionId, requested, existing)
+  }
+}
+
+/**
+ * Synthesize an {@link AgentHandle} for an Agent this controller did not itself
+ * create or resume via `ctx.agents.create()`/`resume()` (e.g. one already live
+ * before this call, or recovered from a concurrent creation race). There is no
+ * way to recover the real disposer for such an Agent, so `dispose()` falls
+ * back to the weaker `cancel(...)`: it stops queued/active activity but,
+ * unlike a genuine handle's disposer, does not unregister the Agent or remove
+ * the Session from the store. Callers that need the strong guarantee must
+ * only rely on it for a handle this controller actually created.
+ * @param agent - already-live Agent adopted instead of freshly created/resumed.
+ * @returns a best-effort handle wrapping the adopted Agent.
+ */
+function adoptedHandle(agent: Agent): AgentHandle {
+  return {
+    agent,
+    dispose: () => {
+      agent.cancel({ kind: 'disposed' })
+      return Promise.resolve()
+    },
   }
 }
 

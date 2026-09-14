@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-presets'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
@@ -14,6 +14,7 @@ import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
   ApiSessionNotFound,
+  ApiSessionPresetConflict,
   ApiSessionSubagentOwnership,
   inspectApiSession,
 } from '../src/agent.ts'
@@ -390,6 +391,77 @@ describe('ApiSession create or adoption', () => {
     expect(resume).toHaveBeenCalledWith(expect.objectContaining({ resumeSessionId: meta.id }))
   })
 
+  it('disposes a persisted-identity resume brought newly into memory when post-resume preset validation fails', async () => {
+    const { ctx, agents } = await harness()
+    const meta = { ...header('resume-preset-drift'), agentPreset: 'minimal' }
+    const storedEvents = [{
+      type: 'agent-preset/selected',
+      seq: 0,
+      time: 1,
+      data: { agentPreset: 'minimal' },
+    }] as SessionEvent[]
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      inspect: () => Promise.resolve({ meta, events: storedEvents }),
+    })
+    ctx.provide('agentPresets', {
+      resolve: (id?: string) => Promise.resolve({ id: id ?? 'minimal' }),
+      mount: () => Promise.resolve(),
+    } as never)
+
+    // No Agent is registered live beforehand, so `createOrAdopt` takes the
+    // `checkPersistedIdentity` resume branch (`live === undefined`), which
+    // brings this Agent into memory for the FIRST time via
+    // `ctx.agents.resume(...)` -- exactly parallel to `create()`. The
+    // pre-resume persisted-identity check (against the observation's
+    // projected preset) passes, but the resumed Agent's own live session
+    // reflects a DIFFERENT preset, so the post-resume validation in
+    // ensureSessionHandle's `.then()` must still reject the call. Because
+    // this Agent was newly activated by this very call (not one already
+    // live beforehand), it must be disposed as an orphan, matching
+    // `create()`'s existing orphan-disposal behavior.
+    const driftedEvents = [{
+      type: 'agent-preset/selected',
+      seq: 0,
+      time: 1,
+      data: { agentPreset: 'drifted' },
+    }] as SessionEvent[]
+    const resumed = {
+      id: meta.id,
+      session: { id: meta.id, header: meta, events: driftedEvents },
+      status: 'idle',
+      ctx,
+    } as unknown as Agent
+    const dispose = vi.fn(() => Promise.resolve())
+    vi.spyOn(ctx.agents, 'resume').mockResolvedValue({ agent: resumed, dispose })
+
+    await expect(agents.ensureSessionHandle(meta.id, '/workspace', true, 'minimal'))
+      .rejects.toBeInstanceOf(ApiSessionPresetConflict)
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('never disposes an already-live Agent when post-resume preset validation fails', async () => {
+    const { ctx, agents } = await harness()
+    // Register the Agent as live *before* calling ensureSessionHandle, so
+    // createOrAdopt takes the `adoptedHandle(live)` branch (`live !==
+    // undefined`) instead of resuming -- this Agent was not freshly
+    // activated by this call, and must never be torn down as a side effect
+    // of a later validation failure.
+    const meta = { ...header('already-live-preset-drift'), agentPreset: 'minimal' }
+    const live = agent(ctx, meta)
+    live.session.append('agent-preset/selected', { agentPreset: 'minimal' })
+    const cancel = vi.fn()
+    Object.assign(live, { cancel })
+    ctx.agents.register(live)
+
+    await expect(agents.ensureSessionHandle(meta.id, '/workspace', true, 'drifted'))
+      .rejects.toBeInstanceOf(ApiSessionPresetConflict)
+    // adoptedHandle(live).dispose() would call agent.cancel(...); since this
+    // Agent was already live (not freshly activated), it must never be torn
+    // down on a post-adoption validation failure.
+    expect(cancel).not.toHaveBeenCalled()
+  })
+
   it('rejects an ownership race before resume and a persisted cwd conflict', async () => {
     const child = await harness()
     const childMeta = header('resume-child-race')
@@ -430,5 +502,255 @@ describe('ApiSession create or adoption', () => {
 
     const composition = await agents.composeAgent(undefined)
     expect(() => composition.setup(new Context())).toThrow('Agent setup has no scoped Agent')
+  })
+
+  it('disposes a freshly created handle when post-creation cwd validation rejects it', async () => {
+    const { ctx, agents } = await harness()
+    const requestedCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-orphan-cwd-'))
+    const meta = header('orphan-on-cwd-conflict', '/mismatched-cwd')
+    const created = unpublishedAgent(ctx, meta)
+    const dispose = vi.fn(() => Promise.resolve())
+    vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
+
+    await expect(agents.ensureSessionHandle(meta.id, requestedCwd, false))
+      .rejects.toBeInstanceOf(ApiSessionCwdConflict)
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('gives a joiner a no-op dispose while the primary keeps the real disposer', async () => {
+    const { ctx, agents } = await harness()
+    const cwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-joiner-'))
+    const meta = header('concurrent-handle-aliasing', cwd)
+    const created = unpublishedAgent(ctx, meta)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const dispose = vi.fn(() => Promise.resolve())
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async () => {
+      await gate
+      return { agent: created, dispose }
+    })
+
+    const first = agents.ensureSessionHandle(meta.id, cwd, false)
+    const second = agents.ensureSessionHandle(meta.id, cwd, false)
+    release()
+
+    const [primaryHandle, joinerHandle] = await Promise.all([first, second])
+    // oxlint-disable-next-line typescript/unbound-method -- vi.fn() mock does not use `this`
+    expect(primaryHandle.dispose).not.toBe(joinerHandle.dispose)
+
+    await joinerHandle.dispose()
+    expect(dispose).not.toHaveBeenCalled()
+
+    await primaryHandle.dispose()
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('never disposes an already-live Agent when post-adoption validation rejects it', async () => {
+    const { ctx, agents } = await harness()
+    // Register the Agent as live *before* calling ensureSessionHandle, so
+    // createOrAdopt takes the `adoptedHandle(live)` branch instead of creating
+    // or resuming — this Agent was not freshly activated by this call.
+    const meta = header('already-live-cwd-conflict', '/mismatched-cwd')
+    const live = agent(ctx, meta)
+    const cancel = vi.fn()
+    Object.assign(live, { cancel })
+    ctx.agents.register(live)
+
+    await expect(agents.ensureSessionHandle(meta.id, '/requested-cwd', false))
+      .rejects.toBeInstanceOf(ApiSessionCwdConflict)
+    // adoptedHandle(live).dispose() would call agent.cancel(...); since this
+    // Agent was already live (not freshly activated), it must never be torn
+    // down on a post-adoption validation failure.
+    expect(cancel).not.toHaveBeenCalled()
+  })
+
+  it('disposes a freshly created handle when post-creation ownership validation rejects it', async () => {
+    const { ctx, agents } = await harness()
+    const cwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-orphan-ownership-'))
+    const meta = {
+      ...header('orphan-on-ownership-conflict', cwd),
+      parentSession: SessionId('parent'),
+      origin: 'subagent' as const,
+    }
+    const created = unpublishedAgent(ctx, meta)
+    const dispose = vi.fn(() => Promise.resolve())
+    vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
+
+    await expect(agents.ensureSessionHandle(meta.id, cwd, false))
+      .rejects.toBeInstanceOf(ApiSessionSubagentOwnership)
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('disposes a freshly created handle when post-creation preset validation rejects it', async () => {
+    const { ctx, agents } = await harness()
+    const cwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-orphan-preset-'))
+    const meta = header('orphan-on-preset-conflict', cwd)
+    const events = [{
+      type: 'agent-preset/selected',
+      seq: 0,
+      time: 1,
+      data: { agentPreset: 'existing-preset' },
+    }] as SessionEvent[]
+    const created = {
+      id: meta.id,
+      session: { id: meta.id, header: meta, events },
+      status: 'idle',
+      ctx,
+    } as unknown as Agent
+    const dispose = vi.fn(() => Promise.resolve())
+    vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
+
+    await expect(agents.ensureSessionHandle(meta.id, cwd, false, 'requested-preset'))
+      .rejects.toBeInstanceOf(ApiSessionPresetConflict)
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it('recovers a raced concurrently-created live Agent as a weak adopted handle', async () => {
+    const { ctx, agents } = await harness()
+    // The primary's own creation attempt rejects below, but by then some other
+    // concurrent path has already registered a live Agent for this sessionId
+    // — the race carved out by ensureSessionHandle's doc comment. There is no
+    // way to recover a real disposer for an Agent this call did not itself
+    // activate, so the primary must fall back to the weak, cancel()-only
+    // adoptedHandle rather than the strong disposer it otherwise promises.
+    const cwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-raced-adoption-'))
+    const meta = header('raced-adoption-recovery', cwd)
+    const live = agent(ctx, meta)
+    const cancel = vi.fn()
+    Object.assign(live, { cancel })
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async () => {
+      ctx.agents.register(live)
+      throw new Error('raced creation')
+    })
+
+    const handle = await agents.ensureSessionHandle(meta.id, cwd, false)
+    expect(handle.agent).toBe(live)
+
+    await handle.dispose()
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
+  it('does not hand a joiner a usable handle while the primary is still disposing an invalid Agent', async () => {
+    const { ctx, agents } = await harness()
+    const actualCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-race1-actual-'))
+    const primaryCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-race1-primary-'))
+    const meta = header('race1-joiner-during-dispose', actualCwd)
+    const created = unpublishedAgent(ctx, meta)
+
+    let releaseCreate!: () => void
+    const createGate = new Promise<void>((resolve) => { releaseCreate = resolve })
+    let releaseDispose!: () => void
+    const disposeGate = new Promise<void>((resolve) => { releaseDispose = resolve })
+    const dispose = vi.fn(() => disposeGate)
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async () => {
+      await createGate
+      return { agent: created, dispose }
+    })
+
+    // The primary requests a cwd that will not match the created Agent's
+    // actual cwd, so its post-creation validation fails and it must dispose
+    // the freshly-created handle.
+    const primary = agents.ensureSessionHandle(meta.id, primaryCwd, false)
+    // The joiner requests the Agent's ACTUAL cwd, so its own validation would
+    // independently succeed -- it must still not receive a usable handle
+    // while the primary's dispose of that same Agent is still in flight.
+    const joiner = agents.ensureSessionHandle(meta.id, actualCwd, false)
+
+    let joinerSettled = false
+    joiner.then(() => { joinerSettled = true }, () => { joinerSettled = true })
+
+    releaseCreate()
+    // Wait for the shared creation to settle, the primary's post-creation cwd
+    // validation to run and throw, and dispose() (now blocked on disposeGate)
+    // to have been invoked. A single setTimeout(0) tick only flushes
+    // already-queued microtasks and can miss this under system load if any
+    // step along the way yields a real macrotask; poll instead.
+    await vi.waitFor(() => {
+      expect(dispose).toHaveBeenCalledOnce()
+    })
+
+    // This is the race: a correct implementation must not let the joiner
+    // settle before the primary's dispose of the same Agent completes.
+    expect(joinerSettled).toBe(false)
+
+    releaseDispose()
+    await expect(primary).rejects.toBeInstanceOf(ApiSessionCwdConflict)
+    // The joiner must never silently succeed with a handle to an Agent that
+    // was mid-teardown -- it must reach a definitive failure instead.
+    await expect(joiner).rejects.toBeInstanceOf(Error)
+  })
+
+  it('does not let a later, independent caller observe a live handle before the primary\'s teardown settles', async () => {
+    const { ctx, agents } = await harness()
+    const actualCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-race2-actual-'))
+    const primaryCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-race2-primary-'))
+    const meta = header('race2-intruder-during-dispose', actualCwd)
+
+    let releaseCreate!: () => void
+    const createGate = new Promise<void>((resolve) => { releaseCreate = resolve })
+    let releaseDispose!: () => void
+    const disposeGate = new Promise<void>((resolve) => { releaseDispose = resolve })
+
+    let unregisterAgent: (() => void) | undefined
+    let intruder: Promise<AgentHandle> | undefined
+    let intruderSettled = false
+    let disposeReleased = false
+
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async () => {
+      await createGate
+      const created = agent(ctx, meta)
+      unregisterAgent = ctx.agents.register(created)
+      return {
+        agent: created,
+        dispose: vi.fn(async () => {
+          // By the time dispose() is invoked, the primary's post-creation cwd
+          // validation has already thrown, which only happens after the
+          // shared `creations` map entry for this sessionId was already
+          // deleted (it is deleted as soon as createOrAdopt settles, before
+          // validation runs). The Agent is still registered live at this
+          // exact instant -- this is the window a genuinely new, independent
+          // caller can arrive in. Start it here, before this dispose() call
+          // resolves, so it is a fresh call rather than one already awaiting
+          // the primary's `creation` promise.
+          intruder = agents.ensureSessionHandle(meta.id, actualCwd, false)
+          intruder.then(() => { intruderSettled = true }, () => { intruderSettled = true })
+          await disposeGate
+          disposeReleased = true
+          unregisterAgent?.()
+        }),
+      }
+    })
+
+    const primary = agents.ensureSessionHandle(meta.id, primaryCwd, false)
+    releaseCreate()
+
+    // Wait for the primary's creation to settle (deleting the `creations`
+    // map entry), its post-creation cwd validation to fail, and dispose() --
+    // which starts the intruder call above -- to have been invoked and be
+    // blocked on disposeGate. A single setTimeout(0) tick only flushes
+    // already-queued microtasks and can miss this under system load if any
+    // step along the way yields a real macrotask; poll instead.
+    await vi.waitFor(() => {
+      expect(intruder).toBeDefined()
+    })
+
+    // This is the race: a correct implementation must make the later,
+    // independent caller wait for the primary's full settle (creation +
+    // validation + dispose), not observe a live handle while the Agent is
+    // still being torn down.
+    expect(intruderSettled).toBe(false)
+
+    releaseDispose()
+    await expect(primary).rejects.toBeInstanceOf(ApiSessionCwdConflict)
+    // Because the widened lock keeps the `creations` entry populated across
+    // creation + validation + dispose, the intruder finds it still present
+    // and joins the primary's own shared promise rather than starting an
+    // independent attempt. It therefore shares the primary's fate and also
+    // rejects, instead of going on to independently validate against its own
+    // (matching) actualCwd -- which is the safe outcome, since the
+    // underlying Agent was already slated for disposal either way.
+    await expect(intruder).rejects.toBeInstanceOf(ApiSessionCwdConflict)
+    expect(disposeReleased).toBe(true)
+    expect(intruderSettled).toBe(true)
   })
 })

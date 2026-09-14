@@ -141,7 +141,7 @@ export class SessionController extends TypertRemoteService {
     ctx.plugin(SessionFileReferences)
     ctx.plugin(SessionSkillCatalog)
     ctx.plugin(ClaudeSessionImportController, {
-      ensureSession: (_ctx: Context, sessionId: SessionId, cwd: string) => this.agents.ensureSession(sessionId, cwd, false),
+      ensureSession: (_ctx: Context, sessionId: SessionId, cwd: string) => this.agents.ensureSessionHandle(sessionId, cwd, false),
       selectModel: (_ctx: Context, agent: Agent, selection: AgentModelSelection) => {
         this.agents.selectForNextRequest(agent, selection)
       },

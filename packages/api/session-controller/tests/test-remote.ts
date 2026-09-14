@@ -183,6 +183,20 @@ function installControllers(
       },
     } as never)
   }
+  if (ctx.get('subprocess') === undefined) {
+    // SessionController unconditionally mounts ClaudeSessionImportController,
+    // whose `static inject = ['subprocess', 'llm']` otherwise leaves its
+    // Cordis fiber pending forever in this harness. None of this package's
+    // specs exercise Claude Code CLI discovery (the only caller of
+    // `ctx.subprocess.spawn`), so this stub only needs to satisfy the inject
+    // requirement — spawning here would be a test bug, so it fails loud
+    // instead of returning a plausible fake handle.
+    ctx.provide('subprocess', {
+      spawn: () => {
+        throw new Error('subprocess.spawn is not configured in this test')
+      },
+    } as never)
+  }
   installSessionReadTestServices(ctx)
   const cwd = vi.spyOn(process, 'cwd').mockReturnValue(defaults.cwd)
   let controller: SessionController
