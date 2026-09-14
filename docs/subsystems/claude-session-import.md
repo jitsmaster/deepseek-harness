@@ -2,7 +2,7 @@
 
 English | [中文](claude-session-import.zh.md)
 
-Discovers the operator's Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call; see the [Agent Note](../../.agents/notes/proposed/architecture/2026-09-02-claude-code-session-import.md) for the design rationale. Types come from [`packages/session/claude-session-import/src/types.ts`](../../packages/session/claude-session-import/src/types.ts).
+Discovers the operator's Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call; see the [Agent Note](../../.agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.md) for the design rationale. Types come from [`packages/session/claude-session-import/src/types.ts`](../../packages/session/claude-session-import/src/types.ts).
 
 `DiscoveredSessionView` is the wire view of one `claude agents --json --all` entry (`id`, `name`, `cwd`, `status`, `startedAt`). `list()` resolves a `ClaudeSessionImportListValue` carrying the discovered sessions; `createFrom()` resolves a `ClaudeSessionImportCreateValue` carrying the new session's id. Two stable `RemoteErrorDetailsMap` codes cover the failure paths: `claude-session-import/not-found` (the named session id is no longer reported by `list()`) and `claude-session-import/transcript-unreadable` (the transcript file could not be read or parsed).
 
@@ -18,7 +18,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.claudeSessionImportController` — `ClaudeSessionImportController`
 
-Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call — see .agents/notes/proposed/architecture/2026-09-02-claude-code-session-import.md.
+Host service backing `ctx.remote.claudeSessionImport`: discovers Claude Code CLI sessions and imports one, once, into a brand-new native DSH session. No connection to Claude Code survives either call — see .agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.md.
 
 ```ts cordis-catalog
 /**
