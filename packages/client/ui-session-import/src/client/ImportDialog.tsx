@@ -9,11 +9,24 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconSearchOutline16, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DiscoveredSessionView } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, type SessionImportKey } from './locales.ts'
 import { groupAndSortSessions } from './session-grouping.ts'
 import styles from './ImportDialog.module.css'
+
+/**
+ * Case-insensitive substring match against a session's name and cwd — the
+ * two columns the table itself shows, so the filter never hides a session by
+ * a criterion the operator can't see reflected in the row.
+ * @param session - candidate session.
+ * @param normalizedQuery - already-lowercased, already-trimmed query.
+ * @returns whether the session should remain visible.
+ */
+function matchesQuery(session: DiscoveredSessionView, normalizedQuery: string): boolean {
+  return session.name.toLowerCase().includes(normalizedQuery)
+    || session.cwd.toLowerCase().includes(normalizedQuery)
+}
 
 /** The two Host Remote calls this dialog drives. */
 export interface ImportOperations {
@@ -49,6 +62,7 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
+  const [query, setQuery] = useState('')
 
   // Tracks unmount for the list()/createFrom() continuations below, whose
   // resolution can arrive after the dialog is gone (the same hazard
@@ -108,11 +122,17 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
   // AuthorizationDialog.tsx, DirectoryBrowser.tsx). Cheap to compute even
   // when unused, so it's unconditional; `sessions` may still be `undefined`
   // while discovery is in flight.
-  //
-  // Memoized on `sessions` alone (not recomputed for `selectedId`/`busy`/
-  // `failure` changes): the bucketing pass plus two O(n log n) sorts has no
-  // reason to rerun on renders the session list itself is uninvolved in.
-  const { running, done } = useMemo(() => groupAndSortSessions(sessions ?? []), [sessions])
+  const normalizedQuery = query.trim().toLowerCase()
+
+  // Memoized on `sessions`/`normalizedQuery` alone (not `selectedId`/`busy`/
+  // `failure`): the filter pass plus the bucketing/sort pass has no reason to
+  // rerun on renders neither the session list nor the query is involved in.
+  const { running, done } = useMemo(() => {
+    const filtered = normalizedQuery === ''
+      ? (sessions ?? [])
+      : (sessions ?? []).filter(session => matchesQuery(session, normalizedQuery))
+    return groupAndSortSessions(filtered)
+  }, [sessions, normalizedQuery])
 
   const selectRow = (id: string): void => { setSelectedId(id) }
   const onRowKeyDown = (id: string) => (event: KeyboardEvent<HTMLTableRowElement>): void => {
@@ -159,38 +179,53 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
         : sessions.length === 0
           ? <p>{t('dialog.empty')}</p>
           : (
-            <div className={styles['tableScroll']}>
-              <table className={styles['table']} role="grid">
-                {running.length > 0 && (
-                  <tbody>
-                    {/* A synthetic group-divider row, not a data row: `role="rowheader"`
-                        would misrepresent this as labeling sibling data cells in the same
-                        row (it doesn't have any), and `role="columnheader"` would wrongly
-                        imply it labels a column. `role="gridcell"` inside a `role="row"`
-                        keeps it a distinguishable, announced cell in the grid's
-                        accessibility tree (unlike `role="presentation"`, which would strip
-                        it entirely), with `aria-label` naming the section for screen
-                        readers while the visible text serves sighted users. */}
-                    <tr role="row">
-                      <td colSpan={3} role="gridcell" aria-label={t('sections.running')} className={styles['sectionHeader']}>
-                        {t('sections.running')}
-                      </td>
-                    </tr>
-                    {running.map(sessionRow)}
-                  </tbody>
+            <>
+              <Input
+                icon={<IconSearchOutline16 />}
+                className={styles['search'] ?? ''}
+                type="text"
+                value={query}
+                onChange={(event) => { setQuery(event.target.value) }}
+                placeholder={t('dialog.searchPlaceholder')}
+                aria-label={t('dialog.searchPlaceholder')}
+              />
+              {running.length === 0 && done.length === 0
+                ? <p>{t('dialog.noMatches')}</p>
+                : (
+                  <div className={styles['tableScroll']}>
+                    <table className={styles['table']} role="grid">
+                      {running.length > 0 && (
+                        <tbody>
+                          {/* A synthetic group-divider row, not a data row: `role="rowheader"`
+                              would misrepresent this as labeling sibling data cells in the same
+                              row (it doesn't have any), and `role="columnheader"` would wrongly
+                              imply it labels a column. `role="gridcell"` inside a `role="row"`
+                              keeps it a distinguishable, announced cell in the grid's
+                              accessibility tree (unlike `role="presentation"`, which would strip
+                              it entirely), with `aria-label` naming the section for screen
+                              readers while the visible text serves sighted users. */}
+                          <tr role="row">
+                            <td colSpan={3} role="gridcell" aria-label={t('sections.running')} className={styles['sectionHeader']}>
+                              {t('sections.running')}
+                            </td>
+                          </tr>
+                          {running.map(sessionRow)}
+                        </tbody>
+                      )}
+                      {done.length > 0 && (
+                        <tbody>
+                          <tr role="row">
+                            <td colSpan={3} role="gridcell" aria-label={t('sections.done')} className={styles['sectionHeader']}>
+                              {t('sections.done')}
+                            </td>
+                          </tr>
+                          {done.map(sessionRow)}
+                        </tbody>
+                      )}
+                    </table>
+                  </div>
                 )}
-                {done.length > 0 && (
-                  <tbody>
-                    <tr role="row">
-                      <td colSpan={3} role="gridcell" aria-label={t('sections.done')} className={styles['sectionHeader']}>
-                        {t('sections.done')}
-                      </td>
-                    </tr>
-                    {done.map(sessionRow)}
-                  </tbody>
-                )}
-              </table>
-            </div>
+            </>
           )}
       {failure !== undefined && <p role="alert">{failure}</p>}
     </Modal>

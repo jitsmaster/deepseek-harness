@@ -11,6 +11,8 @@ export const zh = {
   'dialog.import': '导入',
   'dialog.empty': '未找到 Claude Code 会话。',
   'dialog.loading': '正在查找 Claude Code 会话…',
+  'dialog.searchPlaceholder': '按名称或路径搜索…',
+  'dialog.noMatches': '没有会话与搜索匹配。',
   'sections.running': '运行中',
   'sections.done': '已结束',
 } satisfies Record<string, string>
@@ -26,6 +28,8 @@ export const en = {
   'dialog.import': 'Import',
   'dialog.empty': 'No Claude Code sessions found.',
   'dialog.loading': 'Looking for Claude Code sessions…',
+  'dialog.searchPlaceholder': 'Search by name or path…',
+  'dialog.noMatches': 'No sessions match your search.',
   'sections.running': 'Running',
   'sections.done': 'Finished',
 } satisfies Record<SessionImportKey, string>

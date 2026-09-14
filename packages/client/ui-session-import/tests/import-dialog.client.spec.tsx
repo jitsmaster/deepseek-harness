@@ -131,4 +131,50 @@ describe('ImportDialog', () => {
     expect(screen.queryByText('Finished')).toBeNull()
     expect(document.body.textContent ?? '').not.toContain('Finished')
   })
+
+  it('filters the list by name or cwd, case-insensitively, as the operator types', async () => {
+    const operations = {
+      list: vi.fn().mockResolvedValue({
+        sessions: [
+          { id: 's1', name: 'fix-login-bug', cwd: '/home/dev/auth-service', status: 'done', startedAt: '2026-09-01T00:00:00Z' },
+          { id: 's2', name: 'unrelated-task', cwd: '/home/dev/billing', status: 'done', startedAt: '2026-09-02T00:00:00Z' },
+        ],
+      }),
+      createFrom: vi.fn(),
+    }
+    render(<ImportDialog operations={operations} onImported={() => {}} onClose={() => {}} />)
+    await waitFor(() => { expect(screen.getByText('fix-login-bug')).toBeTruthy() })
+
+    // Matching by name (case-insensitive) hides the non-matching row.
+    fireEvent.change(screen.getByPlaceholderText(/search by name or path/i), { target: { value: 'LOGIN' } })
+    expect(screen.getByText('fix-login-bug')).toBeTruthy()
+    expect(screen.queryByText('unrelated-task')).toBeNull()
+
+    // Matching by cwd finds the other row instead.
+    fireEvent.change(screen.getByPlaceholderText(/search by name or path/i), { target: { value: 'billing' } })
+    expect(screen.getByText('unrelated-task')).toBeTruthy()
+    expect(screen.queryByText('fix-login-bug')).toBeNull()
+
+    // Clearing the query restores both rows.
+    fireEvent.change(screen.getByPlaceholderText(/search by name or path/i), { target: { value: '' } })
+    expect(screen.getByText('fix-login-bug')).toBeTruthy()
+    expect(screen.getByText('unrelated-task')).toBeTruthy()
+  })
+
+  it('shows a no-matches message, not the empty-discovery message, when a query matches nothing', async () => {
+    const operations = {
+      list: vi.fn().mockResolvedValue({
+        sessions: [
+          { id: 's1', name: 'fix-login-bug', cwd: '/home/dev/auth-service', status: 'done', startedAt: '2026-09-01T00:00:00Z' },
+        ],
+      }),
+      createFrom: vi.fn(),
+    }
+    render(<ImportDialog operations={operations} onImported={() => {}} onClose={() => {}} />)
+    await waitFor(() => { expect(screen.getByText('fix-login-bug')).toBeTruthy() })
+
+    fireEvent.change(screen.getByPlaceholderText(/search by name or path/i), { target: { value: 'no-such-session' } })
+    expect(screen.getByText(/no sessions match your search/i)).toBeTruthy()
+    expect(screen.queryByText(/no claude code sessions found/i)).toBeNull()
+  })
 })
