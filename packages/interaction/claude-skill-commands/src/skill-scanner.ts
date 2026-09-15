@@ -129,6 +129,40 @@ function readSkillFileCapped(path: string): string {
 // (`tests/skill-scanner.spec.ts`) asserts the two patterns stay equivalent.
 export const SKILL_NAME_FORMAT = /^[a-z][a-z0-9_-]*$/u
 
+/**
+ * Shared preamble for {@link parseSkillFile} and {@link parseCommandFile}:
+ * size-cap the file (stat, then a capped read closing the TOCTOU gap — see
+ * {@link readSkillFileCapped}), and strip a leading UTF-8 BOM (a Windows
+ * editor like Notepad can save UTF-8 text with one). Returns `undefined`
+ * (after warning) for any of the ways this can fail; the two callers differ
+ * only in what noun their warning messages use ("SKILL.md" vs "command file").
+ */
+function readEntrySourceCapped(
+  path: string,
+  label: string,
+  onWarn: SkillScanWarn | undefined,
+  internals: SkillScanInternals,
+): string | undefined {
+  let raw: string
+  try {
+    const { size } = statSync(path)
+    if (size > SKILL_FILE_MAX_BYTES) {
+      onWarn?.(`Skipped ${label} that is too large (${size} bytes, exceeding the ${SKILL_FILE_MAX_BYTES}-byte cap) at ${path}`)
+      return undefined
+    }
+    internals.afterStat?.(path)
+    raw = readSkillFileCapped(path)
+  } catch (err) {
+    if (err instanceof SkillFileTooLargeError) {
+      onWarn?.(`Skipped ${label} that is too large (exceeds the ${SKILL_FILE_MAX_BYTES}-byte cap while reading) at ${path}`)
+    } else {
+      onWarn?.(`Skipped unreadable ${label}: ${path}`)
+    }
+    return undefined
+  }
+  return raw.replace(/^﻿/, '')
+}
+
 /** Parse one `SKILL.md` file's frontmatter and body, or `undefined` when malformed. */
 function parseSkillFile(
   path: string,
@@ -136,25 +170,8 @@ function parseSkillFile(
   onWarn: SkillScanWarn | undefined,
   internals: SkillScanInternals,
 ): ScannedSkill | undefined {
-  let raw: string
-  try {
-    const { size } = statSync(path)
-    if (size > SKILL_FILE_MAX_BYTES) {
-      onWarn?.(`Skipped SKILL.md that is too large (${size} bytes, exceeding the ${SKILL_FILE_MAX_BYTES}-byte cap) at ${path}`)
-      return undefined
-    }
-    internals.afterStat?.(path)
-    raw = readSkillFileCapped(path)
-  } catch (err) {
-    if (err instanceof SkillFileTooLargeError) {
-      onWarn?.(`Skipped SKILL.md that is too large (exceeds the ${SKILL_FILE_MAX_BYTES}-byte cap while reading) at ${path}`)
-    } else {
-      onWarn?.(`Skipped unreadable SKILL.md: ${path}`)
-    }
-    return undefined
-  }
-  // Strip UTF-8 BOM if present (a Windows editor like Notepad can save UTF-8 text with a BOM)
-  raw = raw.replace(/^﻿/, '')
+  const raw = readEntrySourceCapped(path, 'SKILL.md', onWarn, internals)
+  if (raw === undefined) return undefined
   const match = FRONTMATTER.exec(raw)
   if (match === null) {
     onWarn?.(`Skipped SKILL.md with no frontmatter: ${path}`)
@@ -206,24 +223,8 @@ function parseCommandFile(
     onWarn?.(`Skipped command file with invalid name format "${name}" at ${path} (must match ${String(SKILL_NAME_FORMAT)})`)
     return undefined
   }
-  let raw: string
-  try {
-    const { size } = statSync(path)
-    if (size > SKILL_FILE_MAX_BYTES) {
-      onWarn?.(`Skipped command file that is too large (${size} bytes, exceeding the ${SKILL_FILE_MAX_BYTES}-byte cap) at ${path}`)
-      return undefined
-    }
-    internals.afterStat?.(path)
-    raw = readSkillFileCapped(path)
-  } catch (err) {
-    if (err instanceof SkillFileTooLargeError) {
-      onWarn?.(`Skipped command file that is too large (exceeds the ${SKILL_FILE_MAX_BYTES}-byte cap while reading) at ${path}`)
-    } else {
-      onWarn?.(`Skipped unreadable command file: ${path}`)
-    }
-    return undefined
-  }
-  raw = raw.replace(/^﻿/, '')
+  const raw = readEntrySourceCapped(path, 'command file', onWarn, internals)
+  if (raw === undefined) return undefined
   const match = FRONTMATTER.exec(raw)
   if (match === null) {
     return { kind: 'command', name, description: `Custom command "/${name}" imported from Claude Code`, body: raw.trim(), tier }
@@ -250,23 +251,28 @@ function commandFilesIn(
   onWarn: SkillScanWarn | undefined,
   internals: SkillScanInternals,
 ): readonly ScannedCommandFile[] {
-  let entries: string[]
+  let entries: { readonly name: string; readonly isDirectory: boolean }[]
   try {
-    // Namespaced commands (a subdirectory such as `modes/sparc.md`, surfaced
-    // by Claude Code as `/modes:sparc`) are not yet supported here — the
-    // command registry's name grammar has no room for a colon — so only
-    // direct `.md` files are scanned; subdirectories are silently skipped
-    // rather than warned about, since they are not malformed, just a
-    // not-yet-implemented source.
     entries = readdirSync(commandsDir, { withFileTypes: true })
-      .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
-      .map(entry => entry.name)
+      .map(entry => ({ name: entry.name, isDirectory: entry.isDirectory() }))
   } catch {
     return []
   }
   const commands: ScannedCommandFile[] = []
   const seenNames = new Set<string>()
-  for (const fileName of entries) {
+  for (const entry of entries) {
+    // Namespaced commands (a subdirectory such as `modes/sparc.md`, surfaced
+    // by Claude Code as `/modes:sparc`) are not yet supported here — the
+    // command registry's name grammar has no room for a colon. Warned about
+    // (like every other skip path in this scanner) rather than silently
+    // dropped, so an operator with namespaced commands sees why they're
+    // missing from the palette instead of a silent gap.
+    if (entry.isDirectory) {
+      onWarn?.(`Skipped namespaced command directory (DSH does not yet support "/${entry.name}:..." commands) at ${join(commandsDir, entry.name)}`)
+      continue
+    }
+    if (!entry.name.endsWith('.md')) continue
+    const fileName = entry.name
     const parsed = parseCommandFile(join(commandsDir, fileName), fileName, tier, onWarn, internals)
     if (parsed === undefined) continue
     if (seenNames.has(parsed.name)) {

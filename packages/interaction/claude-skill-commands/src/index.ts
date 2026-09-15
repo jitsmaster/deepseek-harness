@@ -115,14 +115,21 @@ function registerSkillCommand(
       // User-tier skills (the operator's own `~/.claude/skills`) are trusted
       // and steer immediately, as before.
       const identityKey = skillIdentityKey(skill)
+      const args = rawInput.trim()
       if (skill.tier === 'project' && !confirmedProjectSkills.has(identityKey)) {
         confirmedProjectSkills.add(identityKey)
+        // A command file's body is a template containing a literal
+        // `$ARGUMENTS` placeholder — preview the SUBSTITUTED text (what will
+        // actually be steered on the next invocation), not the raw
+        // placeholder, so what the operator reviews here matches reality.
+        // A SKILL.md's body never embeds `$ARGUMENTS`, so substitution is a
+        // no-op for it and this stays equivalent to before.
+        const preview = skill.kind === 'command' ? substituteArguments(skill.body, args) : skill.body
         return {
           kind: 'success',
-          text: `${skill.body}\n\nThis is a project-level skill from the repository, not your own ~/.claude/skills — review it before proceeding. Invoking "/${skill.name}" again will actually run it.`,
+          text: `${preview}\n\nThis is a project-level skill from the repository, not your own ~/.claude/skills — review it before proceeding. Invoking "/${skill.name}" again will actually run it.`,
         }
       }
-      const args = rawInput.trim()
       // Security fix: the skill/command body is repo-authored file content,
       // not human-typed input, so it must not be steered under `source: {
       // kind: 'user' }` — that kind is host-attested human authority, read by
@@ -131,12 +138,25 @@ function registerSkillCommand(
       if (skill.kind === 'command') {
         // A `.claude/commands/*.md` template embeds `$ARGUMENTS` inline, so
         // the substituted text rides the SAME single plugin-sourced message
-        // as the template — there is no second, separately-sourced message
-        // the way a SKILL.md's typed arguments get one below.
+        // as the template.
         agent.steer(createUserMessage({
           content: [{ type: 'text', text: substituteArguments(skill.body, args) }],
           source: { kind: 'plugin', plugin: name, form: 'instructions' },
         }))
+        // Even though the template already embeds the args inline above, the
+        // operator's own typed text still needs its own `kind: 'user'`
+        // message — same as a SKILL.md invocation below — so downstream
+        // human-authority checks (e.g. `dsh-tool-goal`'s
+        // `hasDirectHumanInput()`) see genuine typed input regardless of
+        // which of the two Claude Code import paths produced this command.
+        // Without this, a command file's typed args would silently take a
+        // different authority path than an equivalent SKILL.md invocation.
+        if (args !== '') {
+          agent.steer(createUserMessage({
+            content: [{ type: 'text', text: `ARGUMENTS: ${args}` }],
+            source: { kind: 'user' },
+          }))
+        }
         return { kind: 'success', text: `Invoked command "/${skill.name}".` }
       }
       agent.steer(createUserMessage({

@@ -784,11 +784,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     authenticatedUrl = ctx.connection.authenticatedUrl(baseUrl)
     const login = await fetch(authenticatedUrl, { redirect: 'manual' })
     const setCookie = login.headers.get('set-cookie')
-    // Local-machine quirk (this Windows checkout's fetch/undici returns 200
-    // instead of the 303 the lane expects on Linux CI; Set-Cookie is present
-    // and valid either way) — not something to fix here, only relaxed for
-    // this throwaway local dev-server script's own boot.
-    if ((login.status !== 303 && login.status !== 200) || setCookie === null) {
+    if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
       throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')
     }
     cookieHeader = setCookie.split(';', 1)[0] ?? ''

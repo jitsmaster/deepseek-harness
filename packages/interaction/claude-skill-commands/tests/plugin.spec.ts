@@ -112,10 +112,16 @@ describe('claude-skill-commands per-agent registration', () => {
       expect(execution?.result.kind).toBe('success')
       // oxlint-disable-next-line typescript/unbound-method -- vi.fn() mock does not use `this`
       const steer = agent.steer as ReturnType<typeof vi.fn>
-      expect(steer.mock.calls.length).toBe(1)
+      // Two steers: the substituted-body plugin message, then a separate
+      // `kind: 'user'` echo of the typed args so downstream human-authority
+      // checks see genuine typed input (same pattern as a SKILL.md invocation).
+      expect(steer.mock.calls.length).toBe(2)
       const [bodyMessage] = steer.mock.calls[0] as [{ source: { kind: string }; content: { type: string; text: string }[] }]
       expect(bodyMessage.source.kind).toBe('plugin')
       expect(bodyMessage.content[0]?.text).toBe('Invoke the Skill tool now. ARGS: do the thing')
+      const [argsMessage] = steer.mock.calls[1] as [{ source: { kind: string }; content: { type: string; text: string }[] }]
+      expect(argsMessage.source.kind).toBe('user')
+      expect(argsMessage.content[0]?.text).toBe('ARGUMENTS: do the thing')
     } finally {
       rmSync(project, { recursive: true, force: true })
     }
