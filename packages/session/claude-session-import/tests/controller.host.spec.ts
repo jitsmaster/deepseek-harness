@@ -31,6 +31,10 @@ function bootController(overrides: Partial<ClaudeSessionImportInternals> = {}): 
     readTranscript: overrides.readTranscript ?? (async () => JSON.stringify({
       type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
     })),
+    // Defaults to a no-op rather than the real readProjectMemory: most tests
+    // here have no interest in project memory and must not depend on the
+    // real ~/.claude/projects tree on whatever machine runs the suite.
+    readProjectMemory: overrides.readProjectMemory ?? (async () => undefined),
     ensureSession: overrides.ensureSession ?? (async () => agentHandle()),
     resolveCallConfig: overrides.resolveCallConfig ?? (async (_ctx, config) => config),
     selectModel: overrides.selectModel ?? vi.fn(),
@@ -376,5 +380,46 @@ describe('createFrom, wired to the real default readTranscript (not a test stub)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('createFrom, carrying over the operator\'s Claude Code project memory alongside the transcript', () => {
+  it('prepends the resolved project memory ahead of the transcript notice', async () => {
+    const followup = vi.fn()
+    const controller = bootController({
+      readProjectMemory: async (_homedir, cwd) => `remembered facts about ${cwd}`,
+      ensureSession: async () => agentHandle({ followup }),
+    })
+    await controller.createFrom('s1', new AbortController().signal)
+    const [message] = followup.mock.calls[0] as [{ content: { type: string; text: string }[] }]
+    const text = message.content[0]?.text ?? ''
+    expect(text).toContain('remembered facts about /home/arnold/proj')
+    expect(text.indexOf('remembered facts')).toBeLessThan(text.indexOf('Imported from Claude Code session'))
+  })
+
+  it('omits the memory section entirely when there is no project memory to carry over', async () => {
+    const followup = vi.fn()
+    const controller = bootController({
+      readProjectMemory: async () => undefined,
+      ensureSession: async () => agentHandle({ followup }),
+    })
+    await controller.createFrom('s1', new AbortController().signal)
+    const [message] = followup.mock.calls[0] as [{ content: { type: string; text: string }[] }]
+    const text = message.content[0]?.text ?? ''
+    expect(text).not.toContain('Project memory carried over')
+    expect(text.startsWith('Imported from Claude Code session')).toBe(true)
+  })
+
+  it('does not block the import when readProjectMemory rejects — memory is best-effort, never load-bearing', async () => {
+    const followup = vi.fn()
+    const controller = bootController({
+      readProjectMemory: async () => { throw new Error('memory boom') },
+      ensureSession: async () => agentHandle({ followup }),
+    })
+    const result = await controller.createFrom('s1', new AbortController().signal)
+    expect(result.sessionId).toEqual(expect.any(String))
+    expect(followup).toHaveBeenCalledTimes(1)
+    const [message] = followup.mock.calls[0] as [{ content: { type: string; text: string }[] }]
+    expect(message.content[0]?.text ?? '').not.toContain('Project memory carried over')
   })
 })

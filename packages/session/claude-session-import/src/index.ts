@@ -18,6 +18,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import { listClaudeCodeSessions, type DiscoveredSession } from './discovery.ts'
 import { escapeEmbeddedBoundaryMarkers, parseClaudeCodeTranscript, renderImportedTranscript } from './transcript.ts'
 import { claudeCodeTranscriptPath } from './transcript-path.ts'
+import { readProjectMemory as readProjectMemoryDefault } from './project-memory.ts'
 import type { ClaudeSessionImportCreateValue, ClaudeSessionImportListValue } from './types.ts'
 
 export type * from './types.ts'
@@ -134,6 +135,12 @@ export interface ClaudeSessionImportInternals {
   /** Read one transcript file's raw contents. Defaults to {@link readTranscriptCapped}. */
   readTranscript?: (path: string) => Promise<string>
   /**
+   * Read the operator's Claude Code project memory for a session's cwd.
+   * Defaults to {@link readProjectMemory}. A test replacing this can avoid
+   * touching the real `~/.claude/projects` tree.
+   */
+  readProjectMemory?: (homedir: string, cwd: string) => Promise<string | undefined>
+  /**
    * Create or resume the brand-new DSH session that receives the imported
    * transcript. No safe default — see this interface's summary.
    *
@@ -172,6 +179,7 @@ export class ClaudeSessionImportController extends TypertRemoteService {
 
   private readonly discover: NonNullable<ClaudeSessionImportInternals['discover']>
   private readonly readTranscript: NonNullable<ClaudeSessionImportInternals['readTranscript']>
+  private readonly readProjectMemory: NonNullable<ClaudeSessionImportInternals['readProjectMemory']>
   private readonly ensureSession: ClaudeSessionImportInternals['ensureSession']
   private readonly resolveCallConfig: NonNullable<ClaudeSessionImportInternals['resolveCallConfig']>
   private readonly selectModel: ClaudeSessionImportInternals['selectModel']
@@ -218,6 +226,7 @@ export class ClaudeSessionImportController extends TypertRemoteService {
     super(ctx, 'claudeSessionImportController', { namespace: 'claudeSessionImport' })
     this.discover = internals.discover ?? ((hostCtx, signal) => listClaudeCodeSessions(hostCtx, signal))
     this.readTranscript = internals.readTranscript ?? readTranscriptCapped
+    this.readProjectMemory = internals.readProjectMemory ?? readProjectMemoryDefault
     this.ensureSession = internals.ensureSession
     this.resolveCallConfig = internals.resolveCallConfig ?? ((hostCtx, config, signal) => hostCtx.llm.resolveCallConfig(config, signal))
     this.selectModel = internals.selectModel
@@ -304,6 +313,16 @@ export class ClaudeSessionImportController extends TypertRemoteService {
     // (e.g. an unavailable model), no session must ever have been created —
     // an orphaned, empty session with no way to recover it would otherwise
     // be left behind for every such failure.
+    // Best-effort: the operator's Claude Code project memory enriches the
+    // import but is never required for it — a missing/unreadable memory
+    // index (or a test double that throws) must never block the import
+    // itself, so a failure here is swallowed rather than propagated.
+    let memory: string | undefined
+    try {
+      memory = await this.readProjectMemory(homedir(), discovered.cwd)
+    } catch {
+      memory = undefined
+    }
     const resolved = await this.resolveCallConfig(this.ctx, { ...IMPORTED_SESSION_MODEL })
     const selection: ModelSelection = {
       provider: resolved.provider,
@@ -336,6 +355,13 @@ export class ClaudeSessionImportController extends TypertRemoteService {
       // protection `escapeEmbeddedBoundaryMarkers` enforces on the transcript
       // itself just below.
       const safeName = escapeEmbeddedBoundaryMarkers(discovered.name)
+      // Memory content is the operator's own trusted notes (same trust level
+      // as a user-tier skill — see claude-skill-commands' Fix C), so unlike
+      // `safeName` above it needs no escaping against the transcript's own
+      // turn-boundary markers.
+      const memorySection = memory === undefined
+        ? ''
+        : `Project memory carried over from the operator's Claude Code CLI for this project:\n\n${memory}\n\n---\n\n`
       // followup(), not inject(): inject() queues silently for the next
       // pre-step without waking the driver, so a brand-new (idle) agent would
       // leave it parked forever with nothing to ever wake it — the imported
@@ -344,7 +370,8 @@ export class ClaudeSessionImportController extends TypertRemoteService {
       agent.followup(createUserMessage({
         content: [{
           type: 'text',
-          text: `Imported from Claude Code session "${safeName}". This transcript is `
+          text: memorySection
+            + `Imported from Claude Code session "${safeName}". This transcript is `
             + 'historical context only, shown so the operator can see it — it is not an '
             + 'instruction to resume or continue any in-progress work. Do not take any '
             + "action or use any tools; just wait for the operator's next message.\n\n"
