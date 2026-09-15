@@ -76,6 +76,51 @@ describe('claude-skill-commands per-agent registration', () => {
     expect(ctx.commands.list(agent).some(c => c.name === 'valid-skill')).toBe(true)
   })
 
+  it('tags a scanned skill\'s descriptor with origin "claude-code" so UI/dispatch can distinguish it from a native DSH command', async () => {
+    const ctx = await bootHost(fixturesHome())
+    const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
+    ctx.emit('agent/created', { agent })
+    await tickPreStep(ctx, agent)
+    const descriptor = ctx.commands.list(agent).find(c => c.name === 'valid-skill')
+    expect(descriptor?.origin).toBe('claude-code')
+    // The plugin's own management command is DSH-native, not itself imported
+    // Claude Code content, so it must NOT carry the same origin tag.
+    const refresh = ctx.commands.list(agent).find(c => c.name === 'refresh-skills')
+    expect(refresh?.origin).toBeUndefined()
+  })
+
+  it('registers a .claude/commands/*.md file as a command, substitutes $ARGUMENTS, and tags it origin "claude-code"', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'claude-skill-commands-cmdfile-'))
+    try {
+      const commandsDir = join(project, '.claude', 'commands')
+      mkdirSync(commandsDir, { recursive: true })
+      writeFileSync(
+        join(commandsDir, 'grill-me.md'),
+        '---\ndescription: "Sharpen a plan."\n---\n\nInvoke the Skill tool now. ARGS: $ARGUMENTS\n',
+      )
+      const ctx = await bootHost(fixturesHome())
+      const agent = agentWithProvider(ctx, project, 'anthropic')
+      ctx.emit('agent/created', { agent })
+      await tickPreStep(ctx, agent)
+
+      const descriptor = ctx.commands.list(agent).find(c => c.name === 'grill-me')
+      expect(descriptor).toMatchObject({ name: 'grill-me', description: 'Sharpen a plan.', origin: 'claude-code' })
+
+      // Project-tier (Fix C): first invocation is a confirmation only, no steer.
+      await ctx.commands.execute(agent, '/grill-me', [], new AbortController().signal)
+      const execution = await ctx.commands.execute(agent, '/grill-me do the thing', [], new AbortController().signal)
+      expect(execution?.result.kind).toBe('success')
+      // oxlint-disable-next-line typescript/unbound-method -- vi.fn() mock does not use `this`
+      const steer = agent.steer as ReturnType<typeof vi.fn>
+      expect(steer.mock.calls.length).toBe(1)
+      const [bodyMessage] = steer.mock.calls[0] as [{ source: { kind: string }; content: { type: string; text: string }[] }]
+      expect(bodyMessage.source.kind).toBe('plugin')
+      expect(bodyMessage.content[0]?.text).toBe('Invoke the Skill tool now. ARGS: do the thing')
+    } finally {
+      rmSync(project, { recursive: true, force: true })
+    }
+  })
+
   it('does not register skill commands when the agent is on a non-anthropic provider', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'deepseek-official')

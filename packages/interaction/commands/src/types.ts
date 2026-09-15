@@ -53,6 +53,16 @@ export interface CommandExecution {
   readonly result: CommandResult
 }
 
+/**
+ * Provenance tag an owning plugin may attach to a registration so UI rows and
+ * dispatch logic can tell a command imported from an external agent tool
+ * apart from a command DSH itself defines. `'claude-code'` marks a command
+ * `@deepseek-ai/dsh-claude-skill-commands` derived from a Claude Code
+ * `SKILL.md` or `.claude/commands/*.md` file on disk — never hand-authored
+ * inside DSH.
+ */
+export type CommandOrigin = 'claude-code'
+
 /** Handler-free immutable command view returned to UI adapters. */
 export interface CommandDescriptor {
   /** Stable plugin-owned identity; absent for definitions without identity-based client behavior. */
@@ -63,6 +73,8 @@ export interface CommandDescriptor {
   readonly description: string
   /** Optional free-form input hint advertised to capable clients. */
   readonly input?: CommandInputDescriptor
+  /** Where this registration was imported from; absent for a DSH-native command. */
+  readonly origin?: CommandOrigin
 }
 
 /**

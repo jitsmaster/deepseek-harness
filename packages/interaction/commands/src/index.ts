@@ -20,6 +20,7 @@ import type {
   CommandDescriptor,
   CommandExecution,
   CommandInputDescriptor,
+  CommandOrigin,
   CommandResult,
   CommandSubmitAttachment,
 } from './types.ts'
@@ -77,6 +78,8 @@ export interface CommandDefinition {
    * that payload in the session log.
    */
   readonly recordInput?: boolean
+  /** Where this registration was imported from; absent for a DSH-native command. */
+  readonly origin?: CommandOrigin
   /** Execute against the receiving agent without sending the command to the model. */
   readonly handler: (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>
 }
@@ -211,12 +214,16 @@ function normalizeDefinition(definition: CommandDefinition): RegisteredCommand {
       ...('attachments' in rawInput && rawInput.attachments === true) ? { attachments: true } : {},
     })
   }
+  if (definition.origin !== undefined && typeof definition.origin !== 'string') {
+    throw new TypeError(`command "${definition.name}" origin must be a string when supplied`)
+  }
   const normalized = Object.freeze({
     ...definition.definitionId === undefined ? {} : { definitionId: definition.definitionId },
     name: definition.name,
     description: definition.description,
     ...input === undefined ? {} : { input },
     ...definition.recordInput === undefined ? {} : { recordInput: definition.recordInput },
+    ...definition.origin === undefined ? {} : { origin: definition.origin },
     handler: definition.handler,
   })
   const descriptor = Object.freeze({
@@ -224,6 +231,7 @@ function normalizeDefinition(definition: CommandDefinition): RegisteredCommand {
     name: normalized.name,
     description: normalized.description,
     ...normalized.input === undefined ? {} : { input: normalized.input },
+    ...normalized.origin === undefined ? {} : { origin: normalized.origin },
   })
   return { definition: normalized, descriptor }
 }

@@ -4,6 +4,8 @@ import { load } from 'js-yaml'
 
 /** One skill discovered on disk, ready to become a slash command. */
 export interface ScannedSkill {
+  /** Discriminant distinguishing a `SKILL.md` skill from a `.claude/commands/*.md` command file — see {@link ScannedCommandFile}. */
+  readonly kind: 'skill'
   readonly name: string
   readonly description: string
   readonly body: string
@@ -15,6 +17,26 @@ export interface ScannedSkill {
    */
   readonly tier: 'project' | 'user'
 }
+
+/**
+ * One Claude Code custom slash-command `.md` file discovered on disk, ready
+ * to become a slash command. Unlike a `SKILL.md` skill, its name comes from
+ * the filename (not frontmatter), frontmatter is entirely optional, and its
+ * body is a template containing a literal `$ARGUMENTS` placeholder rather
+ * than steering typed arguments as a second message — see
+ * `substituteArguments` in `index.ts`.
+ */
+export interface ScannedCommandFile {
+  readonly kind: 'command'
+  readonly name: string
+  readonly description: string
+  readonly body: string
+  /** Same project/user trust-tier meaning as {@link ScannedSkill.tier}. */
+  readonly tier: 'project' | 'user'
+}
+
+/** Either shape a Claude Code directory scan can hand back for registration. */
+export type ScannedEntry = ScannedSkill | ScannedCommandFile
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/
 
@@ -163,7 +185,126 @@ function parseSkillFile(
     onWarn?.(`Skipped SKILL.md with missing or blank description at ${path}`)
     return undefined
   }
-  return { name, description, body: (body ?? '').trim(), tier }
+  return { kind: 'skill', name, description, body: (body ?? '').trim(), tier }
+}
+
+/**
+ * Parse one `.claude/commands/*.md` file. Unlike a `SKILL.md` skill, the
+ * command name comes from the filename (not frontmatter) and frontmatter
+ * itself is optional: a file with no `---` block registers using its
+ * filename and a generic description, with the whole file as its body.
+ */
+function parseCommandFile(
+  path: string,
+  fileName: string,
+  tier: ScannedCommandFile['tier'],
+  onWarn: SkillScanWarn | undefined,
+  internals: SkillScanInternals,
+): ScannedCommandFile | undefined {
+  const name = fileName.slice(0, -'.md'.length)
+  if (!SKILL_NAME_FORMAT.test(name)) {
+    onWarn?.(`Skipped command file with invalid name format "${name}" at ${path} (must match ${String(SKILL_NAME_FORMAT)})`)
+    return undefined
+  }
+  let raw: string
+  try {
+    const { size } = statSync(path)
+    if (size > SKILL_FILE_MAX_BYTES) {
+      onWarn?.(`Skipped command file that is too large (${size} bytes, exceeding the ${SKILL_FILE_MAX_BYTES}-byte cap) at ${path}`)
+      return undefined
+    }
+    internals.afterStat?.(path)
+    raw = readSkillFileCapped(path)
+  } catch (err) {
+    if (err instanceof SkillFileTooLargeError) {
+      onWarn?.(`Skipped command file that is too large (exceeds the ${SKILL_FILE_MAX_BYTES}-byte cap while reading) at ${path}`)
+    } else {
+      onWarn?.(`Skipped unreadable command file: ${path}`)
+    }
+    return undefined
+  }
+  raw = raw.replace(/^﻿/, '')
+  const match = FRONTMATTER.exec(raw)
+  if (match === null) {
+    return { kind: 'command', name, description: `Custom command "/${name}" imported from Claude Code`, body: raw.trim(), tier }
+  }
+  const [, frontmatterYaml, body] = match
+  let frontmatter: unknown
+  try {
+    frontmatter = load(frontmatterYaml ?? '')
+  } catch (_err) {
+    onWarn?.(`Skipped command file with invalid YAML frontmatter at ${path}: ${_err instanceof Error ? _err.message : 'unknown error'}`)
+    return undefined
+  }
+  const { description } = (typeof frontmatter === 'object' && frontmatter !== null ? frontmatter : {}) as { description?: unknown }
+  const resolvedDescription = typeof description === 'string' && description.trim().length > 0
+    ? description
+    : `Custom command "/${name}" imported from Claude Code`
+  return { kind: 'command', name, description: resolvedDescription, body: (body ?? '').trim(), tier }
+}
+
+/** One directory's `.claude/commands/*.md` files, keyed by command name (the file's own basename). */
+function commandFilesIn(
+  commandsDir: string,
+  tier: ScannedCommandFile['tier'],
+  onWarn: SkillScanWarn | undefined,
+  internals: SkillScanInternals,
+): readonly ScannedCommandFile[] {
+  let entries: string[]
+  try {
+    // Namespaced commands (a subdirectory such as `modes/sparc.md`, surfaced
+    // by Claude Code as `/modes:sparc`) are not yet supported here — the
+    // command registry's name grammar has no room for a colon — so only
+    // direct `.md` files are scanned; subdirectories are silently skipped
+    // rather than warned about, since they are not malformed, just a
+    // not-yet-implemented source.
+    entries = readdirSync(commandsDir, { withFileTypes: true })
+      .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+      .map(entry => entry.name)
+  } catch {
+    return []
+  }
+  const commands: ScannedCommandFile[] = []
+  const seenNames = new Set<string>()
+  for (const fileName of entries) {
+    const parsed = parseCommandFile(join(commandsDir, fileName), fileName, tier, onWarn, internals)
+    if (parsed === undefined) continue
+    if (seenNames.has(parsed.name)) {
+      onWarn?.(`Skipped command file with duplicate name "${parsed.name}" (collision with another command file at ${commandsDir}): ${join(commandsDir, fileName)}`)
+      continue
+    }
+    seenNames.add(parsed.name)
+    commands.push(parsed)
+  }
+  return commands
+}
+
+/**
+ * Scan project and user Claude Code `.claude/commands/*.md` files,
+ * project-first — the sibling scan to {@link scanSkillDirectories} for
+ * Claude Code's other slash-command source (plain command templates rather
+ * than `SKILL.md` skills).
+ * @param cwd - the session's working directory, or `undefined` when the
+ *   session has never logged one. Project-level command files are skipped
+ *   entirely in that case, exactly like {@link scanSkillDirectories}.
+ * @param homedir - the operator's home directory.
+ * @param onWarn - called with one message per skipped malformed or
+ *   unreadable command file; omit to discard warnings.
+ * @param internals - test seam (see {@link SkillScanInternals}); production
+ *   callers never pass this.
+ * @returns command files deduplicated by name; a project-level file shadows
+ *   a user-level file of the same name.
+ */
+export function scanCommandFiles(
+  cwd: string | undefined,
+  homedir: string,
+  onWarn?: SkillScanWarn,
+  internals: SkillScanInternals = {},
+): readonly ScannedCommandFile[] {
+  const project = cwd === undefined ? [] : commandFilesIn(join(cwd, '.claude', 'commands'), 'project', onWarn, internals)
+  const user = commandFilesIn(join(homedir, '.claude', 'commands'), 'user', onWarn, internals)
+  const seen = new Set(project.map(entry => entry.name))
+  return [...project, ...user.filter(entry => !seen.has(entry.name))]
 }
 
 /** One directory's skills, keyed by skill folder name (the SKILL.md's own directory). */

@@ -20,7 +20,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
-import { rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconClaudeCodeOutline16, rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   CandidateRequest, ClientSessionContext, CommandClaim, PickOutcome, InputTriggerCandidate, InputTriggerPick,
   SubmitAttachment, SubmitEnvelope, SubmitOutcome,
@@ -202,7 +202,13 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
       seen.add(c.name)
       rows.push({
         name: c.name,
-        ...(builtinRowFace(c, this.t) ?? { description: c.description }),
+        // A built-in Host command's own face (with its own glyph) always
+        // wins; otherwise a row imported from Claude Code gets that origin's
+        // badge glyph so it reads as distinct from a DSH-native command.
+        ...(builtinRowFace(c, this.t) ?? {
+          description: c.description,
+          ...(c.origin === 'claude-code' ? { icon: IconClaudeCodeOutline16 } : {}),
+        }),
         ...(c.input !== undefined ? { hint: c.input.hint } : {}),
       })
     }

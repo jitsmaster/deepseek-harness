@@ -8,8 +8,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { CommandRuntime } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { currentProviderOf } from './model-gate.ts'
-import { scanSkillDirectories } from './skill-scanner.ts'
-import type { ScannedSkill } from './skill-scanner.ts'
+import { scanCommandFiles, scanSkillDirectories } from './skill-scanner.ts'
+import type { ScannedEntry } from './skill-scanner.ts'
 
 export const name = 'claude-skill-commands'
 
@@ -39,9 +39,21 @@ const REFRESH_COMMAND_NAME = 'refresh-skills'
  * @param skill - the scanned skill to derive an identity for.
  * @returns a stable string key unique to this tier+name+body combination.
  */
-function skillIdentityKey(skill: ScannedSkill): string {
+function skillIdentityKey(skill: ScannedEntry): string {
   const bodyHash = createHash('sha256').update(skill.body).digest('hex')
-  return `${skill.tier}:${skill.name}:${bodyHash}`
+  return `${skill.kind}:${skill.tier}:${skill.name}:${bodyHash}`
+}
+
+/**
+ * Substitute every literal `$ARGUMENTS` occurrence in a `.claude/commands/*.md`
+ * template with the operator's typed text — the same convention Claude Code
+ * itself uses for these files. A template with no placeholder simply ignores
+ * typed arguments, matching upstream behavior; unlike a `SKILL.md` skill, the
+ * substituted text becomes part of the single steered message rather than a
+ * separately-sourced one, since the template controls where (if at all) it appears.
+ */
+function substituteArguments(body: string, rawArgs: string): string {
+  return body.replaceAll('$ARGUMENTS', rawArgs)
 }
 
 /** One skill's registered command, tracked alongside the exact content it was registered for. */
@@ -74,7 +86,7 @@ interface RegisteredSkill {
 function registerSkillCommand(
   commands: CommandRuntime,
   agent: Agent,
-  skill: ScannedSkill,
+  skill: ScannedEntry,
   agentCtx: Context,
   confirmedProjectSkills: Set<string>,
 ): () => void {
@@ -82,6 +94,7 @@ function registerSkillCommand(
     name: skill.name,
     description: skill.description,
     input: { hint: '[args]' },
+    origin: 'claude-code',
     handler: ({ rawInput }) => {
       // Fix A: the periodic `agent/pre-step` gate toggle lags one step
       // behind an operator switching providers, so a command can remain
@@ -110,11 +123,22 @@ function registerSkillCommand(
         }
       }
       const args = rawInput.trim()
-      // Security fix: the skill body is repo-authored file content, not
-      // human-typed input, so it must not be steered under `source: { kind:
-      // 'user' }` — that kind is host-attested human authority, read by
+      // Security fix: the skill/command body is repo-authored file content,
+      // not human-typed input, so it must not be steered under `source: {
+      // kind: 'user' }` — that kind is host-attested human authority, read by
       // downstream checks such as `dsh-tool-goal`'s `hasDirectHumanInput()`.
-      // Steer it under `kind: 'plugin'` instead, as its own message.
+      // Steer it under `kind: 'plugin'` instead.
+      if (skill.kind === 'command') {
+        // A `.claude/commands/*.md` template embeds `$ARGUMENTS` inline, so
+        // the substituted text rides the SAME single plugin-sourced message
+        // as the template — there is no second, separately-sourced message
+        // the way a SKILL.md's typed arguments get one below.
+        agent.steer(createUserMessage({
+          content: [{ type: 'text', text: substituteArguments(skill.body, args) }],
+          source: { kind: 'plugin', plugin: name, form: 'instructions' },
+        }))
+        return { kind: 'success', text: `Invoked command "/${skill.name}".` }
+      }
       agent.steer(createUserMessage({
         content: [{ type: 'text', text: skill.body }],
         source: { kind: 'plugin', plugin: name, form: 'instructions' },
@@ -193,8 +217,22 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
 
   function rescan(): { added: number; removed: number } {
     if (commands === undefined) return { added: 0, removed: 0 }
-    const skills = scanSkillDirectories(agent.session.header.cwd, homedir, (message) => { agentCtx.logger.warn(message) })
-    const found = new Map(skills.map(skill => [skill.name, skill]))
+    const warn = (message: string): void => { agentCtx.logger.warn(message) }
+    const skills = scanSkillDirectories(agent.session.header.cwd, homedir, warn)
+    const commandFiles = scanCommandFiles(agent.session.header.cwd, homedir, warn)
+    const found = new Map<string, ScannedEntry>(skills.map(skill => [skill.name, skill]))
+    // A `.claude/commands/*.md` file never shadows a `SKILL.md` skill of the
+    // same name — skills are the more explicit, richer format (an actual
+    // `name:` declaration) — so a collision here is warned about and the
+    // command file is dropped, mirroring the "never silently shadow" rule
+    // enforced below against pre-existing commands.
+    for (const commandFile of commandFiles) {
+      if (found.has(commandFile.name)) {
+        agentCtx.logger.warn(`claude-skill-commands: skipping command file "${commandFile.name}" — a skill of the same name already exists`)
+        continue
+      }
+      found.set(commandFile.name, commandFile)
+    }
     const current = registered ?? new Map<string, RegisteredSkill>()
     let added = 0
     let removed = 0

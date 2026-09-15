@@ -990,3 +990,18 @@ export const IconShieldOutline16 = ({ size = 16, className }: IconProps) => (
     <path d={SHIELD_OUTLINE_PATH} stroke="currentColor" strokeWidth={SHIELD_OUTLINE_STROKE} strokeLinejoin="round" />
   </svg>
 )
+
+/**
+ * Origin badge for a `/` menu row imported from Claude Code (a `SKILL.md` or
+ * `.claude/commands/*.md` file — see `CommandOrigin` in `@deepseek-ai/dsh-commands/types`),
+ * distinguishing it from a DSH-native command row. A generic rounded-square
+ * terminal-prompt mark (a code-editor/CLI motif), not a reproduction of any
+ * third party's brand mark.
+ */
+export const IconClaudeCodeOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0.8" y="0.8" width="14.4" height="14.4" rx="3.2" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M4.6 5.6L7.4 8L4.6 10.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8.6 10.4H11.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+)

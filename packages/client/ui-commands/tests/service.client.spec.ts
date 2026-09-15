@@ -14,7 +14,7 @@ import { CommandDefinitionId } from '@deepseek-ai/dsh-commands/brand'
 import { createScope, scopeOf } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
-import { IconGoalOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconClaudeCodeOutline16, IconGoalOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientSessionContext, ConsumeTokenRequest, InputTriggerPick, InputTriggerSource, SubmitAttachment } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { CommandContribution, CommandDecoration, PopupSelectSpec, SelectOption } from '../src/client/contract.ts'
 import type { CommandDescriptor } from '../src/client/directory.ts'
@@ -285,6 +285,19 @@ describe('candidates', () => {
       ['custom', undefined, 'plugin-authored copy'],
       ['theme', undefined, 'en:theme'],
     ])
+  })
+
+  it('gives a row imported from Claude Code its origin badge icon, and leaves a plain host row without one', async () => {
+    const commands: CommandDescriptor[] = [
+      { name: 'grill-me', description: 'imported skill', origin: 'claude-code' },
+      { name: 'plain', description: 'DSH-native command' },
+    ]
+    const { source } = await bench({ commands: () => Promise.resolve({ commands }) })
+    const rows = await source.candidates(proj('s1'), req(''))
+    const grillMe = rows.find(row => row.name === 'grill-me')
+    const plain = rows.find(row => row.name === 'plain')
+    expect(grillMe?.icon).toBe(IconClaudeCodeOutline16)
+    expect(plain?.icon).toBeUndefined()
   })
 
   it('a contribution/host name collision fails loud', async () => {
