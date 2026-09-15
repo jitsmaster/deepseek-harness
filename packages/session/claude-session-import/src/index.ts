@@ -31,17 +31,18 @@ const IMPORTED_SESSION_MODEL: Readonly<Pick<LlmCallConfig, 'provider' | 'model'>
 // A Claude Code transcript is JSONL text, one line per event, and carries more
 // overhead per turn than the flattened text `renderImportedTranscript` produces
 // (role/type envelopes, plus embedded tool_use/tool_result payloads for tool
-// turns) — so this raw-file ceiling is set well above transcript.ts's
-// RENDERED_TRANSCRIPT_MAX_CHARS (200,000), at roughly 4x, to comfortably admit
-// any transcript that renders to a normal size. Reading a pathological file
-// above this cap into memory (see `readTranscriptCapped` below) would still
-// waste memory and time even though the read itself is now non-blocking, so
-// such a file is refused outright rather than read. Same convention as
+// turns) — real long-running sessions with substantial tool output routinely
+// land in the low single-digit megabytes despite rendering, via
+// transcript.ts's RENDERED_TRANSCRIPT_MAX_CHARS (200,000), to a normal-sized
+// message either way. This ceiling only exists to refuse a genuinely
+// pathological file outright rather than read it into memory (see
+// `readTranscriptCapped` below), so it is set well above ordinary real-world
+// transcript sizes rather than close to the rendered cap. Same convention as
 // discovery.ts's STDOUT_MAX_BYTES / STDERR_MAX_BYTES and
 // session-persistence-sqlite/codec.ts's
 // MAX_PACKED_DATA_BYTES: cap externally-sourced data at the point it enters the
 // process.
-export const RAW_TRANSCRIPT_MAX_BYTES = 800_000
+export const RAW_TRANSCRIPT_MAX_BYTES = 10_000_000
 
 // `lastDiscoveryById`'s entries are meant to satisfy `createFrom()` reusing a
 // discovery already performed for the very same "pick a session" user action
