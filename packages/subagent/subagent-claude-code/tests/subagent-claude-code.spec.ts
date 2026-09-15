@@ -23,6 +23,7 @@ import {
   vi,
 } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -399,7 +400,7 @@ describe('task admission and package contracts', () => {
     expect(JSON.stringify(rows)).not.toContain('tool-subagent')
   })
 
-  it('preserves text sequences and rejects empty, blank, and non-text tasks', () => {
+  it('preserves text sequences and rejects empty, blank, and non-text/image/file tasks', () => {
     expect(textTask([
       { type: 'text', text: 'one' },
       { type: 'text', text: 'two' },
@@ -409,6 +410,74 @@ describe('task admission and package contracts', () => {
       .toThrow('only text blocks')
     expect(() => textTask([{ type: 'text', text: ' \n ' }]))
       .toThrow('must not be empty')
+  })
+
+  it('converts an attached image to a readable-path handle when a resolver supplies one', () => {
+    const image: Extract<ContentBlock, { type: 'image' }> = {
+      type: 'image',
+      attachment: {
+        attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`),
+        mediaType: 'image/png',
+        bytes: 100,
+        width: 12,
+        height: 34,
+        name: 'screenshot.png',
+      },
+    }
+    const withPath = textTask([image], { resolveImagePath: () => '/tmp/screenshot.png' })
+    expect(withPath).toContain('screenshot.png')
+    expect(withPath).toContain('12x34px')
+    expect(withPath).toContain('/tmp/screenshot.png')
+    expect(withPath).toMatch(/Read/)
+
+    const withoutPath = textTask([image], { resolveImagePath: () => undefined })
+    expect(withoutPath).toContain('cannot access a readable path')
+    expect(withoutPath).not.toContain('/tmp/screenshot.png')
+
+    // No resolver at all (production callers omitting the second argument) degrades the same way.
+    expect(textTask([image])).toContain('cannot access a readable path')
+  })
+
+  it('converts an attached file to a readable-path handle when a resolver supplies one', () => {
+    const file: Extract<ContentBlock, { type: 'file' }> = {
+      type: 'file',
+      attachment: {
+        attachmentId: AttachmentId(`sha256:${'b'.repeat(64)}`),
+        name: 'notes.txt',
+        bytes: 42,
+      },
+    }
+    const withPath = textTask([file], { resolveFilePath: () => '/tmp/notes.txt' })
+    expect(withPath).toContain('notes.txt')
+    expect(withPath).toContain('/tmp/notes.txt')
+
+    const withoutPath = textTask([file], { resolveFilePath: () => undefined })
+    expect(withoutPath).toContain('cannot access a readable path')
+    expect(withoutPath).not.toContain('/tmp/notes.txt')
+  })
+
+  it('interleaves text, image, and file blocks in order into one task string', () => {
+    const result = textTask([
+      { type: 'text', text: 'Look at ' },
+      {
+        type: 'image',
+        attachment: {
+          attachmentId: AttachmentId(`sha256:${'c'.repeat(64)}`),
+          mediaType: 'image/png',
+          bytes: 10,
+          width: 1,
+          height: 1,
+        },
+      },
+      { type: 'text', text: ' and read ' },
+      {
+        type: 'file',
+        attachment: { attachmentId: AttachmentId(`sha256:${'d'.repeat(64)}`), name: 'doc.md', bytes: 5 },
+      },
+    ], { resolveImagePath: () => '/tmp/img.png', resolveFilePath: () => '/tmp/doc.md' })
+    expect(result.indexOf('Look at ')).toBeLessThan(result.indexOf('/tmp/img.png'))
+    expect(result.indexOf('/tmp/img.png')).toBeLessThan(result.indexOf(' and read '))
+    expect(result.indexOf(' and read ')).toBeLessThan(result.indexOf('/tmp/doc.md'))
   })
 
   it('registers the default descriptor, validates config, and unregisters on HMR', async () => {

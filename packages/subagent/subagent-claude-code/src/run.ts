@@ -15,7 +15,8 @@ import {
   type SDKResultMessage,
   type SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { fileHandleText, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -162,6 +163,15 @@ export interface ClaudeCodeRunSpec {
   readonly spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle
   /** Host diagnostic sink for a product failure kept outside model-visible text. */
   readonly onError?: (error: Error, stopReason: SubagentStopReason) => void
+  /**
+   * Resolve a real CLI process-visible path for an attached image, when the
+   * mounted attachment provider and current execution environment support
+   * one — see {@link textTask}. Omitted (or returning `undefined` for a
+   * given ref) degrades that image to a text-only "cannot access" notice.
+   */
+  readonly resolveImagePath?: (ref: ImageAttachmentRef) => string | undefined
+  /** Same as {@link resolveImagePath}, for an attached file. */
+  readonly resolveFilePath?: (ref: FileAttachmentRef) => string | undefined
 }
 
 function thrown(value: unknown): Error {
@@ -176,21 +186,61 @@ function isAborted(signal: AbortSignal): boolean {
 
 /* jscpd:ignore-end */
 
+/** Resolvers {@link textTask} uses to turn an attached image/file into a path the spawned CLI can read itself. */
+export interface TaskAttachmentResolvers {
+  /** Resolve a real CLI process-visible path for one attached image, or `undefined` when unavailable. */
+  resolveImagePath?: (ref: ImageAttachmentRef) => string | undefined
+  /** Resolve a real CLI process-visible path for one attached file, or `undefined` when unavailable. */
+  resolveFilePath?: (ref: FileAttachmentRef) => string | undefined
+}
+
+/**
+ * Model-facing handle for one attached image, pointing the delegate at a
+ * real path it can view with its own Read tool — the real Claude Code CLI
+ * has native host filesystem access and image-viewing support, unlike a
+ * sandboxed provider adapter, so (unlike {@link fileHandleText}'s file
+ * convention this mirrors) no base64 payload or provider-native image block
+ * is needed here.
+ */
+function imageHandleText(ref: ImageAttachmentRef, readonlyPath: string | undefined): string {
+  const identity = `Image${ref.name === undefined ? '' : ` ${JSON.stringify(ref.name)}`} (${ref.width}x${ref.height}px, ${ref.mediaType})`
+  if (readonlyPath === undefined) {
+    return `[${identity} was attached, but the current execution environment cannot access a readable path. Report that limitation if it needs to be viewed; do not claim to have viewed it.]`
+  }
+  return `[${identity}: read-only copy saved at ${JSON.stringify(readonlyPath)}. Read that path with your file tools (e.g. Read) to view it; only subagents sharing this execution environment can read it.]`
+}
+
 /**
  * Validate and preserve the one-shot task before crossing the SDK boundary.
+ * Text blocks pass through verbatim; an image or file block is converted to
+ * a handle pointing at a real path the delegated CLI can read/view itself
+ * (via `resolvers`) rather than rejected outright — any other block kind
+ * (reasoning, tool-call, tool-result) is still rejected, since a one-shot
+ * delegated task has no model turn of its own to have produced one.
  * @param prompt - task content accepted from the shared subagent service.
+ * @param resolvers - attachment path resolvers; omitted fields degrade that
+ *   attachment kind to a text-only "cannot access" notice.
  * @returns the exact text sequence as one SDK prompt.
  */
-export function textTask(prompt: readonly ContentBlock[]): string {
+export function textTask(prompt: readonly ContentBlock[], resolvers: TaskAttachmentResolvers = {}): string {
   if (prompt.length === 0) {
     throw new Error('subagent-claude-code: the one-shot task must contain only text blocks')
   }
   const texts: string[] = []
   for (const block of prompt) {
-    if (block.type !== 'text') {
-      throw new Error('subagent-claude-code: the one-shot task must contain only text blocks')
+    switch (block.type) {
+      case 'text':
+        texts.push(block.text)
+        break
+      case 'image':
+        texts.push(imageHandleText(block.attachment, resolvers.resolveImagePath?.(block.attachment)))
+        break
+      case 'file':
+        texts.push(fileHandleText(block.attachment, resolvers.resolveFilePath?.(block.attachment)))
+        break
+      default:
+        throw new Error('subagent-claude-code: the one-shot task must contain only text blocks')
     }
-    texts.push(block.text)
   }
   if (texts.every(text => text.trim().length === 0)) {
     throw new Error('subagent-claude-code: the one-shot task must not be empty')
@@ -386,7 +436,10 @@ export async function startClaudeCodeRun(
   request: SubagentStartRequest,
   spec: ClaudeCodeRunSpec,
 ): Promise<SubagentRun> {
-  const prompt = textTask(request.prompt)
+  const prompt = textTask(request.prompt, {
+    resolveImagePath: spec.resolveImagePath,
+    resolveFilePath: spec.resolveFilePath,
+  })
   if (request.signal.aborted) {
     throw new Error('subagent-claude-code: request was aborted before SDK startup')
   }

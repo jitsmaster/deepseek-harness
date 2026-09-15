@@ -8,6 +8,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-fs'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import {
   assertPositiveFinite,
@@ -29,6 +31,10 @@ import {
 
 export const name = 'subagent-claude-code'
 export const inject = ['subagents', 'subprocess']
+// 'attachments' and 'fs' are read defensively via ctx.get (not listed above)
+// rather than required: a deployment without either mounted still gets a
+// working provider, just one where an image/file attachment degrades to a
+// text-only "cannot access" notice instead of a real readable path.
 
 const DEFAULT_PROVIDER_NAME = 'claude-code'
 
@@ -119,6 +125,14 @@ class ClaudeCodeProvider implements SubagentProvider {
           `subagent-claude-code "${this.name}": child run failed (${stopReason}): %o`,
           error,
         )
+      },
+      resolveImagePath: (ref) => {
+        const hostPath = this.ctx.get('attachments')?.imageHostPath(ref)
+        return hostPath === undefined ? undefined : this.ctx.get('fs')?.processPathFromHostPath(hostPath)
+      },
+      resolveFilePath: (ref) => {
+        const hostPath = this.ctx.get('attachments')?.fileHostPath(ref)
+        return hostPath === undefined ? undefined : this.ctx.get('fs')?.processPathFromHostPath(hostPath)
       },
     }
     return startClaudeCodeRun(request, spec)
