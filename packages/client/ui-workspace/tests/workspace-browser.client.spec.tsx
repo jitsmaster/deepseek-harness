@@ -20,6 +20,8 @@ import { zh } from '../src/client/locales.ts'
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
+const useActiveSessionStats: GlobalStandardProps['useActiveSessionStats'] =
+  selector => selector({ sessionId: undefined, stats: undefined, usage: undefined })
 
 afterEach(cleanup)
 const scrollIntoView = vi.fn()
@@ -82,6 +84,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     useSessionPendingInteraction: hook(noPendingInteraction),
     usePanelInfo, useResource,
     useWorkspaces: hook(workspaceState([])),
+    useActiveSessionStats,
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
     startSession: vi.fn(),

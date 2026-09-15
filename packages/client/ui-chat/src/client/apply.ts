@@ -24,8 +24,10 @@ import type {
 } from './contract/slots.ts'
 import type { ChatSnapshot } from './contract/snapshot.ts'
 import { EMPTY_CHAT_SNAPSHOT } from './contract/snapshot.ts'
+import { createActiveSessionStatsSource } from './chat/active-session-stats.ts'
 import { ApprovalCommand } from './chat/ApprovalCommand.tsx'
 import { ChatView } from './chat/ChatView.tsx'
+import { PersistentStatsBar } from './chat/PersistentStatsBar.tsx'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
@@ -55,6 +57,12 @@ export const inject = [
  * @param ctx - Client root context.
  */
 export function apply(ctx: Context): void {
+  const sessions = ctx.sessions
+  // Root-scoped mirror of the current session's whole-log stats/usage, read
+  // by PersistentStatsBar (frame-wide, no session-scoped slot needed).
+  const activeSessionStats = createActiveSessionStatsSource(sessions, sessions.list)
+  ctx.slots.provideRoot({ hooks: { activeSessionStats } })
+
   const chatSources = new WeakMap<SessionBinding, ObservableSnapshot<ChatSnapshot>>()
   const chatSource = (binding: SessionBinding): ObservableSnapshot<ChatSnapshot> => {
     let source = chatSources.get(binding)
@@ -175,5 +183,10 @@ export function apply(ctx: Context): void {
 
   ctx.slots.inject('conversation.approval.detail', () =>
     ctx.slots.register({ name: 'conversation.approval.detail' }, ApprovalCommand))
+
+  ctx.slots.inject('shell.overlay', () =>
+    ctx.slots.register({
+      name: 'shell.overlay', id: 'persistent-stats', order: 0, locale: NS,
+    }, PersistentStatsBar))
 
 }

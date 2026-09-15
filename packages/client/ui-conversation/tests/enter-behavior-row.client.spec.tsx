@@ -14,6 +14,8 @@ import { en } from '../src/client/locales.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
+const useActiveSessionStats: GlobalStandardProps['useActiveSessionStats'] =
+  selector => selector({ sessionId: undefined, stats: undefined, usage: undefined })
 
 afterEach(() => {
   cleanup()
@@ -45,6 +47,7 @@ function mount() {
     useSessionPendingInteraction: noPendingInteraction(),
     useResource,
     useWorkspaces: emptyWorkspaces(),
+    useActiveSessionStats,
     useBusyEnter: bindSnapshotSelector(policy.busyEnter),
     setBusyEnter,
     t: makeTranslate(en),

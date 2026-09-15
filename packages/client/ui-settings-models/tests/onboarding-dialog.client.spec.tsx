@@ -150,6 +150,7 @@ function harness(options: {
     useSessionPendingInteraction,
     usePanelInfo, useResource,
     useWorkspaces: unusedHook,
+    useActiveSessionStats: unusedHook,
     controller,
     useModels: bindSnapshotSelector(controller.store),
     operations,

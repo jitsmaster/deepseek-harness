@@ -19,6 +19,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ActiveSessionStatsSnapshot } from '../src/client/chat/active-session-stats.ts'
 import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { KeyedSnapshotSelectorHook, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -210,6 +211,13 @@ function emptyWorkspaces() {
   return bindSnapshotSelector(store)
 }
 
+/** Empty active-session-stats hook for the global standard-kit seat. */
+function emptyActiveSessionStats() {
+  const store = createSnapshotStore<ActiveSessionStatsSnapshot>(
+    { sessionId: undefined, stats: undefined, usage: undefined })
+  return bindSnapshotSelector(store)
+}
+
 function bindKeyedSnapshotSelector<Value>(
   resolve: (key: string) => ObservableSnapshot<Value>,
 ): KeyedSnapshotSelectorHook<Value> {
@@ -380,6 +388,7 @@ function makeHarness(
       createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()),
     ),
     useWorkspaces: emptyWorkspaces(),
+    useActiveSessionStats: emptyActiveSessionStats(),
     useProjection: () => outlineValue,
     useInput: (() => { throw new Error('unused') }),
     inputActions: {

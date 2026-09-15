@@ -6,6 +6,7 @@ import {
 } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -61,16 +62,18 @@ async function bench() {
     'main': { kind: 'keyed', scope: 'root' },
     'conversation.approval.detail': { kind: 'single', scope: 'session' },
     'settings.general.item': { kind: 'list', scope: 'root' },
+    'shell.overlay': { kind: 'list', scope: 'root' },
   }, (_props: { renderSlot?: unknown }) => null)
   const conversation = await runtime.mount({
     inject: [...injectConversation],
     apply: applyConversation,
   })
   const provide = vi.spyOn(runtime.ctx.uiSession, 'provide')
+  const provideRoot = vi.spyOn(runtime.ctx.slots, 'provideRoot')
   const chat = await runtime.mount({ inject: [...injectChat], apply: applyChat })
   const sourceDescriptor = provide.mock.calls[0]?.[0]
   if (sourceDescriptor === undefined) throw new Error('ui-chat did not provide its standard source')
-  return { runtime, conversation, chat, chatSettings, sourceDescriptor }
+  return { runtime, conversation, chat, chatSettings, sourceDescriptor, provideRoot }
 }
 
 function storeOf(runtime: SlotTestRuntime, key: 'conversation.session' | 'conversation.session.header' | 'conversation.view') {
@@ -89,6 +92,29 @@ describe('Chat apply wiring', () => {
       .toEqual(['stats'])
     expect(b.runtime.slots.entries('settings.general.item').map(row => row.options.id))
       .toEqual(['transcript-view', 'composer-enter'])
+    await b.runtime.dispose()
+  })
+
+  // Asserts apply.ts's wiring of the root `activeSessionStats` hook and the
+  // persistent status bar registration, without touching the existing
+  // composer.dock/StatsPills registration above. `active-session-stats.ts` /
+  // `PersistentStatsBar.tsx` have their own dedicated specs.
+  it('provides the root activeSessionStats hook for the persistent status bar', async () => {
+    const b = await bench()
+    const contribution = b.provideRoot.mock.calls
+      .map(call => call[0])
+      .find((call): call is { hooks: Record<string, HostObservable<unknown>> } =>
+        typeof call === 'object' && call !== null && 'hooks' in call
+        && 'activeSessionStats' in (call as { hooks?: Record<string, HostObservable<unknown>> }).hooks!)
+    expect(contribution).toBeDefined()
+    expect(contribution?.hooks.activeSessionStats).toBeDefined()
+    await b.runtime.dispose()
+  })
+
+  it('registers the persistent status bar on shell.overlay', async () => {
+    const b = await bench()
+    expect(b.runtime.slots.entries('shell.overlay').map(row => row.options.id))
+      .toContain('persistent-stats')
     await b.runtime.dispose()
   })
 

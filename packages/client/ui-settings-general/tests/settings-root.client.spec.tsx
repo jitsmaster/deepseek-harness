@@ -81,6 +81,7 @@ function mount({
     useSessionPendingInteraction,
     usePanelInfo, useResource,
     useWorkspaces: unusedHook,
+    useActiveSessionStats: unusedHook,
     wide,
     reconnect,
     t: makeTranslate(dictionary),

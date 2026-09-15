@@ -14,6 +14,8 @@ import type { ThemePreference } from '../src/client/index.ts'
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
+const useActiveSessionStats: GlobalStandardProps['useActiveSessionStats'] =
+  selector => selector({ sessionId: undefined, stats: undefined, usage: undefined })
 
 afterEach(cleanup)
 
@@ -50,6 +52,7 @@ function mount(preference: ThemePreference = 'system') {
     useSessionPendingInteraction,
     usePanelInfo, useResource,
     useWorkspaces: emptyWorkspaces(),
+    useActiveSessionStats,
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
     t: (key: string) => COPY[key] ?? key,

@@ -63,6 +63,7 @@ const runtime = {
   useSessionPendingInteraction,
   usePanelInfo, useResource,
   useWorkspaces: (() => { throw new Error('unused') }) as never,
+  useActiveSessionStats: (() => { throw new Error('unused') }) as never,
 }
 
 function mount(controller: PermissionPresetSettingsController) {

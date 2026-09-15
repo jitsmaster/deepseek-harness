@@ -34,6 +34,8 @@ import { zh } from '../src/client/locales.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
+const useActiveSessionStats: GlobalStandardProps['useActiveSessionStats'] =
+  selector => selector({ sessionId: undefined, stats: undefined, usage: undefined })
 
 afterEach(cleanup)
 
@@ -178,6 +180,7 @@ function bench(over?: BenchOptions) {
     useWorkspaces: bindSnapshotSelector(createSnapshotStore({
       items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     })),
+    useActiveSessionStats,
     useProjection: ((key: string, selector?: (v: unknown) => unknown) =>
       (selector ?? (v => v))(key === 'permissions'
         ? over?.permissions

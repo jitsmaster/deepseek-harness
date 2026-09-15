@@ -8,6 +8,7 @@ import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { TranscriptViewRow, type TranscriptViewRowProps } from '../src/client/settings/TranscriptViewRow.tsx'
+import type { ActiveSessionStatsSnapshot } from '../src/client/chat/active-session-stats.ts'
 import { en, zh } from '../src/client/locale.ts'
 
 afterEach(cleanup)
@@ -28,6 +29,11 @@ function noPendingInteraction() {
   return bindSnapshotSelector(createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()))
 }
 
+function emptyActiveSessionStats() {
+  return bindSnapshotSelector(createSnapshotStore<ActiveSessionStatsSnapshot>(
+    { sessionId: undefined, stats: undefined, usage: undefined }))
+}
+
 // The resource hook the resources plugin merges into GlobalStandardProps; this row reads no address.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
 
@@ -40,6 +46,7 @@ function mount(mode: 'normal' | 'compact' = 'compact', dictionary: typeof en | t
     useSessionPendingInteraction: noPendingInteraction(),
     useWorkspaces: emptyWorkspaces(),
     useResource,
+    useActiveSessionStats: emptyActiveSessionStats(),
     useTranscriptView: bindSnapshotSelector(source),
     setTranscriptView,
     t: makeTranslate(dictionary),

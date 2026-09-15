@@ -56,6 +56,8 @@ import { t as tTrajectory, tZh } from './locale.client.ts'
 // Every session-scope fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
+const useActiveSessionStats: GlobalStandardProps['useActiveSessionStats'] =
+  selector => selector({ sessionId: undefined, stats: undefined, usage: undefined })
 
 function TrajectoryTimeline(
   props: Omit<ComponentProps<typeof LocalizedTrajectoryTimeline>, 't'>,
@@ -230,6 +232,7 @@ function standaloneProps(
       createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()),
     ),
     useWorkspaces: emptyWorkspaces(),
+    useActiveSessionStats,
     useConversation: bindSnapshotSelector(createSnapshotStore(conversationSnapshot(trajectory))),
     useInput: bindSnapshotSelector(input),
     inputActions,
@@ -355,6 +358,7 @@ function mount(fixture: Awaited<ReturnType<typeof bench>>) {
     usePanelInfo, useResource,
     useSessionPendingInteraction,
     useWorkspaces,
+    useActiveSessionStats,
     useProjection,
     useInput,
     inputActions,

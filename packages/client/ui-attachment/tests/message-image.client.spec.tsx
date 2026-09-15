@@ -269,6 +269,9 @@ describe('ImageGallery', () => {
     const useWorkspaces: MessageImagesProps['useWorkspaces'] = () => {
       throw new Error('MessageImages does not read the workspace list snapshot')
     }
+    const useActiveSessionStats: MessageImagesProps['useActiveSessionStats'] = () => {
+      throw new Error('MessageImages does not read the active-session-stats snapshot')
+    }
     const props: MessageImagesProps = {
       sessionId: 'message-images-test' as MessageImagesProps['sessionId'],
       useSession,
@@ -276,6 +279,7 @@ describe('ImageGallery', () => {
       usePanelInfo, useResource,
       useSessionPendingInteraction,
       useWorkspaces,
+      useActiveSessionStats,
       useProjection: () => undefined,
       useConversation,
       useChat,

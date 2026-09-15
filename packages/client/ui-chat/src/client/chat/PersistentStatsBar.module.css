@@ -1,0 +1,37 @@
+/* Frame-wide status bar pinned to the viewport's bottom-right corner via
+   shell.overlay (see AppFrame's overlay layer: click-through by default,
+   pointer-events opt back in per occupant). Chrome (pill background/label
+   tone) reused from StatsPills.module.css/.pill and .label for visual
+   consistency with the composer-docked row this bar coexists with. */
+
+.root {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  /* Local ordering only, within shell.overlay's occupants — the overlay
+     layer already establishes its own stacking context above the app. */
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+}
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 1px 8px;
+  border-radius: 24px;
+  background: var(--dsw-specific-menu);
+  box-shadow: var(--dsw-elevation-prominent);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sep {
+  color: var(--dsw-alias-separator-primary);
+  margin: 0 6px;
+}

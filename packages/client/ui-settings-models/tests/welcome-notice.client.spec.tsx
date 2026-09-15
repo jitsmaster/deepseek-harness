@@ -96,6 +96,7 @@ function mount(
     useSessionPendingInteraction,
     usePanelInfo, useResource,
     useWorkspaces: unusedHook,
+    useActiveSessionStats: unusedHook,
     controller,
     useWelcome: bindSnapshotSelector(controller.store),
     t: key => zh[key],

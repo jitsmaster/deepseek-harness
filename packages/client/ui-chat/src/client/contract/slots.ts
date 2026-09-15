@@ -20,6 +20,7 @@ import type {
 } from './snapshot.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
 import type { TranscriptViewMode } from '../../chat-settings.ts'
+import type { ActiveSessionStatsSnapshot } from '../chat/active-session-stats.ts'
 
 /** Selector hook over the current Conversation binding's Chat target. */
 export type UseChat = SnapshotSelectorHook<ChatSnapshot>
@@ -170,6 +171,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SessionStandardProps {
     /** Selector hook over the current Conversation binding's Chat target. */
     useChat: UseChat
+  }
+
+  interface GlobalStandardProps {
+    /** Selector hook over the current session's whole-log stats/usage figures. */
+    useActiveSessionStats: SnapshotSelectorHook<ActiveSessionStatsSnapshot>
   }
 
   interface LocaleNamespaceMap {

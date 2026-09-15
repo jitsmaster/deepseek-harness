@@ -35,6 +35,8 @@ import type { ViewTab } from '../src/client/contract/views.ts'
 
 // Every session-scope fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
+const useActiveSessionStats: GlobalStandardProps['useActiveSessionStats'] =
+  selector => selector({ sessionId: undefined, stats: undefined, usage: undefined })
 
 // jsdom implements no Range geometry (Lexical's scroll-into-view measures the
 // caret with one once the surface is genuinely contenteditable).
@@ -203,6 +205,7 @@ function mount(
           useResource={useResource}
           useSessionPendingInteraction={useSessionPendingInteraction}
           useWorkspaces={props.useWorkspaces}
+          useActiveSessionStats={props.useActiveSessionStats}
           useProjection={(() => undefined)}
           useInput={useInput}
           inputActions={inputActions}
@@ -230,6 +233,7 @@ function mount(
           useResource={useResource}
           useSessionPendingInteraction={useSessionPendingInteraction}
           useWorkspaces={props.useWorkspaces}
+          useActiveSessionStats={props.useActiveSessionStats}
           useProjection={(() => undefined)}
           useInput={useInput}
           inputActions={inputActions}
@@ -256,6 +260,7 @@ function mount(
           usePanelInfo={props.usePanelInfo}
           useSessionPendingInteraction={useSessionPendingInteraction}
           useWorkspaces={props.useWorkspaces}
+          useActiveSessionStats={props.useActiveSessionStats}
           useProjection={(() => undefined)}
           useInput={useInput}
           inputActions={inputActions}
@@ -307,6 +312,7 @@ function mount(
     useSessionPendingInteraction,
     useResource,
     useWorkspaces: bindSnapshotSelector(workspaces),
+    useActiveSessionStats,
     useProjection: (() => undefined),
     useComposerBlock: select => select(options.composerBlock),
     useInput,

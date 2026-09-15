@@ -86,6 +86,7 @@ function kitFor(snapshot: SessionSnapshot, injected: Partial<QueueDockInjected> 
       createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()),
     ),
     useWorkspaces: (() => { throw new Error('unused') }) as never,
+    useActiveSessionStats: (() => { throw new Error('unused') }) as never,
     useProjection: (() => undefined) as never,
     useConversation: bindSnapshotSelector(createSnapshotStore(conversationSnapshot())),
     useChat: (() => { throw new Error('unused') }) as QueueDockProps['useChat'],
