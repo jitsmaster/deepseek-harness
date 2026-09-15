@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/remote-events'
 // entry, since neither needs the browser-safety split a `/types` subpath exists for.
 import type {} from '@deepseek-ai/dsh-api-settings-controller'
 import type {} from '@deepseek-ai/dsh-authorization'
+import type {} from '@deepseek-ai/dsh-permission-presets/types'
 import type { TypertForwardableEventEntry } from '@deepseek-ai/dsh-typert-protocol'
 
 /**
@@ -41,6 +42,7 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'cordis/inspect-query', mode: 'emit' },
   { event: 'cordis/inspect-query-resolved', mode: 'emit' },
   { event: 'llm/adapters-updated', mode: 'emit' },
+  { event: 'permission-presets/catalog-changed', mode: 'emit' },
   { event: 'settings/document-updated', mode: 'emit' },
   { event: 'user-questions/request', mode: 'waterfall' },
 ] as const satisfies readonly TypertForwardableEventEntry[]

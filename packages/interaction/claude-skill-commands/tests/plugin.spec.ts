@@ -71,7 +71,7 @@ describe('claude-skill-commands per-agent registration', () => {
   it('registers a scanned skill as a command when the agent is on anthropic', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
     expect(ctx.commands.list(agent).some(c => c.name === 'valid-skill')).toBe(true)
   })
@@ -79,7 +79,7 @@ describe('claude-skill-commands per-agent registration', () => {
   it('tags a scanned skill\'s descriptor with origin "claude-code" so UI/dispatch can distinguish it from a native DSH command', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
     const descriptor = ctx.commands.list(agent).find(c => c.name === 'valid-skill')
     expect(descriptor?.origin).toBe('claude-code')
@@ -100,7 +100,7 @@ describe('claude-skill-commands per-agent registration', () => {
       )
       const ctx = await bootHost(fixturesHome())
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       const descriptor = ctx.commands.list(agent).find(c => c.name === 'grill-me')
@@ -130,7 +130,7 @@ describe('claude-skill-commands per-agent registration', () => {
   it('does not register skill commands when the agent is on a non-anthropic provider', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'deepseek-official')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
     expect(ctx.commands.list(agent).some(c => c.name === 'valid-skill')).toBe(false)
   })
@@ -138,7 +138,7 @@ describe('claude-skill-commands per-agent registration', () => {
   it('removes skill commands once the agent switches away from anthropic', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
     expect(ctx.commands.list(agent).some(c => c.name === 'valid-skill')).toBe(true)
     ;(agent.session as { requestHeader: () => unknown }).requestHeader = () => ({ config: { provider: 'deepseek-official', model: 'x' } })
@@ -149,7 +149,7 @@ describe('claude-skill-commands per-agent registration', () => {
   it('invoking the registered command with arguments steers the skill body and the typed arguments as two separately-sourced messages', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     // Fix C: a project-tier skill's first invocation is a confirmation only
@@ -179,7 +179,7 @@ describe('claude-skill-commands per-agent registration', () => {
   it('invoking the registered command with no arguments steers only the skill body, as a single plugin-sourced message', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     // Fix C: a project-tier skill's first invocation is a confirmation only
@@ -203,7 +203,7 @@ describe('claude-skill-commands per-agent registration', () => {
     try {
       const ctx = await bootHost(fixturesHome())
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       // Nothing registered yet — project dir started empty.
@@ -235,7 +235,7 @@ describe('claude-skill-commands per-agent registration', () => {
     try {
       const ctx = await bootHost(home)
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       // The gate opened even though the initial scan found nothing, so
@@ -261,7 +261,7 @@ describe('claude-skill-commands per-agent registration', () => {
     try {
       const ctx = await bootHost(home)
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       mockReaddirSync.mockClear()
 
       // First tick: the gate transitions closed -> open, so exactly one
@@ -299,7 +299,7 @@ describe('claude-skill-commands per-agent registration', () => {
       writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: compact\ndescription: Shadowing skill\n---\n\nDo not shadow me.\n')
 
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       const execution = await ctx.commands.execute(agent, '/compact', [], new AbortController().signal)
@@ -322,7 +322,7 @@ describe('claude-skill-commands per-agent registration', () => {
       writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: refresh-skills\ndescription: Impersonating skill\n---\n\nDo not collide.\n')
 
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       const execution = await ctx.commands.execute(agent, '/refresh-skills', [], new AbortController().signal)
@@ -338,7 +338,7 @@ describe('claude-skill-commands per-agent registration', () => {
     const ctx = await bootHost(fixturesHome())
     const injectSpy = vi.spyOn(RegistryService.prototype, 'inject')
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
 
     const setProvider = (provider: string): void => {
       ;(agent.session as { requestHeader: () => unknown }).requestHeader = () => ({ config: { provider, model: 'x' } })
@@ -374,7 +374,7 @@ describe('claude-skill-commands — model-gate re-check at invocation (Fix A)', 
   it('refuses to steer and returns an error when the provider has drifted away from anthropic since the command was registered, even though the gate has not re-ticked to notice yet', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
     expect(ctx.commands.list(agent).some(c => c.name === 'valid-skill')).toBe(true)
 
@@ -393,7 +393,7 @@ describe('claude-skill-commands — model-gate re-check at invocation (Fix A)', 
   it('still steers normally when the agent is genuinely still on anthropic at invocation time (regression guard)', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     // `user-only` is a user-tier skill (not subject to Fix C's project-skill
@@ -418,7 +418,7 @@ describe('claude-skill-commands — project-skill first-use confirmation (Fix C)
   it('invoking a project-tier skill for the first time shows its full body for confirmation, and does not steer', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     const execution = await ctx.commands.execute(agent, '/valid-skill', [], new AbortController().signal)
@@ -432,7 +432,7 @@ describe('claude-skill-commands — project-skill first-use confirmation (Fix C)
   it('invoking that same project-tier skill a second time steers the skill body, without showing the confirmation again', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     await ctx.commands.execute(agent, '/valid-skill', [], new AbortController().signal) // first: confirmation only, no steer
@@ -450,7 +450,7 @@ describe('claude-skill-commands — project-skill first-use confirmation (Fix C)
   it('invoking a user-tier skill steers immediately on the first invocation, with no confirmation shown (regression guard)', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     const execution = await ctx.commands.execute(agent, '/user-only', [], new AbortController().signal)
@@ -467,7 +467,7 @@ describe('claude-skill-commands — project-skill first-use confirmation (Fix C)
   it('keeps a project skill\'s confirmed-and-invoked state across /refresh-skills, so a second invocation after a rescan still steers', async () => {
     const ctx = await bootHost(fixturesHome())
     const agent = agentWithProvider(ctx, fixturesProject(), 'anthropic')
-    ctx.emit('agent/created', { agent })
+    ctx.emit('agent/created', { agent, source: 'startup' })
     await tickPreStep(ctx, agent)
 
     await ctx.commands.execute(agent, '/valid-skill', [], new AbortController().signal) // confirmation only
@@ -501,7 +501,7 @@ describe('claude-skill-commands — confirmedProjectSkills keyed by identity, no
 
       mkdirSync(skillDir, { recursive: true })
       writeFileSync(join(skillDir, 'SKILL.md'), `---\nname: reconfirm-skill\ndescription: Reconfirm test skill\n---\n\n${bodyA}\n`)
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       // First invocation of "reconfirm-skill": confirmation only, no steer —
@@ -547,7 +547,7 @@ describe('claude-skill-commands — confirmedProjectSkills keyed by identity, no
       // User-tier skill: steers immediately on first invocation, no Fix C
       // confirmation gate in the way of observing the steered body directly.
       const agent = agentWithProvider(ctx, project, 'anthropic')
-      ctx.emit('agent/created', { agent })
+      ctx.emit('agent/created', { agent, source: 'startup' })
       await tickPreStep(ctx, agent)
 
       const before = await ctx.commands.execute(agent, '/edit-skill', [], new AbortController().signal)
