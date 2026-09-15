@@ -437,8 +437,8 @@ export async function startClaudeCodeRun(
   spec: ClaudeCodeRunSpec,
 ): Promise<SubagentRun> {
   const prompt = textTask(request.prompt, {
-    resolveImagePath: spec.resolveImagePath,
-    resolveFilePath: spec.resolveFilePath,
+    ...spec.resolveImagePath === undefined ? {} : { resolveImagePath: spec.resolveImagePath },
+    ...spec.resolveFilePath === undefined ? {} : { resolveFilePath: spec.resolveFilePath },
   })
   if (request.signal.aborted) {
     throw new Error('subagent-claude-code: request was aborted before SDK startup')

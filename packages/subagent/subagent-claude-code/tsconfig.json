@@ -16,6 +16,12 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../fs/fs"
+    },
+    {
       "path": "../../llm/llm"
     },
     {
