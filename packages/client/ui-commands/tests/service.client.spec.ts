@@ -2,7 +2,7 @@
  * CommandUiRuntime tests on a real cordis Context with fake slash/connection
  * faces and real session scopes (createScope): session-keyed candidate
  * synthesis (host catalog by sessionId + contributions by availability,
- * collision fail-loud), the dispatch decision table cell by cell, matchSpace
+ * collision skip-and-warn), the dispatch decision table cell by cell, matchSpace
  * hot-key policy, matchEnter strong-wait / reject, the sessionId execute
  * payload, the scoped consume-token dispatch, per-session popupFor
  * lifecycle, and the directory invalidation event subscriptions.
@@ -311,10 +311,26 @@ describe('candidates', () => {
     expect(plain?.icon).toBeUndefined()
   })
 
-  it('a contribution/host name collision fails loud', async () => {
+  it('a contribution/host name collision skips just that row and logs a warning, leaving other rows intact', async () => {
+    const { ctx, command, source } = await bench()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => undefined)
+    command.register(themeContribution({ name: 'plan' }))
+    const rows = await source.candidates(proj('s1'), req(''))
+    // The colliding contribution never gets a row of its own; the host
+    // command it collides with, and every other unrelated row (host and
+    // contribution alike), still render normally in the same call.
+    expect(rows.filter(row => row.name === 'plan')).toHaveLength(1)
+    expect(rows.map(row => row.name)).toContain('goal')
+    expect(warn).toHaveBeenCalledWith('ui-commands: skipping contribution /plan — collides with a host command')
+  })
+
+  it('a non-colliding contribution renders alongside host rows unaffected by an unrelated collision', async () => {
     const { command, source } = await bench()
     command.register(themeContribution({ name: 'plan' }))
-    await expect(source.candidates(proj('s1'), req(''))).rejects.toThrow('collides with a host command')
+    command.register(themeContribution({ name: 'other' }))
+    const rows = await source.candidates(proj('s1'), req(''))
+    expect(rows.map(row => row.name)).toContain('other')
+    expect(rows.map(row => row.name)).toContain('goal')
   })
 
   describe('menu presentation (design doc for #3567)', () => {

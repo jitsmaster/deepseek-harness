@@ -6,9 +6,10 @@
  * localized face (presentation.ts), then position-filters; an empty query
  * lists the Add and Commands sections in usage order, a typed query ranks
  * every row by the `/` menu's shared name-and-label ranking (ui-primitives
- * `rankByName`). A host/contribution name collision fails loud. Every
- * execute addresses the session's agent by sessionId — sessions are always
- * agent-backed.
+ * `rankByName`). A host/contribution name collision skips just the
+ * colliding contribution's row (logged as a warning) rather than failing the
+ * whole candidate list. Every execute addresses the session's agent by
+ * sessionId — sessions are always agent-backed.
  */
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
@@ -225,8 +226,17 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     }
     for (const contribution of this.live.contributions.values()) {
       if (!contribution.available(session)) continue
+      // Defense-in-depth: a host-catalog name collision (e.g. a Claude
+      // Code-imported command reusing a name a client contribution already
+      // owns) used to throw here, which discarded the ENTIRE candidate list
+      // for this call — dropping every other host row and contribution row
+      // along with it, not just the offending one. Skip and warn instead, so
+      // one bad row never blanks the whole '/' menu; mirrors the
+      // collision-skip pattern in `claude-skill-commands/src/index.ts`'s
+      // `performRescan()`.
       if (seen.has(contribution.name)) {
-        throw new Error(`ui-commands: contribution /${contribution.name} collides with a host command`)
+        this.ctx.logger.warn(`ui-commands: skipping contribution /${contribution.name} — collides with a host command`)
+        continue
       }
       rows.push({
         name: contribution.name,
