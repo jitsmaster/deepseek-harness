@@ -46,6 +46,19 @@ export type {
 export const SENSITIVE_ENV_PATTERN = /KEY|PASSWORD|SECRET|TOKEN/i
 
 /**
+ * `GIT_CONFIG_KEY_<n>` (git's env-based config mechanism, paired with
+ * `GIT_CONFIG_COUNT`/`GIT_CONFIG_VALUE_<n>`) holds a config KEY NAME such as
+ * `credential.interactive`, never a secret — but its name matches
+ * {@link SENSITIVE_ENV_PATTERN} on the substring "KEY". Scrubbing it alone
+ * left `GIT_CONFIG_COUNT`/`GIT_CONFIG_VALUE_<n>` behind (neither matches the
+ * pattern), so every child git invocation saw a `GIT_CONFIG_COUNT` promising
+ * a key it then failed to find ("missing config key GIT_CONFIG_KEY_0").
+ * Exempting the name pattern, not the whole family, keeps `GIT_CONFIG_VALUE_<n>`
+ * subject to the ordinary scrub if a value itself ever looks credential-shaped.
+ */
+const GIT_CONFIG_KEY_NAME_PATTERN = /^GIT_CONFIG_KEY_\d+$/i
+
+/**
  * The ambient parent environment minus credential-shaped names and minus all
  * `DSH_*` names — the canonical base every harness child starts from. `PATH`,
  * `HOME`, locale, and proxy variables survive, so child CLIs run normally;
@@ -65,7 +78,8 @@ export const SENSITIVE_ENV_PATTERN = /KEY|PASSWORD|SECRET|TOKEN/i
 export function scrubbedParentEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !SENSITIVE_ENV_PATTERN.test(key) && !key.toUpperCase().startsWith(DSH_ENV_PREFIX)) env[key] = value
+    const sensitive = SENSITIVE_ENV_PATTERN.test(key) && !GIT_CONFIG_KEY_NAME_PATTERN.test(key)
+    if (value !== undefined && !sensitive && !key.toUpperCase().startsWith(DSH_ENV_PREFIX)) env[key] = value
   }
   // A child Node ignores the inherited proxy variables unless the flag this adds is set, so an MCP
   // stdio server or subagent CLI would connect directly while its parent proxies. The same overlay

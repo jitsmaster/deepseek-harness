@@ -99,4 +99,23 @@ describe('SubprocessRuntime seam', () => {
       delete process.env.SCRUB_PROBE_PLAIN
     }
   })
+
+  it('scrubbedParentEnv keeps GIT_CONFIG_KEY_<n> (a config key name, not a secret) while still dropping an ordinary *_KEY credential', () => {
+    process.env.GIT_CONFIG_COUNT = '1'
+    process.env.GIT_CONFIG_KEY_0 = 'credential.interactive'
+    process.env.GIT_CONFIG_VALUE_0 = 'false'
+    process.env.SCRUB_PROBE_API_KEY = 'secret'
+    try {
+      const env = scrubbedParentEnv()
+      expect(env.GIT_CONFIG_COUNT).toBe('1')
+      expect(env.GIT_CONFIG_KEY_0).toBe('credential.interactive')
+      expect(env.GIT_CONFIG_VALUE_0).toBe('false')
+      expect(env.SCRUB_PROBE_API_KEY).toBeUndefined()
+    } finally {
+      delete process.env.GIT_CONFIG_COUNT
+      delete process.env.GIT_CONFIG_KEY_0
+      delete process.env.GIT_CONFIG_VALUE_0
+      delete process.env.SCRUB_PROBE_API_KEY
+    }
+  })
 })
