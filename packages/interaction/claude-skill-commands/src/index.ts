@@ -1,17 +1,36 @@
-import { createHash } from 'node:crypto'
 import { homedir as osHomedir } from 'node:os'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-// Type-only: brings the `Context.commands` and `Context.agentDefaultModel`
-// declaration merges into scope.
-import type { CommandRuntime } from '@deepseek-ai/dsh-commands'
+import type { SlashCommand } from '@anthropic-ai/claude-agent-sdk'
+// Real import: `COMMAND_NAME` is used at runtime below to filter out
+// SDK-reported command names that do not conform to DSH's own command-name
+// grammar before ever handing them to `commands.register()` (which would
+// otherwise throw and fail the whole rescan). This also brings the
+// `Context.commands` and `Context.agentDefaultModel` declaration merges into
+// scope, same as the prior type-only import.
+import { COMMAND_NAME, type CommandRuntime } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
+// Type-only: brings the `Context.subprocess` declaration merge into scope
+// so the shared managed-process service is reachable off any per-agent
+// scoped context below, instead of this package spawning its own child
+// processes through a bespoke local helper.
+import type {} from '@deepseek-ai/dsh-subprocess'
+import {
+  DEFAULT_CLAUDE_CODE_PERMISSION_MODE,
+  DEFAULT_DISPOSE_GRACE_MS,
+  type ClaudeCodeRunSpec,
+} from '@deepseek-ai/dsh-subagent-claude-code/src/run.ts'
+import {
+  listClaudeCodeCommands,
+  runClaudeCodeSlashCommand,
+} from '@deepseek-ai/dsh-subagent-claude-code/src/list-commands.ts'
 import { currentProviderOf } from './model-gate.ts'
-import { scanCommandFiles, scanSkillDirectories } from './skill-scanner.ts'
-import type { ScannedEntry } from './skill-scanner.ts'
 
 export const name = 'claude-skill-commands'
+// Require the shared managed-process service so every listing/invocation
+// spawn goes through its SIGTERM->SIGKILL escalation ladder, disposeGraceMs
+// handling, and whole-process-tree termination — see `buildRunSpec` below.
+export const inject = ['subprocess']
 
 /** Deployment-owned override of the home directory skills are read from. */
 export interface ClaudeSkillCommandsConfig {
@@ -22,188 +41,136 @@ export interface ClaudeSkillCommandsConfig {
 /** Which provider must be current for these commands to be registered. */
 const GATED_PROVIDER = 'anthropic'
 
-/** This plugin's own reserved command name — a skill can never register over it. */
+/** This plugin's own reserved command name — a listed command can never register over it. */
 const REFRESH_COMMAND_NAME = 'refresh-skills'
 
 /**
- * Deterministic identity for one skill's exact registered content, combining
- * tier, name, and a hash of its body. Used both to key Fix C's confirmation
- * state and to detect (in `rescan()`) whether a still-present skill name now
- * points at different content.
- *
- * Keying on name alone let a project skill be removed and re-added under the
- * SAME name but a DIFFERENT (attacker-controlled) body silently inherit the
- * old body's "already confirmed" status — the operator never saw the new
- * content. Folding the body hash into the key closes that bypass: a changed
- * body is a different identity, so it starts unconfirmed again.
- * @param skill - the scanned skill to derive an identity for.
- * @returns a stable string key unique to this tier+name+body combination.
+ * Command names a listed CLI command can never register over, beyond
+ * whatever DSH-side host command already resolves at scan time (checked
+ * separately via `commands.find`). `'model'` specifically collides with
+ * `packages/client/ui-model-selection`'s client-side contribution of the
+ * same name (DSH's own native model-picker popup) — that contribution is
+ * registered client-side and never shows up in `commands.find(agent, ...)`,
+ * so without this explicit reservation the real Claude Code CLI's built-in
+ * `/model` command (reported via `query.supportedCommands()`) would pass the
+ * host-only collision guard and get registered here, only to collide with
+ * the client contribution later in `ui-commands`'s `candidates()`.
  */
-function skillIdentityKey(skill: ScannedEntry): string {
-  const bodyHash = createHash('sha256').update(skill.body).digest('hex')
-  return `${skill.kind}:${skill.tier}:${skill.name}:${bodyHash}`
-}
+const RESERVED_COMMAND_NAMES: ReadonlySet<string> = new Set([REFRESH_COMMAND_NAME, 'model'])
 
 /**
- * Substitute every literal `$ARGUMENTS` occurrence in a `.claude/commands/*.md`
- * template with the operator's typed text — the same convention Claude Code
- * itself uses for these files. A template with no placeholder simply ignores
- * typed arguments, matching upstream behavior; unlike a `SKILL.md` skill, the
- * substituted text becomes part of the single steered message rather than a
- * separately-sourced one, since the template controls where (if at all) it appears.
+ * One listed command's registered command, tracked so a later rescan can
+ * dispose it and detect a metadata-only change. Carries the exact
+ * `description`/`argumentHint` this registration was built from (rather than
+ * re-deriving them from the registered `CommandDescriptor`, which normalizes
+ * an empty description to a placeholder — see `registerListedCommand`) so
+ * `rescan()` can tell "unchanged" apart from "CLI reported new metadata for
+ * the same name" without reintroducing the old tier/body-hash identity.
  */
-function substituteArguments(body: string, rawArgs: string): string {
-  return body.replaceAll('$ARGUMENTS', rawArgs)
-}
-
-/** One skill's registered command, tracked alongside the exact content it was registered for. */
-interface RegisteredSkill {
-  /** Disposes this skill's registered command. */
+interface RegisteredCommand {
+  /** Disposes this command's registration. */
   readonly dispose: () => void
-  /** The `skillIdentityKey` this registration was made under — compared against a fresh scan to detect a body edit under the same name. */
-  readonly identityKey: string
+  /** The SDK-reported description this registration was built from. */
+  readonly description: string
+  /** The SDK-reported argument hint this registration was built from. */
+  readonly argumentHint: string
 }
 
 /**
- * Register one skill as a command whose handler steers its body (plus any
- * typed arguments) into the agent's next turn — the same mechanism
- * `dsh-plan-mode`'s `/plan` command uses.
- * @param commands - the already-resolved commands service (see
- *   `mountPerAgent` — injected exactly once per agent, not per skill).
- * @param agent - the agent this registration belongs to.
- * @param skill - the scanned skill to register.
+ * Whether the agent behind `agentCtx` is currently running on
+ * {@link GATED_PROVIDER}. Shared by the `agent/pre-step` gate and by each
+ * listed command's handler so an invocation can fail fast on a provider
+ * switch the pre-step gate has not yet closed for (see `registerListedCommand`).
+ * @param agentCtx - the agent's own scoped context, read for `agentDefaultModel`.
+ * @param agent - the agent to read the current provider of.
+ * @returns the current provider, or `undefined` when `agentDefaultModel` is
+ *   not yet resolved on this context.
+ */
+function currentGatedProvider(agentCtx: Context, agent: Agent): string | undefined {
+  const defaultModel = agentCtx.get('agentDefaultModel')
+  return defaultModel === undefined ? undefined : currentProviderOf(agent, defaultModel)
+}
+
+/**
+ * Register one SDK-reported slash command as a DSH command whose handler
+ * delegates the whole invocation to a fresh one-shot Claude Code subagent
+ * process (`runClaudeCodeSlashCommand()`) — never the receiving agent's own
+ * conversation. The real CLI subprocess owns any "review untrusted content
+ * before running it" trust boundary now; DSH no longer steers file content
+ * into this agent's turn, so there is no DSH-side confirmation gate here.
  * @param agentCtx - the agent's own scoped context, re-read at invocation
- *   time (Fix A) rather than trusted from registration time — see the
- *   handler body below.
- * @param confirmedProjectSkills - identity keys (`skillIdentityKey`) of
- *   project-tier skills this agent has already confirmed at least once (Fix
- *   C), keyed by tier+name+body-hash rather than name alone so a body edit
- *   under the same name is never mistaken for already-confirmed content.
- *   Lives in `mountPerAgent`'s outer closure so it survives across
- *   `rescan()`/`/refresh-skills` calls.
+ *   time for the provider gate check below — the `agent/pre-step` gate close
+ *   can lag one step behind a provider switch, so a still-registered command
+ *   invoked in that window must not unconditionally spawn the real CLI.
+ * @param agent - the agent this command was registered for.
+ * @param commands - the already-resolved commands service.
+ * @param command - the SDK-reported command to register.
+ * @param buildRunSpec - builds a fresh {@link ClaudeCodeRunSpec} at invocation time.
  * @returns the effect disposer that unregisters this command.
  */
-function registerSkillCommand(
-  commands: CommandRuntime,
-  agent: Agent,
-  skill: ScannedEntry,
+function registerListedCommand(
   agentCtx: Context,
-  confirmedProjectSkills: Set<string>,
+  agent: Agent,
+  commands: CommandRuntime,
+  command: SlashCommand,
+  buildRunSpec: () => ClaudeCodeRunSpec,
 ): () => void {
   return commands.register({
-    name: skill.name,
-    description: skill.description,
-    input: { hint: '[args]' },
+    name: command.name,
+    description: command.description.trim().length > 0 ? command.description : `Claude Code command "${command.name}"`,
     origin: 'claude-code',
-    handler: ({ rawInput }) => {
-      // Fix A: the periodic `agent/pre-step` gate toggle lags one step
-      // behind an operator switching providers, so a command can remain
-      // registered — and invocable — for one extra turn after the session
-      // has actually left `anthropic`. Re-derive the CURRENT provider here,
-      // at invocation time, rather than trusting that mere registration
-      // still means the gate is open.
-      const defaultModel = agentCtx.get('agentDefaultModel')
-      if (defaultModel !== undefined && currentProviderOf(agent, defaultModel) !== GATED_PROVIDER) {
-        return { kind: 'error', text: `Skill "${skill.name}" is unavailable — the session's model has changed since this command was registered.` }
-      }
-      // Fix C: a project-tier skill's body is repo-authored content the
-      // operator never saw before invoking it — a prompt-injection surface.
-      // Show it for confirmation (without steering) on the first invocation
-      // per skill IDENTITY (tier+name+body-hash), per agent lifetime; only a
-      // second invocation of that same identity steers. A body edit under
-      // the same name is a different identity, so it is unconfirmed again.
-      // User-tier skills (the operator's own `~/.claude/skills`) are trusted
-      // and steer immediately, as before.
-      const identityKey = skillIdentityKey(skill)
-      const args = rawInput.trim()
-      if (skill.tier === 'project' && !confirmedProjectSkills.has(identityKey)) {
-        confirmedProjectSkills.add(identityKey)
-        // A command file's body is a template containing a literal
-        // `$ARGUMENTS` placeholder — preview the SUBSTITUTED text (what will
-        // actually be steered on the next invocation), not the raw
-        // placeholder, so what the operator reviews here matches reality.
-        // A SKILL.md's body never embeds `$ARGUMENTS`, so substitution is a
-        // no-op for it and this stays equivalent to before.
-        const preview = skill.kind === 'command' ? substituteArguments(skill.body, args) : skill.body
+    ...command.argumentHint.trim().length > 0 ? { input: { hint: command.argumentHint } } : {},
+    handler: async ({ rawInput, signal }) => {
+      // Re-check the provider gate at invocation time rather than trusting
+      // that this handler being registered still implies the gate is open:
+      // the `agent/pre-step` gate close only runs once per step, so a
+      // provider switch mid-step can leave a stale handler reachable for one
+      // more invocation. Fail clean instead of spawning the real CLI.
+      const provider = currentGatedProvider(agentCtx, agent)
+      if (provider !== GATED_PROVIDER) {
         return {
-          kind: 'success',
-          text: `${preview}\n\nThis is a project-level skill from the repository, not your own ~/.claude/skills — review it before proceeding. Invoking "/${skill.name}" again will actually run it.`,
+          kind: 'error',
+          text: `Claude Code command "${command.name}" is unavailable: the model changed away from Claude.`,
         }
       }
-      // Security fix: the skill/command body is repo-authored file content,
-      // not human-typed input, so it must not be steered under `source: {
-      // kind: 'user' }` — that kind is host-attested human authority, read by
-      // downstream checks such as `dsh-tool-goal`'s `hasDirectHumanInput()`.
-      // Steer it under `kind: 'plugin'` instead.
-      if (skill.kind === 'command') {
-        // A `.claude/commands/*.md` template embeds `$ARGUMENTS` inline, so
-        // the substituted text rides the SAME single plugin-sourced message
-        // as the template.
-        agent.steer(createUserMessage({
-          content: [{ type: 'text', text: substituteArguments(skill.body, args) }],
-          source: { kind: 'plugin', plugin: name, form: 'instructions' },
-        }))
-        // Even though the template already embeds the args inline above, the
-        // operator's own typed text still needs its own `kind: 'user'`
-        // message — same as a SKILL.md invocation below — so downstream
-        // human-authority checks (e.g. `dsh-tool-goal`'s
-        // `hasDirectHumanInput()`) see genuine typed input regardless of
-        // which of the two Claude Code import paths produced this command.
-        // Without this, a command file's typed args would silently take a
-        // different authority path than an equivalent SKILL.md invocation.
-        if (args !== '') {
-          agent.steer(createUserMessage({
-            content: [{ type: 'text', text: `ARGUMENTS: ${args}` }],
-            source: { kind: 'user' },
-          }))
+      try {
+        const text = await runClaudeCodeSlashCommand(command.name, rawInput, buildRunSpec(), signal)
+        return { kind: 'success', text }
+      } catch (error: unknown) {
+        return {
+          kind: 'error',
+          text: `Claude Code command "${command.name}" failed: ${String(error)}`,
         }
-        return { kind: 'success', text: `Invoked command "/${skill.name}".` }
       }
-      agent.steer(createUserMessage({
-        content: [{ type: 'text', text: skill.body }],
-        source: { kind: 'plugin', plugin: name, form: 'instructions' },
-      }))
-      // The operator's own typed text keeps real human authority: steer it
-      // as a second, separately-sourced `kind: 'user'` message, only when
-      // they actually typed something.
-      if (args !== '') {
-        agent.steer(createUserMessage({
-          content: [{ type: 'text', text: `ARGUMENTS: ${args}` }],
-          source: { kind: 'user' },
-        }))
-      }
-      return { kind: 'success', text: `Invoked skill "${skill.name}".` }
     },
   })
 }
 
 /**
- * Per-agent controller: toggles this agent's Claude Code skill commands on
+ * Per-agent controller: toggles this agent's Claude Code slash commands on
  * or off before every step, tracking the agent's current model provider so
  * they are re-evaluated rather than decided once at mount. Also owns
  * `/refresh-skills`, registered under the same gate.
  *
  * The `commands` service is injected exactly once, up front — mirroring
  * `dsh-plan-mode`'s constructor-time single-injection pattern — rather than
- * re-entering `agentCtx.inject` per skill or per gate-open cycle. Injecting
- * repeatedly used to leak one Cordis Fiber per skill per gate-open cycle on
- * a long-lived agent, and exposed a same-tick race on the old lazy
- * `dispose`/`refreshCommandDispose` closures while a nested `inject`
- * callback was still pending. The `agent/pre-step` listener and teardown
- * effect stay registered synchronously at the top of this function (not
- * nested inside the injection) — `inject`'s callback runs at least one
- * microtask later even when the service already exists, so nesting the
- * listener registration itself inside it would leave the very first
- * `agent/pre-step` tick with no listener to dispatch to.
+ * re-entering `agentCtx.inject` per command or per gate-open cycle.
  * @param agentCtx - the agent's own scoped context.
  * @param agent - the agent this scoped context belongs to. Taken directly
  *   from the `agent/created` payload rather than re-derived from
  *   `agentCtx.agent` — that DX accessor is populated only once the full
  *   agent-loop machinery extends the scope with an own `agent` property, a
  *   step orthogonal to this plugin's own per-agent mount.
- * @param homedir - the directory `~/.claude/skills` is read from.
+ * @param homedir - fallback workspace when the agent's session has not yet
+ *   recorded a `cwd` (see `buildRunSpec`); also the deployment override
+ *   surface tests already rely on.
+ * @param subprocess - the shared managed-process service resolved on the
+ *   plugin's own context (which declares `inject = ['subprocess']` above) —
+ *   read from there rather than `agentCtx`, since a per-agent scoped context
+ *   never itself goes through this plugin's own `inject` and cannot resolve
+ *   an injected service directly.
  */
-function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
+function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string, subprocess: Context['subprocess']): void {
   // Resolved once the single injection below settles. Gate-open ticks that
   // land before then find `commands` still `undefined` and skip registering
   // anything — there is nothing to register against without it.
@@ -212,81 +179,112 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
     commands = commandCtx.commands
   })
 
-  // The currently-registered skill commands, or `undefined` when none are
+  // The currently-registered commands, or `undefined` when none are
   // registered right now. This can be `undefined` either because the gate is
-  // closed or because the gate is open but zero skills exist on disk — those
-  // are different states, so gate-transition detection below does not use
-  // this variable; see `gateOpen`.
-  let registered: Map<string, RegisteredSkill> | undefined
+  // closed or because the gate is open but the SDK reported none — those are
+  // different states, so gate-transition detection below does not use this
+  // variable; see `gateOpen`.
+  let registered: Map<string, RegisteredCommand> | undefined
   let refreshCommandDispose: (() => void) | undefined
-  // Fix C: project-tier skill IDENTITIES (`skillIdentityKey` — tier+name+body
-  // hash, not name alone) this agent has confirmed at least once. Declared in
-  // this OUTER closure (not inside `rescan()`) so it persists across
-  // `rescan()`/`/refresh-skills` calls for the agent's whole lifetime — a
-  // skill re-registered by a later rescan with UNCHANGED content must not
-  // lose its already-confirmed state, but one re-registered with a CHANGED
-  // body (a different identity key) must start unconfirmed again.
-  const confirmedProjectSkills = new Set<string>()
   // Whether the provider gate was open as of the last `agent/pre-step` tick.
-  // Tracked independently of `registered`/`refreshCommandDispose` so a
-  // zero-skill directory (which leaves `registered` `undefined`) is not
-  // mistaken for a gate that just opened — that conflation used to make
-  // `rescan()` (a filesystem walk) run on every single step, forever, and
-  // left `/refresh-skills` unregistered whenever zero skills existed at gate-open time.
   let gateOpen = false
+  // Race-condition fix: `rescan()` is reachable from two independent
+  // triggers (the `agent/pre-step` gate-open transition and the
+  // `/refresh-skills` handler) that can overlap. Without serialization, a
+  // second call starting before the first finishes would build `current`
+  // from the same stale `registered` snapshot and then clobber the first
+  // call's assignment, orphaning the first call's newly-registered
+  // `RegisteredCommand.dispose` closures. Track the in-flight scan so an
+  // overlapping caller awaits and reuses it instead of running a second pass.
+  let rescanInFlight: Promise<{ added: number; removed: number }> | undefined
 
-  function rescan(): { added: number; removed: number } {
-    if (commands === undefined) return { added: 0, removed: 0 }
-    const warn = (message: string): void => { agentCtx.logger.warn(message) }
-    const skills = scanSkillDirectories(agent.session.header.cwd, homedir, warn)
-    const commandFiles = scanCommandFiles(agent.session.header.cwd, homedir, warn)
-    const found = new Map<string, ScannedEntry>(skills.map(skill => [skill.name, skill]))
-    // A `.claude/commands/*.md` file never shadows a `SKILL.md` skill of the
-    // same name — skills are the more explicit, richer format (an actual
-    // `name:` declaration) — so a collision here is warned about and the
-    // command file is dropped, mirroring the "never silently shadow" rule
-    // enforced below against pre-existing commands.
-    for (const commandFile of commandFiles) {
-      if (found.has(commandFile.name)) {
-        agentCtx.logger.warn(`claude-skill-commands: skipping command file "${commandFile.name}" — a skill of the same name already exists`)
-        continue
-      }
-      found.set(commandFile.name, commandFile)
+  /**
+   * Build a fresh run spec for one SDK query or one-shot invocation. Built
+   * per-call (not cached) so a mid-session cwd change is always honored.
+   */
+  function buildRunSpec(): ClaudeCodeRunSpec {
+    return {
+      cwd: agent.session.header.cwd ?? homedir,
+      permissionMode: DEFAULT_CLAUDE_CODE_PERMISSION_MODE,
+      env: {},
+      disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
+      // Route every spawn through the shared managed-process service (see
+      // `packages/subagent/subagent-claude-code`'s own provider for the
+      // identical pattern) instead of a bespoke child_process helper, so
+      // termination gets the shared SIGTERM->SIGKILL ladder and whole-tree
+      // kill instead of a single best-effort SIGTERM.
+      spawn: spawnSpec => subprocess.spawn(spawnSpec),
     }
-    const current = registered ?? new Map<string, RegisteredSkill>()
+  }
+
+  /**
+   * Serialized entry point for a rescan: a caller that arrives while a scan
+   * is already in flight awaits that same scan's result rather than starting
+   * a second overlapping pass against a stale `registered` snapshot.
+   */
+  async function rescan(): Promise<{ added: number; removed: number }> {
+    if (rescanInFlight !== undefined) return rescanInFlight
+    rescanInFlight = performRescan()
+    try {
+      return await rescanInFlight
+    } finally {
+      rescanInFlight = undefined
+    }
+  }
+
+  async function performRescan(): Promise<{ added: number; removed: number }> {
+    if (commands === undefined) return { added: 0, removed: 0 }
+    let reported: readonly SlashCommand[]
+    try {
+      reported = await listClaudeCodeCommands(buildRunSpec())
+    } catch (error: unknown) {
+      agentCtx.logger.warn(`claude-skill-commands: failed to list Claude Code commands: ${String(error)}`)
+      return { added: 0, removed: 0 }
+    }
+    const found = new Map(reported.map(command => [command.name, command]))
+    const current = registered ?? new Map<string, RegisteredCommand>()
     let added = 0
     let removed = 0
-    for (const [skillName, entry] of [...current]) {
-      const skill = found.get(skillName)
-      // A registered skill is dropped — its command disposed — both when it
-      // disappears from disk AND when its body has changed since it was
-      // registered under this name (an in-place SKILL.md edit, or a
-      // remove-then-re-add cycle with different content). The re-register
-      // pass below then closes a fresh handler over the NEW skill object, so
-      // no stale closure of the old body survives, and (via
-      // `confirmedProjectSkills` being keyed on the OLD identity) the new
-      // content starts unconfirmed again rather than inheriting Fix C's
-      // already-confirmed status.
-      if (skill === undefined || skillIdentityKey(skill) !== entry.identityKey) {
-        entry.dispose()
-        current.delete(skillName)
-        removed++
-      }
+    for (const [commandName, entry] of [...current]) {
+      const command = found.get(commandName)
+      // Treat a still-listed command whose description or argument hint
+      // changed the same as a removal followed by a re-add below: dispose
+      // the stale registration here and let the second loop re-register it
+      // with fresh metadata, rather than leaving the old description/hint
+      // stale until the command briefly disappears from a later listing.
+      const unchanged = command !== undefined
+        && entry.description === command.description
+        && entry.argumentHint === command.argumentHint
+      if (unchanged) continue
+      entry.dispose()
+      current.delete(commandName)
+      removed++
     }
-    for (const [skillName, skill] of found) {
-      if (current.has(skillName)) continue
-      // Security fix: never let a skill silently take over a command name
-      // it does not own — neither this plugin's own reserved
-      // `/refresh-skills` name, nor a name some other command (global or
-      // scoped) already resolves, e.g. a skill named "compact" hijacking
-      // the built-in `/compact`. Skip and warn instead of registering.
-      if (skillName === REFRESH_COMMAND_NAME || commands.find(agent, skillName) !== undefined) {
-        agentCtx.logger.warn(`claude-skill-commands: skipping skill "${skillName}" — a command named "${skillName}" already exists`)
+    for (const [commandName, command] of found) {
+      if (current.has(commandName)) continue
+      // Bug fix: the real Claude Code CLI's naming convention allows
+      // characters (e.g. uppercase letters) outside DSH's own stricter
+      // `COMMAND_NAME` grammar that `commands.register()` enforces. Registering
+      // a non-conforming name throws there, and — unlike the collision case
+      // below — that throw was never caught, failing the whole rescan (and
+      // the turn that triggered it) instead of skipping just this one
+      // command. Validate here and skip before ever reaching `register()`.
+      if (!COMMAND_NAME.test(commandName)) {
+        agentCtx.logger.warn(`claude-skill-commands: skipping command "${commandName}" — name does not match the required command-name pattern`)
         continue
       }
-      current.set(skillName, {
-        dispose: registerSkillCommand(commands, agent, skill, agentCtx, confirmedProjectSkills),
-        identityKey: skillIdentityKey(skill),
+      // Security fix: never let a listed command silently take over a
+      // command name it does not own — neither this plugin's own reserved
+      // `/refresh-skills` name, nor a name some other command (global or
+      // scoped) already resolves. Skip and warn instead of registering.
+      if (RESERVED_COMMAND_NAMES.has(commandName) || commands.find(agent, commandName) !== undefined) {
+        agentCtx.logger.warn(`claude-skill-commands: skipping command "${commandName}" — a command named "${commandName}" already exists`)
+        continue
+      }
+      current.set(commandName, {
+        dispose: registerListedCommand(agentCtx, agent, commands, command, buildRunSpec),
+        description: command.description,
+        argumentHint: command.argumentHint,
       })
       added++
     }
@@ -302,16 +300,16 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
     const shouldBeRegistered = provider === GATED_PROVIDER
     if (shouldBeRegistered && !gateOpen) {
       gateOpen = true
-      // Scan once on gate-open regardless of how many skills are found —
-      // `/refresh-skills` must be reachable even when the initial scan finds
+      // List once on gate-open regardless of how many commands are found —
+      // `/refresh-skills` must be reachable even when the initial list finds
       // none, so an operator can add a skill later and pick it up.
-      rescan()
+      await rescan()
       if (commands !== undefined) {
         refreshCommandDispose = commands.register({
           name: REFRESH_COMMAND_NAME,
-          description: 'Re-scan Claude Code skill directories and update registered commands',
-          handler: () => {
-            const { added, removed } = rescan()
+          description: 'Re-list Claude Code commands and update registered commands',
+          handler: async () => {
+            const { added, removed } = await rescan()
             return { kind: 'success', text: `Refreshed skills: +${added}, -${removed}.` }
           },
         })
@@ -334,15 +332,18 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string): void {
 }
 
 /**
- * Mount Claude Code skill-derived slash commands for every created agent.
+ * Mount Claude Code SDK-backed slash commands for every created agent.
  * @param ctx - Host context carrying `agent/created`.
  * @param config - optional homedir override, for tests.
  */
 export function apply(ctx: Context, config: ClaudeSkillCommandsConfig = {}): void {
   const homedir = config.homedir ?? osHomedir()
+  // Resolved once, synchronously, while this plugin's own `inject`
+  // (declared above) guarantees the property is reachable — a later read
+  // off a per-agent scoped context (e.g. `agentCtx.subprocess`) would not be,
+  // since that context never itself goes through this plugin's `inject`.
+  const subprocess = ctx.subprocess
   ctx.on('agent/created', ({ agent }) => {
-    mountPerAgent(agent.ctx, agent, homedir)
+    mountPerAgent(agent.ctx, agent, homedir, subprocess)
   })
 }
-
-export default apply

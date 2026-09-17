@@ -34,6 +34,12 @@
     },
     {
       "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../subagent/subagent-claude-code"
+    },
+    {
+      "path": "../../subprocess/subprocess"
     }
   ]
 }
