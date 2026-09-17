@@ -107,6 +107,7 @@ export const zh = {
   'row.running': '运行中',
   'row.failed': '失败',
   'json.truncated': '… 已截断，共 {total} 字符',
+  'message.context.showFull': '显示全部（共 {total} 字符）',
   'clock.md': '{m}月{d}日',
   'clock.ymd': '{y}年{m}月{d}日',
 } satisfies Record<string, string>
@@ -218,6 +219,7 @@ export const en = {
   'row.running': 'Running',
   'row.failed': 'Failed',
   'json.truncated': '… truncated, {total} characters total',
+  'message.context.showFull': 'Show full text ({total} characters)',
   'clock.md': '{m}/{d}',
   'clock.ymd': '{y}-{m}-{d}',
 } satisfies Record<ChatKey, string>

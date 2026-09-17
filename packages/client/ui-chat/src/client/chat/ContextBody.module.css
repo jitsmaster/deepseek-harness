@@ -9,6 +9,24 @@
   overflow-wrap: anywhere;
 }
 
+/* Reveals the rest of a text run past the display bound (see ExpandableText). */
+.showFull {
+  margin-top: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.showFull:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 /* Source fields beneath the text: dimmer than the content they describe. */
 .fields {
   display: flex;

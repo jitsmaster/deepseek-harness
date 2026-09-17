@@ -4,7 +4,7 @@
 // an absent, unknown, or malformed form — a resumed or foreign log must render
 // even when this UI version has never seen its producer.
 
-import type { ReactNode } from 'react'
+import { startTransition, useState, type ReactNode } from 'react'
 import { JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import type { ContextMessageNode } from '../contract/snapshot.ts'
@@ -63,6 +63,48 @@ function boundedText(text: string, t: Translate): string {
   return text.length > MAX_CHARS
     ? `${text.slice(0, MAX_CHARS)}\n${t('json.truncated', { total: text.length })}`
     : text
+}
+
+/**
+ * One text run bounded by default, with a control to reveal the rest instead
+ * of a dead end. Some producers (e.g. an imported conversation transcript, or
+ * a large snapshot section) legitimately carry content well past
+ * {@link MAX_CHARS} that the reader actually came to read — the disclosure's
+ * cap protects the DOM from an unbounded first render, but must not be the
+ * only way to see the rest of it. `tag`/`className` let every caller keep its
+ * own element shape (`ModelFacingContent`'s `<pre>`, `SnapshotBody`'s `<dd>`)
+ * while sharing the same reveal behavior.
+ */
+function ExpandableText({ text, t, tag: Tag = 'pre', className = css.text }: {
+  text: string
+  t: Translate
+  tag?: 'pre' | 'dd'
+  className?: string | undefined
+}): ReactNode {
+  const [expanded, setExpanded] = useState(false)
+  if (text.length <= MAX_CHARS || expanded) return <Tag className={className} data-context-text>{text}</Tag>
+  return (
+    <>
+      <Tag className={className} data-context-text>{boundedText(text, t)}</Tag>
+      <button
+        type="button"
+        className={css.showFull}
+        data-context-show-full
+        aria-expanded={false}
+        // startTransition: revealing content this large (up to ~1.2MB in the
+        // claude-session-import case) commits an expensive layout in one shot
+        // (overflow-wrap: anywhere is costlier to lay out than word-wrapped
+        // text at this size). Marking it as a transition lets React deprioritize
+        // this render behind anything more urgent (e.g. the click's own visual
+        // feedback, other input) instead of blocking the main thread for the
+        // whole commit — the work is the same, but the browser stays responsive
+        // while it happens.
+        onClick={() => { startTransition(() => { setExpanded(true) }) }}
+      >
+        {t('message.context.showFull', { total: text.length })}
+      </button>
+    </>
+  )
 }
 
 /**
@@ -143,9 +185,7 @@ function ModelFacingContent({ content, t }: {
   return (
     <>
       {contentRuns(content).map((run, index) => ('text' in run
-        ? run.text !== '' && (
-          <pre key={index} className={css.text} data-context-text>{boundedText(run.text, t)}</pre>
-        )
+        ? run.text !== '' && <ExpandableText key={index} text={run.text} t={t} />
         : (
           <JsonBlock
             key={index}
@@ -402,7 +442,7 @@ export function SnapshotBody({ content, source, t }: {
         {sections.map((section, index) => (
           <div key={index} className={css.section}>
             <dt className={css.sectionName}>{section.name}</dt>
-            <dd className={css.sectionText}>{boundedText(section.text, t)}</dd>
+            <ExpandableText text={section.text} t={t} tag="dd" className={css.sectionText} />
           </div>
         ))}
       </dl>
