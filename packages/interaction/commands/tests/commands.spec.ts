@@ -4,7 +4,7 @@ import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import CommandRuntime, { CommandDefinitionId, parseCommand, type CommandDefinition } from '@deepseek-ai/dsh-commands'
+import CommandRuntime, { CommandDefinitionId, COMMAND_NAME, parseCommand, type CommandDefinition } from '@deepseek-ai/dsh-commands'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 
 function command(name: string, text = `ran:${name}`): CommandDefinition {
@@ -50,6 +50,35 @@ describe('parseCommand()', () => {
 
   it.each(['goal', ' /goal', '/', '/Goal', '/goal/path', '/goal🔥'])('rejects non-command boundary %j', (line) => {
     expect(parseCommand(line)).toBeUndefined()
+  })
+})
+
+// Bug fix under test: a nested Claude Code command file (e.g.
+// `.claude/commands/modes/sparc.md`) is imported and registered under a
+// namespaced name like `modes:sparc` — the grammar must accept exactly one
+// colon separating two otherwise-valid name segments, while still rejecting
+// a bare leading colon, a trailing colon, and more than one colon.
+describe('parseCommand() with a namespaced name', () => {
+  it.each([
+    ['/modes:sparc', { name: 'modes:sparc', rawInput: '' }],
+    ['/modes:sparc rest of line', { name: 'modes:sparc', rawInput: ' rest of line' }],
+    ['/plugin-name:cmd', { name: 'plugin-name:cmd', rawInput: '' }],
+  ] as const)('parses %j as one namespaced command name', (line, expected) => {
+    expect(parseCommand(line)).toEqual(expected)
+  })
+
+  it.each(['/:sparc', '/modes:', '/modes:sparc:extra'])('rejects malformed namespace syntax %j', (line) => {
+    expect(parseCommand(line)).toBeUndefined()
+  })
+})
+
+describe('COMMAND_NAME', () => {
+  it.each(['sparc', 'modes:sparc', 'plugin-name:cmd', 'goal_name-2'])('accepts %j', (name) => {
+    expect(COMMAND_NAME.test(name)).toBe(true)
+  })
+
+  it.each([':sparc', 'modes:', 'modes:sparc:extra', 'Modes:Sparc', ''])('rejects %j', (name) => {
+    expect(COMMAND_NAME.test(name)).toBe(false)
   })
 })
 
