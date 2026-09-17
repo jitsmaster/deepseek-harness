@@ -29,7 +29,13 @@ describe('ic_ds_ icon set', () => {
     expect(container.querySelector('path')?.getAttribute('stroke-width')).toBe(primitives.SHIELD_OUTLINE_STROKE)
   })
 
-  it.each(iconNames)('%s renders an svg with currentColor fills and no hardcoded palette', (name) => {
+  // IconClaudeCodeOutline16 deliberately reproduces Anthropic's actual Claude
+  // brand mark in its fixed brand color rather than `currentColor` — see its
+  // own doc comment in `src/icons/index.tsx`. Excluded from the blanket
+  // "themeable glyph" assertion below rather than weakening it for every icon.
+  const themableIconNames = iconNames.filter(name => name !== 'IconClaudeCodeOutline16')
+
+  it.each(themableIconNames)('%s renders an svg with currentColor fills and no hardcoded palette', (name) => {
     const Icon = icons[name]!
     const { container } = render(<Icon />)
     const svg = container.querySelector('svg')
@@ -37,6 +43,13 @@ describe('ic_ds_ icon set', () => {
     const markup = container.innerHTML
     expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}"/)
     expect(markup).toContain('currentColor')
+  })
+
+  it('IconClaudeCodeOutline16 renders the fixed Claude brand mark color, not currentColor', () => {
+    const { container } = render(<primitives.IconClaudeCodeOutline16 />)
+    const svg = container.querySelector('svg')
+    expect(svg).not.toBeNull()
+    expect(container.innerHTML).toContain('#D97757')
   })
 
   it('size and className props land on the root svg', () => {
