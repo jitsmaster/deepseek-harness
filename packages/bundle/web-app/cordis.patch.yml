@@ -358,6 +358,11 @@
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
 
+    # Pending-change review: tracks agent edits/writes into a sidebar panel
+    # with per-file/per-block Keep/Revert, evaluated in .agents/notes.
+    - id: dsh-diff-approval
+      name: 'dsh-diff-approval'
+
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #
 # Every row below composes what ONE agent contributes to the host registries:
