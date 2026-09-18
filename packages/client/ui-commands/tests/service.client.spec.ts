@@ -1105,6 +1105,44 @@ describe('popupFor', () => {
   })
 })
 
+describe('lexicon (reference lexicon backing)', () => {
+  it('answers undefined before warm', async () => {
+    const { source } = await bench()
+    expect(source.lexicon!(proj('s1'))).toBeUndefined()
+  })
+
+  it('answers the ready catalog\'s names once warm lands', async () => {
+    const { source, warm } = await bench()
+    await warm(proj('s1'))
+    expect(source.lexicon!(proj('s1'))).toEqual(['plan', 'goal'])
+  })
+
+  it('subscribeLexicon notifies on commands/change and stops after unsubscribe', async () => {
+    let round = 0
+    const { source, warm, remote } = await bench({
+      commands: () => {
+        round += 1
+        return Promise.resolve({
+          commands: round === 1 ? S1_CMDS : [{ name: 'fresh', description: '' }],
+        })
+      },
+    })
+    await warm(proj('s1'))
+    const calls: number[] = []
+    const off = source.subscribeLexicon!(proj('s1'), () => calls.push(1))
+
+    remote.emit('commands/change', [])
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(calls).toEqual([1])
+    expect(source.lexicon!(proj('s1'))).toEqual(['fresh'])
+
+    off()
+    remote.emit('commands/change', [])
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(calls).toEqual([1])
+  })
+})
+
 describe('directory invalidation events', () => {
   it('commands/change repulls in the background while the old snapshot serves', async () => {
     let round = 0

@@ -264,6 +264,76 @@ describe('warm', () => {
   })
 })
 
+describe('names and subscribe (lexicon backing)', () => {
+  it('names() answers undefined until ready, then the ready snapshot\'s names', async () => {
+    const { dir, pull } = bench()
+    expect(dir.names(S1)).toBeUndefined()
+    const refreshed = dir.refresh(S1)
+    expect(dir.names(S1)).toBeUndefined()
+    pull(S1, 0).resolve(CMDS)
+    await refreshed
+    expect(dir.names(S1)).toEqual(['plan', 'goal'])
+  })
+
+  it('names() reverts to undefined after a failed pull', async () => {
+    const { dir, pull } = bench()
+    const refreshed = dir.refresh(S1)
+    pull(S1, 0).reject(new Error('boom'))
+    await refreshed
+    expect(dir.names(S1)).toBeUndefined()
+  })
+
+  it('notifies a subscriber on every winning publish for its key, and stops after unsubscribe', async () => {
+    const { dir, pull } = bench()
+    const calls: number[] = []
+    const off = dir.subscribe(S1, () => calls.push(dir.names(S1)?.length ?? -1))
+
+    const first = dir.refresh(S1)
+    pull(S1, 0).resolve(CMDS)
+    await first
+    expect(calls).toEqual([2])
+
+    const failed = dir.refresh(S1)
+    pull(S1, 1).reject(new Error('boom'))
+    await failed
+    expect(calls).toEqual([2, -1])
+
+    off()
+    const third = dir.refresh(S1)
+    pull(S1, 2).resolve(CMDS)
+    await third
+    expect(calls).toEqual([2, -1])
+  })
+
+  it('never notifies a subscriber for another session key', async () => {
+    const { dir, pull } = bench()
+    const calls: SessionId[] = []
+    dir.subscribe(S1, () => calls.push(S1))
+
+    const other = dir.refresh(S2)
+    pull(S2, 0).resolve(S2_CMDS)
+    await other
+
+    expect(calls).toEqual([])
+  })
+
+  it('a superseded pull\'s late settlement does not notify (epoch guard applies to notification too)', async () => {
+    const { dir, pull } = bench()
+    const calls: number[] = []
+    dir.subscribe(S1, () => calls.push(dir.names(S1)?.length ?? -1))
+
+    const first = dir.refresh(S1)
+    const second = dir.refresh(S1)
+    pull(S1, 1).resolve(CMDS)
+    await second
+    expect(calls).toEqual([2])
+
+    pull(S1, 0).resolve([{ name: 'stale', description: 'loser' }])
+    await first
+    expect(calls).toEqual([2])
+  })
+})
+
 describe('ensureReady (per key)', () => {
   const signal = () => new AbortController().signal
 

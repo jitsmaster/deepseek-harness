@@ -75,12 +75,18 @@ function fakeInvocationQuery(resultText: string): Query {
   return Object.assign(stream(), { close: vi.fn() }) as unknown as Query
 }
 
-/** Mints a fake Agent with a real Session and a real scoped `agent.ctx`. */
-function agentWithProvider(ctx: Context, cwd: string, provider: string): Agent {
-  const session = Session.create(SessionId('agent-1'))
+/**
+ * Mints a fake Agent with a real Session and a real scoped `agent.ctx`.
+ * @param id - session/agent id, defaults to the single shared id every
+ *   earlier test in this file relies on. Override to mint a second,
+ *   independent agent in the same host (the listing-cache tests, which need
+ *   two agents that do not shadow each other's registered commands).
+ */
+function agentWithProvider(ctx: Context, cwd: string, provider: string, id = 'agent-1'): Agent {
+  const session = Session.create(SessionId(id))
   ;(session as { header: { cwd: string } }).header = { ...session.header, cwd }
   const agent = {
-    id: SessionId('agent-1'),
+    id: SessionId(id),
     session: Object.assign(session, {
       requestHeader: () => ({ config: { provider, model: 'x' } }),
     }),
@@ -247,6 +253,26 @@ describe('claude-skill-commands — SDK-backed listing (bugs 1-3)', () => {
     expect(ctx.commands.list(agent).some(c => c.name === 'modes:sparc')).toBe(true)
   })
 
+  it('registers commands eagerly on mount, before any agent/pre-step tick, when the default model is already anthropic', async () => {
+    queryMock.mockImplementation((params) => {
+      params.options.spawnClaudeCodeProcess!({
+        ...stubClaudeCliCommand, cwd: process.cwd(), env: {}, signal: new AbortController().signal,
+      } as never)
+      return fakeListingQuery([
+        { name: 'modes:sparc', description: 'Boomerang Commander Mode', argumentHint: '<goal>' },
+      ])
+    })
+    const ctx = await bootHost('/home/operator')
+    const agent = agentWithProvider(ctx, '/workspace', 'anthropic')
+
+    ctx.emit('agent/created', { agent, source: 'startup' })
+    // Give the eager mount-time gate sync's microtasks a chance to settle —
+    // no `agent/pre-step` tick fires here, unlike other tests in this file.
+    await vi.waitFor(() => {
+      expect(ctx.commands.list(agent).some(c => c.name === 'modes:sparc')).toBe(true)
+    })
+  })
+
   it('still gates registration on the anthropic provider — no commands appear on a non-anthropic session even when the SDK reports some', async () => {
     queryMock.mockImplementation((params) => {
       params.options.spawnClaudeCodeProcess!({
@@ -411,5 +437,103 @@ describe('claude-skill-commands — SDK-backed listing (bugs 1-3)', () => {
 
     expect(finalRefresh?.result).toEqual({ kind: 'success', text: 'Refreshed skills: +0, -1.' })
     expect(ctx.commands.list(agent).some(c => c.name === 'cmd-a')).toBe(false)
+  })
+})
+
+describe('claude-skill-commands — cwd-keyed listing cache', () => {
+  it('reuses one cwd\'s listing across two agents instead of spawning the CLI twice', async () => {
+    let spawnCount = 0
+    queryMock.mockImplementation((params) => {
+      spawnCount += 1
+      params.options.spawnClaudeCodeProcess!({
+        ...stubClaudeCliCommand, cwd: process.cwd(), env: {}, signal: new AbortController().signal,
+      } as never)
+      return fakeListingQuery([
+        { name: 'modes:sparc', description: 'Boomerang Commander Mode', argumentHint: '<goal>' },
+      ])
+    })
+    const ctx = await bootHost('/home/operator')
+    const agentA = agentWithProvider(ctx, '/workspace', 'anthropic', 'agent-a')
+    const agentB = agentWithProvider(ctx, '/workspace', 'anthropic', 'agent-b')
+
+    ctx.emit('agent/created', { agent: agentA, source: 'startup' })
+    await tickPreStep(ctx, agentA)
+    ctx.emit('agent/created', { agent: agentB, source: 'startup' })
+    await tickPreStep(ctx, agentB)
+
+    expect(spawnCount).toBe(1)
+    expect(ctx.commands.list(agentA).some(c => c.name === 'modes:sparc')).toBe(true)
+    expect(ctx.commands.list(agentB).some(c => c.name === 'modes:sparc')).toBe(true)
+  })
+
+  it('a different cwd spawns its own listing rather than reusing another cwd\'s cache entry', async () => {
+    let spawnCount = 0
+    queryMock.mockImplementation((params) => {
+      spawnCount += 1
+      params.options.spawnClaudeCodeProcess!({
+        ...stubClaudeCliCommand, cwd: process.cwd(), env: {}, signal: new AbortController().signal,
+      } as never)
+      return fakeListingQuery([
+        { name: 'modes:sparc', description: 'Boomerang Commander Mode', argumentHint: '<goal>' },
+      ])
+    })
+    const ctx = await bootHost('/home/operator')
+    const agentA = agentWithProvider(ctx, '/workspace-a', 'anthropic', 'agent-a')
+    const agentB = agentWithProvider(ctx, '/workspace-b', 'anthropic', 'agent-b')
+
+    ctx.emit('agent/created', { agent: agentA, source: 'startup' })
+    await tickPreStep(ctx, agentA)
+    ctx.emit('agent/created', { agent: agentB, source: 'startup' })
+    await tickPreStep(ctx, agentB)
+
+    expect(spawnCount).toBe(2)
+  })
+
+  it('/refresh-skills bypasses the cache and spawns a fresh listing even within the TTL', async () => {
+    let spawnCount = 0
+    queryMock.mockImplementation((params) => {
+      spawnCount += 1
+      params.options.spawnClaudeCodeProcess!({
+        ...stubClaudeCliCommand, cwd: process.cwd(), env: {}, signal: new AbortController().signal,
+      } as never)
+      return fakeListingQuery([
+        { name: 'modes:sparc', description: 'Boomerang Commander Mode', argumentHint: '<goal>' },
+      ])
+    })
+    const ctx = await bootHost('/home/operator')
+    const agent = agentWithProvider(ctx, '/workspace', 'anthropic')
+    ctx.emit('agent/created', { agent, source: 'startup' })
+    await tickPreStep(ctx, agent)
+    expect(spawnCount).toBe(1)
+
+    await ctx.commands.execute(agent, '/refresh-skills', [], new AbortController().signal)
+
+    expect(spawnCount).toBe(2)
+  })
+
+  it('a failed listing does not poison the cache: the next rescan for the same cwd gets a fresh attempt', async () => {
+    let spawnCount = 0
+    queryMock.mockImplementation((params) => {
+      spawnCount += 1
+      if (spawnCount === 1) throw new Error('CLI spawn exploded')
+      params.options.spawnClaudeCodeProcess!({
+        ...stubClaudeCliCommand, cwd: process.cwd(), env: {}, signal: new AbortController().signal,
+      } as never)
+      return fakeListingQuery([
+        { name: 'modes:sparc', description: 'Boomerang Commander Mode', argumentHint: '<goal>' },
+      ])
+    })
+    const ctx = await bootHost('/home/operator')
+    const agentA = agentWithProvider(ctx, '/workspace', 'anthropic', 'agent-a')
+    ctx.emit('agent/created', { agent: agentA, source: 'startup' })
+    await tickPreStep(ctx, agentA)
+    expect(ctx.commands.list(agentA).some(c => c.name === 'modes:sparc')).toBe(false)
+
+    const agentB = agentWithProvider(ctx, '/workspace', 'anthropic', 'agent-b')
+    ctx.emit('agent/created', { agent: agentB, source: 'startup' })
+    await tickPreStep(ctx, agentB)
+
+    expect(spawnCount).toBe(2)
+    expect(ctx.commands.list(agentB).some(c => c.name === 'modes:sparc')).toBe(true)
   })
 })
