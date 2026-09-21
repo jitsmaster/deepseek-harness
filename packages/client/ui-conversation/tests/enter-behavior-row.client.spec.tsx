@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { EnterBehaviorRow } from '../src/client/settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowProps } from '../src/client/settings/EnterBehaviorRow.tsx'
@@ -24,7 +24,7 @@ afterEach(() => {
 
 function emptySessions() {
   return bindSnapshotSelector(createSnapshotStore<SessionListState>({
-    ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    ids: [], byId: {}, phase: 'ready', subagentsByParent: {}, jobsBySession: {},
   }))
 }
 
@@ -35,7 +35,7 @@ function emptyWorkspaces() {
 }
 
 function noPendingInteraction() {
-  return bindSnapshotSelector(createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()))
+  return bindSnapshotSelector(createSnapshotStore<SessionStatusSnapshot>(new Map()))
 }
 
 function mount() {
@@ -44,7 +44,8 @@ function mount() {
   const props: EnterBehaviorRowProps = {
     usePanelInfo: selector => selector({ activePanelId: null }),
     useSessions: emptySessions(),
-    useSessionPendingInteraction: noPendingInteraction(),
+    useSessionStatus: noPendingInteraction(),
+    useSessionRetainInfo: () => undefined,
     useResource,
     useWorkspaces: emptyWorkspaces(),
     useActiveSessionStats,

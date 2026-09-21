@@ -32,6 +32,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent } from './agent.ts'
+import { inboxProjectionDefinition } from './inbox.ts'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.ts'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
@@ -379,6 +380,24 @@ export class AgentLoop extends Service implements AgentFactory {
   /** Plain holder prevents Cordis from re-tracing the factory's dependency context through a caller shadow. */
   private readonly runtime: { ctx: Context }
 
+  /**
+   * The injected session store, guarded against the disposal race where a
+   * caller's in-flight `create`/`resume` straddles this service's own
+   * context teardown: `sessions` is a required `static inject` entry, so its
+   * type never reads as optional, but cordis's injected binding can still go
+   * stale mid-await when the provider tears down around it — surfacing as a
+   * raw "Cannot read properties of undefined (reading 'prepare')" instead of
+   * an actionable message.
+   */
+  private sessionStore(): typeof this.runtime.ctx.sessions {
+    const sessions = this.runtime.ctx.sessions
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- sessions can go transiently undefined during a disposal race.
+    if (sessions === undefined) {
+      throw new Error('agent loop: the session store was disposed while this call was in flight')
+    }
+    return sessions
+  }
+
   constructor(ctx: Context, config: Config) {
     super(ctx, 'agentLoop')
 
@@ -413,6 +432,7 @@ export class AgentLoop extends Service implements AgentFactory {
     // Register only after every config validation above has passed, so a
     // rejected constructor leaves no projection unit behind.
     ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
+    ctx.sessionProjections.register(inboxProjectionDefinition)
     this.ownership = new FactoryOwnership(ctx.fiber)
     this.runtime = { ctx }
     ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()')
@@ -700,7 +720,7 @@ export class AgentLoop extends Service implements AgentFactory {
    * @returns the published running agent.
    */
   async create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, 'cwd'> = {}): Promise<Agent> {
-    using preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta }))
+    using preparation = SessionPreparation.create(this.sessionStore().prepare(id, { meta }))
     const stored = await this.createStoredSession(preparation.session)
     let prepared: PreparedAgent
     try {
@@ -762,7 +782,7 @@ export class AgentLoop extends Service implements AgentFactory {
    * @returns the published handle.
    */
   async createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle> {
-    const preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(options.sessionId, {
+    const preparation = SessionPreparation.create(this.sessionStore().prepare(options.sessionId, {
       ...options.seed === undefined ? {} : { seed: options.seed },
       ...options.meta === undefined ? {} : { meta: options.meta },
       ...options.inheritedEventCount === undefined ? {} : { inheritedEventCount: options.inheritedEventCount },
@@ -904,7 +924,7 @@ export class AgentLoop extends Service implements AgentFactory {
           const persisted = coldRead.events
           const closers = interruptedTurnClosers(persisted)
           if (closers.length > 0) await handle.append(closers)
-          preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, {
+          preparation = SessionPreparation.create(this.sessionStore().prepare(id, {
             seed: [...persisted, ...closers],
             meta: structuredClone(handle.header),
             inheritedEventCount: handle.inheritedEventCount,

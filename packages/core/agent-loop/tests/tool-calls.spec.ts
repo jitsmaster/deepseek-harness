@@ -9,7 +9,7 @@ import { createUserMessage, ToolCallId, StreamChunk  } from '@deepseek-ai/dsh-ll
 import SessionStore, { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
-import ToolRuntime, { defineContentToolFixture, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type PostToolDecision, type PreToolDecision } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineContentToolFixture, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type PostToolDecision, type PreToolDecision, type ToolRuntimeScheduler } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -701,6 +701,184 @@ describe('tool-call scheduler: failure quiescence', () => {
     expect(gated.pending()).toEqual([])
     expect(events(agent).findLast(event => event.type === 'turn/end')).toMatchObject({
       data: { reason: { kind: 'error', error: { message: schedulerError.message, code: 'UNKNOWN' } } },
+    })
+  })
+})
+
+describe('tool-call scheduler: tools-service disposal recovery', () => {
+  /**
+   * Shadow `ctx.tools` with an own property that reads as `undefined`,
+   * mimicking the reconcile-and-remount race where a live cordis binding for
+   * a required service goes stale mid-await. `ctx` is a Proxy over the raw
+   * Context instance (see `ReflectService.handler` in
+   * `vendor/cordis/src/reflect.ts`): its `get` trap checks
+   * `Reflect.has(target, prop)` before falling into service resolution, so
+   * `Object.defineProperty(ctx, 'tools', ...)` — which the proxy forwards to
+   * the underlying target because no `defineProperty` trap is installed —
+   * intercepts every `ctx.tools` read until the shadow is removed.
+   */
+  function disposeTools(ctx: Context): void {
+    Object.defineProperty(ctx, 'tools', { get: () => undefined, configurable: true })
+  }
+
+  /** Remove the shadow, letting normal service resolution find `tools` again. */
+  function remountTools(ctx: Context): void {
+    // oxlint-disable-next-line typescript/no-explicit-any typescript/no-unsafe-member-access -- deleting a test-only shadow property
+    delete (ctx as any).tools
+  }
+
+  it('recovers when the tools service is transiently disposed and remounted mid-call', async () => {
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    // Let prepare/dispatch run against the live scheduler — the call is
+    // in flight (its body is blocked on the gate) before we disturb `tools`.
+    await until(() => gated.started.length === 1)
+
+    // Simulate the reconcile-and-remount race landing while the call is
+    // in flight: `tools` goes undefined for a short window, then comes back
+    // once the remount completes — before the bounded retry/backoff for the
+    // pending `finish`/`finalize` call would give up.
+    disposeTools(ctx)
+    setTimeout(() => { remountTools(ctx) }, 20)
+    gated.release('1')
+    await waitForIdle(ctx, agent)
+
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBeFalsy()
+    expect(results[0]!.data.error).toBeUndefined()
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
+  it('reuses the scheduler instance pinned at prepare across a mid-call remount', async () => {
+    // A real reconcile-and-remount does not clear the old `ToolRuntime`
+    // instance's own state — it only swaps which instance `ctx.tools`
+    // resolves to. `prepare`/`dispatch` already ran against the pinned
+    // instance, so `finish`/`finalize` must stay pinned to it too: querying
+    // `ctx.tools` fresh at commit could resolve the new instance instead,
+    // whose own `cancellationStates` WeakMap never saw this call's `exec`.
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const originalTools = ctx.tools
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    // Let prepare/dispatch run against the original instance — the call is
+    // in flight (its body is blocked on the gate) before the swap lands.
+    await until(() => gated.started.length === 1)
+
+    // Swap `ctx.tools` to a stand-in "post-remount" instance whose scheduler
+    // has no record of this call: exactly what a genuinely different
+    // `ToolRuntime` instance's own per-instance WeakMaps would look like.
+    // `prepare`/`dispatch` never legitimately run again for an already-started
+    // call, so both throw if reached.
+    const foreignScheduler: ToolRuntimeScheduler = {
+      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
+      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
+      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+    }
+    Object.defineProperty(ctx, 'tools', {
+      // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
+      get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
+      configurable: true,
+    })
+    gated.release('1')
+    await waitForIdle(ctx, agent)
+
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBeFalsy()
+    expect(results[0]!.data.error).toBeUndefined()
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
+  it('reuses the scheduler instance pinned at prepare for the synchronous post-result branch', async () => {
+    // `prepare`'s synchronous 'post-result' branch (a pre-execute denial)
+    // pins its scheduler the same way the dispatch branch does. There is no
+    // later await to hook for the swap, so it happens inside the denying
+    // `tools/pre-execute` listener itself — the narrow window between
+    // `prepare`'s admission and `commitReady`'s call into `finalize`.
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const originalTools = ctx.tools
+    const foreignScheduler: ToolRuntimeScheduler = {
+      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
+      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
+      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+    }
+    ctx.on('tools/pre-execute', async (): Promise<PreToolDecision> => {
+      Object.defineProperty(ctx, 'tools', {
+        // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
+        get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
+        configurable: true,
+      })
+      return { kind: 'deny', reason: 'blocked by policy' }
+    })
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    expect(gated.started).toEqual([])
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBe(true)
+    expect((results[0]!.data.message.content[0].content[0] as { text: string }).text).toContain('blocked by policy')
+    expect(results[0]!.data.error).not.toMatchObject({ message: expect.stringContaining('invariant violated') as unknown })
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
+  it('still fails loudly when the tools service never comes back (permanent disposal)', async () => {
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await until(() => gated.started.length === 1)
+
+    // The tools service is gone for good — no remount ever restores it.
+    disposeTools(ctx)
+    gated.release('1')
+    await waitForIdle(ctx, agent)
+
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd).toMatchObject({
+      data: {
+        reason: {
+          kind: 'error',
+          error: {
+            message: 'agent loop: the tool runtime was disposed while a tool call was in flight',
+            code: 'UNKNOWN',
+          },
+        },
+      },
     })
   })
 })

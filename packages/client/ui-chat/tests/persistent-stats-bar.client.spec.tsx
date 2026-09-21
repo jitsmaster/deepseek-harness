@@ -24,7 +24,7 @@ import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import { billedInputTokens, cacheHitPercent, formatDuration } from '../src/client/chat/StatsPills.tsx'
 import { formatTokensPerSecond } from '../src/client/chat/message-chrome.ts'
 import { formatTokens } from '../src/client/chat/token-format.ts'
@@ -66,7 +66,7 @@ const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
 function emptySessions() {
   return bindSnapshotSelector(createSnapshotStore<SessionListState>({
-    ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    ids: [], byId: {}, phase: 'ready', subagentsByParent: {}, jobsBySession: {},
   }))
 }
 function emptyWorkspaces() {
@@ -74,8 +74,8 @@ function emptyWorkspaces() {
     items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   }))
 }
-function noPendingInteraction() {
-  return bindSnapshotSelector(createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()))
+function noSessionStatus() {
+  return bindSnapshotSelector(createSnapshotStore<SessionStatusSnapshot>(new Map()))
 }
 
 function props(snapshot: ActiveSessionStatsSnapshot): PersistentStatsBarProps {
@@ -84,7 +84,8 @@ function props(snapshot: ActiveSessionStatsSnapshot): PersistentStatsBarProps {
     usePanelInfo,
     useResource,
     useSessions: emptySessions(),
-    useSessionPendingInteraction: noPendingInteraction(),
+    useSessionStatus: noSessionStatus(),
+    useSessionRetainInfo: () => undefined,
     useWorkspaces: emptyWorkspaces(),
     t,
   }
