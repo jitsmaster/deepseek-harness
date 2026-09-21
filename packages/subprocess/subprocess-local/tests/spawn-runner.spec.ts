@@ -395,7 +395,7 @@ describe('runner launch inputs', () => {
     }
     expect(resolveWindowsExecutable('bash', 'C:\\target', {
       Path: 'relative;"C:\\semi;colon";"C:\\tools\\git\\bin";C:\\later',
-    }, exists)).toBe('C:\\tools\\git\\bin\\bash.exe')
+    }, exists, {})).toBe('C:\\tools\\git\\bin\\bash.exe')
     expect(probed).toEqual([
       'C:\\target\\bash.com',
       'C:\\target\\bash.exe',
