@@ -28,6 +28,18 @@ interface Slot {
   exec: ToolRunContext
   result: ToolExecutionResult
   needsPost: boolean
+  /**
+   * The exact scheduler instance resolved at this call's `prepare()`
+   * admission point. `finalize`/`finish` reuse this same object rather than
+   * re-resolving {@link toolScheduler}: a real disposal+remount between
+   * `prepare` and commit swaps which instance `ctx.tools` resolves to, but
+   * does not tear down the old instance — its own per-instance `WeakMap`s
+   * (`cancellationStates` etc.) still hold this call's state, while the new
+   * instance's never saw it. Committing against the newly-resolved instance
+   * would turn a graceful disposal error into a confusing internal-invariant
+   * error instead.
+   */
+  scheduler: Context['tools'][typeof TOOL_RUNTIME_SCHEDULER]
 }
 
 /** One scheduler group outcome, including a drained cancellation. */
@@ -196,10 +208,14 @@ async function runGroup(
       const slot = slots[committed]
       if (slot === undefined) break
       const call = group[committed]
-      const scheduler = await toolScheduler(ctx)
+      // A liveness-only check: confirms the tools service hasn't been
+      // permanently disposed (throwing the actionable message) without
+      // using whatever instance it resolves to — commit stays pinned to the
+      // instance `prepare` actually ran on, see the `Slot.scheduler` doc.
+      await toolsService(ctx)
       const result = slot.needsPost
-        ? await scheduler.finalize(slot.exec, slot.result)
-        : scheduler.finish(slot.exec, slot.result)
+        ? await slot.scheduler.finalize(slot.exec, slot.result)
+        : slot.scheduler.finish(slot.exec, slot.result)
       // oxlint-disable-next-line typescript/no-non-null-assertion -- bounded index
       appendToolResult(session, turn, step, call!.block, result, callSeqs[committed]!)
       for (const context of result.additionalContexts ?? []) acceptContext(context)
@@ -220,11 +236,13 @@ async function runGroup(
     throwSchedulerFailure()
     switch (prepared.kind) {
       case 'dispatch': {
+        // Reuse the same scheduler instance `prepare` ran on for the rest of
+        // this call's lifecycle — see the `Slot.scheduler` doc comment.
         const promise = prepareScheduler.dispatch(prepared.exec).then(
           (outcome) => {
             slots[index] = {
               exec: prepared.exec, result: outcome.result,
-              needsPost: outcome.kind === 'post-result',
+              needsPost: outcome.kind === 'post-result', scheduler: prepareScheduler,
             }
             return index
           },
@@ -237,10 +255,10 @@ async function runGroup(
         break
       }
       case 'post-result':
-        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: true }
+        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: true, scheduler: prepareScheduler }
         break
       case 'final-result':
-        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: false }
+        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: false, scheduler: prepareScheduler }
         break
       /* v8 ignore next -- closed-union exhaustiveness guard */
       default:
