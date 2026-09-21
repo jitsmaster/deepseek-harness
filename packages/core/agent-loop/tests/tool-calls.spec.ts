@@ -807,6 +807,48 @@ describe('tool-call scheduler: tools-service disposal recovery', () => {
     expect(turnEnd?.data.reason.kind).not.toBe('error')
   })
 
+  it('reuses the scheduler instance pinned at prepare for the synchronous post-result branch', async () => {
+    // `prepare`'s synchronous 'post-result' branch (a pre-execute denial)
+    // pins its scheduler the same way the dispatch branch does. There is no
+    // later await to hook for the swap, so it happens inside the denying
+    // `tools/pre-execute` listener itself — the narrow window between
+    // `prepare`'s admission and `commitReady`'s call into `finalize`.
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const originalTools = ctx.tools
+    const foreignScheduler: ToolRuntimeScheduler = {
+      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
+      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
+      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+    }
+    ctx.on('tools/pre-execute', async (): Promise<PreToolDecision> => {
+      Object.defineProperty(ctx, 'tools', {
+        get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
+        configurable: true,
+      })
+      return { kind: 'deny', reason: 'blocked by policy' }
+    })
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    expect(gated.started).toEqual([])
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBe(true)
+    expect((results[0]!.data.message.content[0].content[0] as { text: string }).text).toContain('blocked by policy')
+    expect(results[0]!.data.error).not.toMatchObject({ message: expect.stringContaining('invariant violated') })
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
   it('still fails loudly when the tools service never comes back (permanent disposal)', async () => {
     const adapter = new MockAdapter([
       multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),

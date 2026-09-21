@@ -33,11 +33,10 @@ interface Slot {
    * admission point. `finalize`/`finish` reuse this same object rather than
    * re-resolving {@link toolScheduler}: a real disposal+remount between
    * `prepare` and commit swaps which instance `ctx.tools` resolves to, but
-   * does not tear down the old instance — its own per-instance `WeakMap`s
-   * (`cancellationStates` etc.) still hold this call's state, while the new
-   * instance's never saw it. Committing against the newly-resolved instance
-   * would turn a graceful disposal error into a confusing internal-invariant
-   * error instead.
+   * does not tear down the old instance — its own per-call state for this
+   * `exec` still exists there, while the newly-resolved instance never saw
+   * it. Committing against the newly-resolved instance would turn a graceful
+   * disposal error into a confusing internal-invariant error instead.
    */
   scheduler: Context['tools'][typeof TOOL_RUNTIME_SCHEDULER]
 }

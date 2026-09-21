@@ -116,6 +116,8 @@ The loop sends immutable requests while keeping cancellation live. It reuses mes
 
 Details: the [sequence diagram](agent-lifecycle.md), the [tool pipeline](tool-execution-pipeline.md), and [cancellation and error recovery](subsystems/core.md#the-agent-handle).
 
+Tool-call scheduling survives a transient `tools` service disposal (a host reconcile-and-remount mid-call): a bounded retry recovers a momentarily-undefined `ctx.tools`, and commit stays pinned to the scheduler instance `prepare()` admitted the call on rather than re-resolving `ctx.tools`, since a remount swaps which instance is live without tearing down the old one's per-call state ([agent-loop](../packages/core/agent-loop/README.md#tool-call-scheduling)).
+
 ## Session log
 
 The session log is the source of the context the model sees. `deriveMessages()` projects model history from it. Each `assistant/message` embeds the exact compact timed stream that produced its assembled content; `assistant/attempt` retains settled failed, retried, cancelled, and stream-error attempts without adding model history. Fork, resume, transcripts, telemetry, and persistence all derive from these durable settlements, while live UI incrementality comes from `agent/assistant-stream`; a hard process loss before settlement leaves no durable attempt stream ([decision](../.agents/notes/implemented/architecture/2026-09-01-v2-embedded-assistant-streams.md)).
