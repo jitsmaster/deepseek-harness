@@ -34,8 +34,46 @@ class Entry {
 /** The session-keyed directory cache. Plain class — the owning service wires events and RPC. */
 export class CommandDirectory {
   private readonly entries = new Map<SessionId, Entry>()
+  /** Per-session ready-snapshot listeners — the '/' source's `subscribeLexicon` rides this. */
+  private readonly listeners = new Map<SessionId, Set<() => void>>()
 
   constructor(private readonly fetchCommands: FetchCommands) {}
+
+  /**
+   * Subscribe to one session's ready-snapshot changes: every winning publish
+   * (success or failure) after a `refresh()`, not `warm()`'s no-op on an
+   * already-warm entry. Backs the '/' source's reference lexicon so an open
+   * menu can refetch once a rescan that started after `warm()` lands,
+   * instead of only refreshing on the next `/` retype.
+   * @param sessionId - session key.
+   * @param listener - invoked after each publish; no payload, re-read via {@link names}.
+   * @returns unsubscribe.
+   */
+  subscribe(sessionId: SessionId, listener: () => void): () => void {
+    const set = this.listeners.get(sessionId) ?? new Set()
+    set.add(listener)
+    this.listeners.set(sessionId, set)
+    return () => {
+      set.delete(listener)
+      if (set.size === 0) this.listeners.delete(sessionId)
+    }
+  }
+
+  /**
+   * Synchronous ready-snapshot command names, for the reference lexicon.
+   * @param sessionId - session key.
+   * @returns the ready names, or `undefined` while cold/pending/failed —
+   *   matching {@link resolve}'s "not ready" answer.
+   */
+  names(sessionId: SessionId): readonly string[] | undefined {
+    const entry = this.entries.get(sessionId)
+    if (entry === undefined || entry.state !== 'ready') return undefined
+    return entry.commands.map(command => command.name)
+  }
+
+  private notifyListeners(sessionId: SessionId): void {
+    for (const listener of [...(this.listeners.get(sessionId) ?? [])]) listener()
+  }
 
   /**
    * Current cache status for one session.
@@ -120,7 +158,10 @@ export class CommandDirectory {
       entry.state = 'failed'
       entry.lastError = error
     } finally {
-      if (epoch === entry.epoch) notifyWaiters(entry)
+      if (epoch === entry.epoch) {
+        notifyWaiters(entry)
+        this.notifyListeners(sessionId)
+      }
     }
   }
 
