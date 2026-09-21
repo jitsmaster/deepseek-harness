@@ -391,6 +391,7 @@ export class AgentLoop extends Service implements AgentFactory {
    */
   private sessionStore(): typeof this.runtime.ctx.sessions {
     const sessions = this.runtime.ctx.sessions
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- sessions can go transiently undefined during a disposal race.
     if (sessions === undefined) {
       throw new Error('agent loop: the session store was disposed while this call was in flight')
     }

@@ -793,6 +793,7 @@ describe('tool-call scheduler: tools-service disposal recovery', () => {
       finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
     }
     Object.defineProperty(ctx, 'tools', {
+      // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
       get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
       configurable: true,
     })
@@ -829,6 +830,7 @@ describe('tool-call scheduler: tools-service disposal recovery', () => {
     }
     ctx.on('tools/pre-execute', async (): Promise<PreToolDecision> => {
       Object.defineProperty(ctx, 'tools', {
+        // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
         get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
         configurable: true,
       })
@@ -844,7 +846,7 @@ describe('tool-call scheduler: tools-service disposal recovery', () => {
     expect(results).toHaveLength(1)
     expect(results[0]!.data.message.content[0].isError).toBe(true)
     expect((results[0]!.data.message.content[0].content[0] as { text: string }).text).toContain('blocked by policy')
-    expect(results[0]!.data.error).not.toMatchObject({ message: expect.stringContaining('invariant violated') })
+    expect(results[0]!.data.error).not.toMatchObject({ message: expect.stringContaining('invariant violated') as unknown })
     const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
     expect(turnEnd?.data.reason.kind).not.toBe('error')
   })
