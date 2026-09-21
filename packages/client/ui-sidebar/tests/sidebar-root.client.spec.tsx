@@ -199,7 +199,7 @@ describe('SidebarRoot shell', () => {
       collapsed width={56}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])}
-      useResource={useResource} useWorkspaces={neverHook}
+      useResource={useResource} useWorkspaces={neverHook} useActiveSessionStats={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
       renderSlot={((key: string) => key === 'sidebar.toggle.badge'
         ? <Tooltip label="Update — V1.2.3"><span data-testid="badge" /></Tooltip>

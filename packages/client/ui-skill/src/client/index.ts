@@ -37,7 +37,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
-import { rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconSkillOutline16, rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
@@ -151,6 +151,7 @@ export function apply(ctx: ClientContext): void {
       return rankByName(skills, query)
         .map(skill => ({
           name: skill.name,
+          icon: IconSkillOutline16,
           // The user-only marker rides the description (the menu's only
           // secondary text); `hint` is the claim-state ghost text, not a badge.
           description: skill.modelInvocable ? skill.description : `${t('menu.userOnly')} · ${skill.description}`,

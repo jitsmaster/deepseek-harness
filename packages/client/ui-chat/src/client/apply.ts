@@ -61,7 +61,7 @@ export function apply(ctx: Context): void {
   const sessions = ctx.sessions
   // Root-scoped mirror of the current session's whole-log stats/usage, read
   // by PersistentStatsBar (frame-wide, no session-scoped slot needed).
-  const activeSessionStats = createActiveSessionStatsSource(sessions, sessions.list)
+  const activeSessionStats = createActiveSessionStatsSource(sessions, ctx.uiWorkspace.main)
   ctx.slots.provideRoot({ hooks: { activeSessionStats } })
 
   const chatSources = new WeakMap<SessionBinding, ObservableSnapshot<ChatSnapshot>>()

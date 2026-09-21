@@ -8,7 +8,7 @@ import type {
   SessionTarget,
   SessionListState,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceView,
@@ -23,6 +23,8 @@ interface MainSelection {
 
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
+  /** The frame's Main panel selection: the Session shown as current, or none. */
+  readonly main: ObservableSnapshot<SessionId | undefined>
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
@@ -108,6 +110,12 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     {}, { persist: { name: 'dsh.sessions.current' } },
   )
   private mainReference: SessionReference | undefined
+
+  /** Derived read-only view of `selection`'s Session identity, for consumers outside navigation. */
+  readonly main: ObservableSnapshot<SessionId | undefined> = {
+    getSnapshot: () => this.selection.getSnapshot().sessionId,
+    subscribe: listener => this.selection.subscribe(listener),
+  }
 
   /**
    * @param ctx - Client root Context.

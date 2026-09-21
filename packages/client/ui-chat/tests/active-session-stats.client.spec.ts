@@ -24,8 +24,8 @@
 //   render, and a subscription created there would never get torn down
 
 import { describe, expect, it, vi } from 'vitest'
-import type { ISessions, SessionBinding, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ISessions, SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { createActiveSessionStatsSource } from '../src/client/chat/active-session-stats.ts'
 
@@ -75,10 +75,10 @@ function makeBinding(sessionId: SessionId) {
 }
 
 function makeSessionList(current: SessionId | undefined): {
-  source: HostObservable<SessionListState>
+  source: ObservableSnapshot<SessionId | undefined>
   set: (next: SessionId | undefined) => void
 } {
-  let state = { current } as SessionListState
+  let state = current
   const listeners = new Set<() => void>()
   return {
     source: {
@@ -89,7 +89,7 @@ function makeSessionList(current: SessionId | undefined): {
       },
     },
     set: (next) => {
-      state = { ...state, current: next }
+      state = next
       for (const fn of [...listeners]) fn()
     },
   }
