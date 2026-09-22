@@ -11,6 +11,11 @@ describe('claudeCodeProjectDir', () => {
     expect(claudeCodeProjectDir('C:\\Users\\awang', 'D:\\dev\\DSH'))
       .toBe('C:\\Users\\awang\\.claude\\projects\\D--dev-DSH')
   })
+
+  it('slugs a dot-directory segment (e.g. a .claude/worktrees/... git worktree) the same as Claude Code itself', () => {
+    expect(claudeCodeProjectDir('C:\\Users\\awang', 'D:\\dev\\CTnP-Final\\.claude\\worktrees\\self-evolving-agent-framework'))
+      .toBe('C:\\Users\\awang\\.claude\\projects\\D--dev-CTnP-Final--claude-worktrees-self-evolving-agent-framework')
+  })
 })
 
 describe('claudeCodeTranscriptPath', () => {

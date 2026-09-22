@@ -102,6 +102,8 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
       matchSpace: (session, token) => this.matchSpace(session, token),
       matchEnter: (session, line, signal, envelope) => this.matchEnter(session, line, signal, envelope),
       warm: (session) => { this.directory.warm(session.sessionId) },
+      lexicon: session => this.directory.names(session.sessionId),
+      subscribeLexicon: (session, listener) => this.directory.subscribe(session.sessionId, listener),
     }), 'command: slash source')
     ctx.remote.$on('commands/change', () => { this.directory.invalidateAll() })
     // A preset switch changes which commands one session's agent resolves and

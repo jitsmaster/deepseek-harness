@@ -5523,7 +5523,11 @@ importers:
         specifier: workspace:^
         version: link:../../llm/token-meter
 
-  packages/compat/client-runtime: {}
+  packages/compat/client-runtime:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
 
   packages/compat/host-apiproxy:
     dependencies:

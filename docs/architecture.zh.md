@@ -120,6 +120,8 @@ turn/end
 
 详情见[时序图](agent-lifecycle.zh.md)、[工具流水线](tool-execution-pipeline.zh.md)和[取消与错误恢复](subsystems/core.zh.md#the-agent-handle)。
 
+工具调用调度经受得住 `tools` 服务的瞬时销毁（宿主在调用进行中执行 reconcile 并重新挂载）：有界重试会恢复暂时性未定义的 `ctx.tools`，且提交阶段始终钉在 `prepare()` 为该调用准入时所用的调度器实例上，而不是重新解析 `ctx.tools`——因为重新挂载会在不拆除旧实例逐调用状态的情况下切换当前生效实例（[agent-loop](../packages/core/agent-loop/README.zh.md#tool-call-scheduling)）。
+
 ## 会话日志
 
 会话日志是模型所见上下文的来源。`deriveMessages()` 从中投影出模型历史。每个 `assistant/message` 都嵌入产生其组装内容的精确紧凑带时间 stream；`assistant/attempt` 保留已到达 settlement 的失败、重试、取消与 stream error attempt，且不添加模型历史。fork、恢复、transcript（文本记录）、遥测与持久化都从这些持久 settlement 派生，实时 UI 增量则来自 `agent/assistant-stream`；如果进程在 settlement 前硬中断，则不会留下持久 attempt stream（见[决策](../.agents/notes/implemented/architecture/2026-09-01-v2-embedded-assistant-streams.zh.md)）。

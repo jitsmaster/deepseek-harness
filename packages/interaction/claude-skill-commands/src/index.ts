@@ -45,6 +45,42 @@ const GATED_PROVIDER = 'anthropic'
 const REFRESH_COMMAND_NAME = 'refresh-skills'
 
 /**
+ * How long one `cwd`'s listing result is reused across sessions/agents
+ * before the next rescan pays the CLI subprocess spawn again. `/refresh-skills`
+ * evicts its own `cwd` immediately rather than waiting this out.
+ */
+const LISTING_CACHE_TTL_MS = 5 * 60 * 1000
+
+/** One `cwd`'s in-flight or settled listing, plus when it was started. */
+interface CachedListing {
+  readonly promise: Promise<readonly SlashCommand[]>
+  readonly startedAt: number
+}
+
+/**
+ * Host-wide (not per-agent) cache of `listClaudeCodeCommands()` results, keyed by `cwd`.
+ * @param cache - the host-shared cache, owned by `apply()`.
+ * @param runSpec - this rescan's run spec; only `cwd` keys the cache.
+ * @returns the cached or freshly spawned listing.
+ */
+function cachedListClaudeCodeCommands(
+  cache: Map<string, CachedListing>,
+  runSpec: ClaudeCodeRunSpec,
+): Promise<readonly SlashCommand[]> {
+  const cached = cache.get(runSpec.cwd)
+  if (cached !== undefined && Date.now() - cached.startedAt < LISTING_CACHE_TTL_MS) return cached.promise
+  const promise = listClaudeCodeCommands(runSpec)
+  cache.set(runSpec.cwd, { promise, startedAt: Date.now() })
+  // A failed listing must not poison the cache for the rest of the TTL —
+  // the next caller (this one included, via `rescan()`'s own retry paths)
+  // should get a fresh attempt instead of the same rejection replayed.
+  promise.catch(() => {
+    if (cache.get(runSpec.cwd)?.promise === promise) cache.delete(runSpec.cwd)
+  })
+  return promise
+}
+
+/**
  * Command names a listed CLI command can never register over, beyond
  * whatever DSH-side host command already resolves at scan time (checked
  * separately via `commands.find`). `'model'` specifically collides with
@@ -150,7 +186,12 @@ function registerListedCommand(
  * Per-agent controller: toggles this agent's Claude Code slash commands on
  * or off before every step, tracking the agent's current model provider so
  * they are re-evaluated rather than decided once at mount. Also owns
- * `/refresh-skills`, registered under the same gate.
+ * `/refresh-skills`, registered under the same gate. The same gate sync also
+ * runs once, eagerly, as soon as `commands` resolves — otherwise a session
+ * created on an already-Anthropic default model would show none of this
+ * until its first turn completes and closes the `agent/pre-step` waterfall,
+ * which is one full round-trip later than a user opening the command palette
+ * on a brand-new session would expect.
  *
  * The `commands` service is injected exactly once, up front — mirroring
  * `dsh-plan-mode`'s constructor-time single-injection pattern — rather than
@@ -169,14 +210,24 @@ function registerListedCommand(
  *   read from there rather than `agentCtx`, since a per-agent scoped context
  *   never itself goes through this plugin's own `inject` and cannot resolve
  *   an injected service directly.
+ * @param listingCache - the host-wide, `cwd`-keyed listing cache owned by
+ *   `apply()` and shared across every agent it mounts.
  */
-function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string, subprocess: Context['subprocess']): void {
+function mountPerAgent(
+  agentCtx: Context,
+  agent: Agent,
+  homedir: string,
+  subprocess: Context['subprocess'],
+  listingCache: Map<string, CachedListing>,
+): void {
   // Resolved once the single injection below settles. Gate-open ticks that
   // land before then find `commands` still `undefined` and skip registering
   // anything — there is nothing to register against without it.
   let commands: CommandRuntime | undefined
   agentCtx.inject(['commands'], (commandCtx) => {
     commands = commandCtx.commands
+    // Don't wait for the first step so commands appear immediately.
+    void ensureGateSynced()
   })
 
   // The currently-registered commands, or `undefined` when none are
@@ -186,8 +237,10 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string, subproc
   // variable; see `gateOpen`.
   let registered: Map<string, RegisteredCommand> | undefined
   let refreshCommandDispose: (() => void) | undefined
-  // Whether the provider gate was open as of the last `agent/pre-step` tick.
+  // Whether the provider gate was open as of the last sync.
   let gateOpen = false
+  // Lets overlapping caller await in-progress gate-open instead of skipping it.
+  let openTransition: Promise<void> | undefined
   // Race-condition fix: `rescan()` is reachable from two independent
   // triggers (the `agent/pre-step` gate-open transition and the
   // `/refresh-skills` handler) that can overlap. Without serialization, a
@@ -236,7 +289,7 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string, subproc
     if (commands === undefined) return { added: 0, removed: 0 }
     let reported: readonly SlashCommand[]
     try {
-      reported = await listClaudeCodeCommands(buildRunSpec())
+      reported = await cachedListClaudeCodeCommands(listingCache, buildRunSpec())
     } catch (error: unknown) {
       agentCtx.logger.warn(`claude-skill-commands: failed to list Claude Code commands: ${String(error)}`)
       return { added: 0, removed: 0 }
@@ -292,27 +345,44 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string, subproc
     return { added, removed }
   }
 
-  agentCtx.on('agent/pre-step', async (_payload, next) => {
-    const decision = await next()
+  /**
+   * Re-check the provider gate and open/close command registration to
+   * match. Called both eagerly (once `commands` resolves) and on every
+   * `agent/pre-step` tick, so a session already on Claude gets its commands
+   * without waiting for a step, while a later provider switch is still
+   * caught.
+   */
+  async function ensureGateSynced(): Promise<void> {
+    if (openTransition !== undefined) return openTransition
     const defaultModel = agentCtx.get('agentDefaultModel')
-    if (defaultModel === undefined) return decision
+    if (defaultModel === undefined) return
     const provider = currentProviderOf(agent, defaultModel)
     const shouldBeRegistered = provider === GATED_PROVIDER
     if (shouldBeRegistered && !gateOpen) {
-      gateOpen = true
-      // List once on gate-open regardless of how many commands are found —
-      // `/refresh-skills` must be reachable even when the initial list finds
-      // none, so an operator can add a skill later and pick it up.
-      await rescan()
-      if (commands !== undefined) {
-        refreshCommandDispose = commands.register({
-          name: REFRESH_COMMAND_NAME,
-          description: 'Re-list Claude Code commands and update registered commands',
-          handler: async () => {
-            const { added, removed } = await rescan()
-            return { kind: 'success', text: `Refreshed skills: +${added}, -${removed}.` }
-          },
-        })
+      openTransition = (async () => {
+        gateOpen = true
+        // List once on gate-open regardless of how many commands are found —
+        // `/refresh-skills` must be reachable even when the initial list finds
+        // none, so an operator can add a skill later and pick it up.
+        await rescan()
+        if (commands !== undefined) {
+          refreshCommandDispose = commands.register({
+            name: REFRESH_COMMAND_NAME,
+            description: 'Re-list Claude Code commands and update registered commands',
+            handler: async () => {
+              // A manual refresh must see this cwd's real, current listing —
+              // never a stale cache entry another session's rescan warmed.
+              listingCache.delete(buildRunSpec().cwd)
+              const { added, removed } = await rescan()
+              return { kind: 'success', text: `Refreshed skills: +${added}, -${removed}.` }
+            },
+          })
+        }
+      })()
+      try {
+        await openTransition
+      } finally {
+        openTransition = undefined
       }
     } else if (!shouldBeRegistered && gateOpen) {
       gateOpen = false
@@ -323,6 +393,11 @@ function mountPerAgent(agentCtx: Context, agent: Agent, homedir: string, subproc
       refreshCommandDispose?.()
       refreshCommandDispose = undefined
     }
+  }
+
+  agentCtx.on('agent/pre-step', async (_payload, next) => {
+    const decision = await next()
+    await ensureGateSynced()
     return decision
   })
   agentCtx.effect(() => () => {
@@ -343,7 +418,9 @@ export function apply(ctx: Context, config: ClaudeSkillCommandsConfig = {}): voi
   // off a per-agent scoped context (e.g. `agentCtx.subprocess`) would not be,
   // since that context never itself goes through this plugin's `inject`.
   const subprocess = ctx.subprocess
+  // Host-wide, shared across every agent this plugin mounts — see `cachedListClaudeCodeCommands`.
+  const listingCache = new Map<string, CachedListing>()
   ctx.on('agent/created', ({ agent }) => {
-    mountPerAgent(agent.ctx, agent, homedir, subprocess)
+    mountPerAgent(agent.ctx, agent, homedir, subprocess, listingCache)
   })
 }

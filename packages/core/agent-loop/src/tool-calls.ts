@@ -29,12 +29,14 @@ interface Slot {
   result: ToolExecutionResult
   needsPost: boolean
   /**
-   * The exact scheduler instance resolved at this call's `prepare()` admission
-   * point. `finalize`/`finish` must reuse this same object rather than
+   * The exact scheduler instance resolved at this call's `prepare()`
+   * admission point. `finalize`/`finish` reuse this same object rather than
    * re-resolving {@link toolScheduler}: a real disposal+remount between
-   * `prepare` and commit can swap in a new `ToolRuntime` instance whose
-   * per-instance `WeakMap`s never saw this call's `exec`, turning a graceful
-   * disposal error into a confusing internal-invariant error.
+   * `prepare` and commit swaps which instance `ctx.tools` resolves to, but
+   * does not tear down the old instance — its own per-call state for this
+   * `exec` still exists there, while the newly-resolved instance never saw
+   * it. Committing against the newly-resolved instance would turn a graceful
+   * disposal error into a confusing internal-invariant error instead.
    */
   scheduler: Context['tools'][typeof TOOL_RUNTIME_SCHEDULER]
 }
@@ -205,11 +207,10 @@ async function runGroup(
       const slot = slots[committed]
       if (slot === undefined) break
       const call = group[committed]
-      // `slot.scheduler` stays a live reference even after a permanent
-      // disposal, so calling it directly would silently succeed against a
-      // torn-down runtime. Re-check liveness through the retrying accessor
-      // (ignoring its result) so a permanent disposal still fails loudly
-      // here instead of surfacing later as an unrelated failure.
+      // A liveness-only check: confirms the tools service hasn't been
+      // permanently disposed (throwing the actionable message) without
+      // using whatever instance it resolves to — commit stays pinned to the
+      // instance `prepare` actually ran on, see the `Slot.scheduler` doc.
       await toolsService(ctx)
       const result = slot.needsPost
         ? await slot.scheduler.finalize(slot.exec, slot.result)

@@ -124,6 +124,13 @@ const handle = await ctx.agents.create({
 
 最终适配器选择、分发与迭代失败以终止结束的形式到达并进入 `agent/request-error`；处理该失败的监听器返回 `{ kind: 'retry' }` 且不调用 `next()`，未被处理的失败则是终态。Middleware、结果处理、工具及其他扩展失败仍会抛出并直接关闭轮次——插件失败结束的是轮次，不是循环。取消后未分发的模型工具调用会收到合成的 `tool/call` 加 `ABORTED_BEFORE_DISPATCH` 结果对。[显式取消决策](../../../.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.zh.md)拥有信号生命周期。
 
+<a id="tool-call-scheduling"></a>
+### 工具调用调度
+
+宿主可能在会话进行中处置并重新挂载共享的 `tools` 挂载点（配置文件监视触发的变化，或 Plugin Manager 的开关切换），导致本应是必需服务的 `ctx.tools` 短暂变为未定义。热路径上的每次读取都会经过有界重试（5 次尝试，间隔 40ms），因此瞬时销毁会在重新挂载完成后无感知地恢复；一旦重试窗口耗尽仍未恢复，则说明是永久性销毁，会抛出可操作的错误信息 `agent loop: the tool runtime was disposed while a tool call was in flight`。
+
+重新挂载会切换 `ctx.tools` 解析到的 `ToolRuntime` 实例，但不会拆除旧实例——该实例中仍保有某次进行中 `exec` 的逐调用状态，而新解析出的实例从未见过它。为避免在调用进行中途落到错误的实例上，每次调用的 `prepare()` 准入阶段都会把当时解析出的调度器实例钉住；`finalize`/`finish` 在提交时直接复用该实例，而不是重新解析 `ctx.tools`。提交阶段仍会先执行同样的有界重试存活检查，因此无论最终由哪个实例完成调用，真正的永久性销毁都能被检测并上报。
+
 </details>
 
 -----

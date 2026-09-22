@@ -9,7 +9,7 @@ import { createUserMessage, ToolCallId, StreamChunk  } from '@deepseek-ai/dsh-ll
 import SessionStore, { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
-import ToolRuntime, { defineContentToolFixture, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type PostToolDecision, type PreToolDecision } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineContentToolFixture, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type PostToolDecision, type PreToolDecision, type ToolRuntimeScheduler } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -755,6 +755,98 @@ describe('tool-call scheduler: tools-service disposal recovery', () => {
     expect(results).toHaveLength(1)
     expect(results[0]!.data.message.content[0].isError).toBeFalsy()
     expect(results[0]!.data.error).toBeUndefined()
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
+  it('reuses the scheduler instance pinned at prepare across a mid-call remount', async () => {
+    // A real reconcile-and-remount does not clear the old `ToolRuntime`
+    // instance's own state — it only swaps which instance `ctx.tools`
+    // resolves to. `prepare`/`dispatch` already ran against the pinned
+    // instance, so `finish`/`finalize` must stay pinned to it too: querying
+    // `ctx.tools` fresh at commit could resolve the new instance instead,
+    // whose own `cancellationStates` WeakMap never saw this call's `exec`.
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const originalTools = ctx.tools
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    // Let prepare/dispatch run against the original instance — the call is
+    // in flight (its body is blocked on the gate) before the swap lands.
+    await until(() => gated.started.length === 1)
+
+    // Swap `ctx.tools` to a stand-in "post-remount" instance whose scheduler
+    // has no record of this call: exactly what a genuinely different
+    // `ToolRuntime` instance's own per-instance WeakMaps would look like.
+    // `prepare`/`dispatch` never legitimately run again for an already-started
+    // call, so both throw if reached.
+    const foreignScheduler: ToolRuntimeScheduler = {
+      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
+      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
+      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+    }
+    Object.defineProperty(ctx, 'tools', {
+      // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
+      get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
+      configurable: true,
+    })
+    gated.release('1')
+    await waitForIdle(ctx, agent)
+
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBeFalsy()
+    expect(results[0]!.data.error).toBeUndefined()
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
+  it('reuses the scheduler instance pinned at prepare for the synchronous post-result branch', async () => {
+    // `prepare`'s synchronous 'post-result' branch (a pre-execute denial)
+    // pins its scheduler the same way the dispatch branch does. There is no
+    // later await to hook for the swap, so it happens inside the denying
+    // `tools/pre-execute` listener itself — the narrow window between
+    // `prepare`'s admission and `commitReady`'s call into `finalize`.
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const originalTools = ctx.tools
+    const foreignScheduler: ToolRuntimeScheduler = {
+      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
+      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
+      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
+    }
+    ctx.on('tools/pre-execute', async (): Promise<PreToolDecision> => {
+      Object.defineProperty(ctx, 'tools', {
+        // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
+        get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
+        configurable: true,
+      })
+      return { kind: 'deny', reason: 'blocked by policy' }
+    })
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    expect(gated.started).toEqual([])
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBe(true)
+    expect((results[0]!.data.message.content[0].content[0] as { text: string }).text).toContain('blocked by policy')
+    expect(results[0]!.data.error).not.toMatchObject({ message: expect.stringContaining('invariant violated') as unknown })
     const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
     expect(turnEnd?.data.reason.kind).not.toBe('error')
   })

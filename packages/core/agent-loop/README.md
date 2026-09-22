@@ -124,6 +124,12 @@ Prompt admission uses the actual `prepareCall()` result, not the preceding `requ
 
 Final adapter selection, dispatch, and iteration failures arrive as terminal finishes and enter `agent/request-error`; a handling listener returns `{ kind: 'retry' }` without calling `next()`, while an unhandled failure is terminal. Middleware, result-processing, tool, and other extension failures remain thrown and close the turn directly — plugin failure ends the turn, not the loop. Undispatched model tool calls after cancellation receive synthetic `tool/call` plus `ABORTED_BEFORE_DISPATCH` result pairs. The [explicit-cancellation decision](../../../.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) owns the signal lifecycle.
 
+### Tool call scheduling
+
+A host can dispose and remount the shared `tools` mount mid-session (a config file-watch or a Plugin Manager toggle), leaving `ctx.tools` momentarily undefined even though it is a required service. Every read on the hot path goes through a bounded retry (5 attempts, 40ms apart) so a transient disposal recovers invisibly once the remount completes; a permanent disposal still throws an actionable `agent loop: the tool runtime was disposed while a tool call was in flight` message once the window is exhausted.
+
+A remount swaps which `ToolRuntime` instance `ctx.tools` resolves to without tearing down the old one — its own per-call state for an in-flight `exec` still exists there, while the newly-resolved instance never saw it. To avoid landing on the wrong instance mid-call, each call's `prepare()` admission pins the resolved scheduler instance for that call; `finalize`/`finish` reuse it directly at commit instead of re-resolving `ctx.tools`. Commit still runs the same bounded-retry liveness check first so a genuine permanent disposal is detected and reported, independent of which instance ends up finishing the call.
+
 </details>
 
 -----
