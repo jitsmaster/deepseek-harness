@@ -6,7 +6,8 @@
 // switch.
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: merges the `sessionStats` key into SessionProjectionMap and
 // exposes SessionStatsProjection.
@@ -62,12 +63,12 @@ function readCurrent(
  * session's face subscriptions first; getSnapshot() stays reference-stable
  * across calls while the (sessionId, statsRef, usageRef) triple is unchanged.
  * @param sessions - session service (binding resolution).
- * @param sessionList - root session-list source (current selection).
+ * @param main - the frame's Main panel selection (current Session, or none).
  * @returns memoized root observable consumed by the `activeSessionStats` root hook.
  */
 export function createActiveSessionStatsSource(
   sessions: ISessions,
-  sessionList: HostObservable<SessionListState>,
+  main: ObservableSnapshot<SessionId | undefined>,
 ): HostObservable<ActiveSessionStatsSnapshot> {
   let cached: CachedSnapshot | undefined
   let faceDisposers: readonly (() => void)[] = []
@@ -90,7 +91,7 @@ export function createActiveSessionStatsSource(
     // upkeep lives entirely in `syncFaceSubscriptions`, called only from
     // `subscribe()` and the shared session-list listener below, both of
     // which are commit-time hooks whose paired cleanup is guaranteed to run.
-    const sessionId = sessionList.getSnapshot().current
+    const sessionId = main.getSnapshot()
     const { stats, usage } = readCurrent(sessions, sessionId)
     if (cached !== undefined
       && cached.sessionId === sessionId && cached.statsRef === stats && cached.usageRef === usage) {
@@ -111,7 +112,7 @@ export function createActiveSessionStatsSource(
 
   /** (Re)subscribe to the current session's faces when the current id moved. */
   const syncFaceSubscriptions = (): void => {
-    const sessionId = sessionList.getSnapshot().current
+    const sessionId = main.getSnapshot()
     if (sessionId === subscribedSessionId) return
     teardownFaces()
     if (sessionId === undefined) return
@@ -129,14 +130,14 @@ export function createActiveSessionStatsSource(
     subscribe(listener) {
       listeners.add(listener)
       syncFaceSubscriptions()
-      // One shared sessionList.subscribe() registration backs every consumer
+      // One shared main.subscribe() registration backs every consumer
       // of this source (set up once, on the first subscriber), rather than
       // one per subscribe() call: a per-consumer registration would fan a
       // single session-list change out to N callbacks, each broadcasting to
       // all N listeners via the shared notify() below — quadratic in
       // subscriber count. Mirrors syncFaceSubscriptions' dedupe-by-id guard.
       if (offSessionList === undefined) {
-        offSessionList = sessionList.subscribe(() => {
+        offSessionList = main.subscribe(() => {
           syncFaceSubscriptions()
           notify()
         })
