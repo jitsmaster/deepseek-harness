@@ -28,6 +28,14 @@ import {
   type ClaudeCodePermissionMode,
   type ClaudeCodeRunSpec,
 } from './run.ts'
+// Re-exported for `dsh-claude-skill-commands`: the only other first-party
+// consumer of this run/list-commands plumbing. Without this barrel export it
+// would have to reach past `exports["."]` into the `./src/*` escape hatch,
+// which resolves to raw `.ts` source — fine under tsx/Vitest, but a plain
+// `node`-run built `lib/index.js` (e.g. the shipped `dsh web` server) cannot
+// load that source directly, so the consumer's own import would fail.
+export { DEFAULT_CLAUDE_CODE_PERMISSION_MODE, DEFAULT_DISPOSE_GRACE_MS, type ClaudeCodeRunSpec }
+export { listClaudeCodeCommands, runClaudeCodeSlashCommand } from './list-commands.ts'
 
 export const name = 'subagent-claude-code'
 export const inject = ['subagents', 'subprocess']

@@ -18,12 +18,10 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import {
   DEFAULT_CLAUDE_CODE_PERMISSION_MODE,
   DEFAULT_DISPOSE_GRACE_MS,
-  type ClaudeCodeRunSpec,
-} from '@deepseek-ai/dsh-subagent-claude-code/src/run.ts'
-import {
   listClaudeCodeCommands,
   runClaudeCodeSlashCommand,
-} from '@deepseek-ai/dsh-subagent-claude-code/src/list-commands.ts'
+  type ClaudeCodeRunSpec,
+} from '@deepseek-ai/dsh-subagent-claude-code'
 import { currentProviderOf } from './model-gate.ts'
 
 export const name = 'claude-skill-commands'
