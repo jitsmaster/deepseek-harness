@@ -705,6 +705,92 @@ describe('tool-call scheduler: failure quiescence', () => {
   })
 })
 
+describe('tool-call scheduler: tools-service disposal recovery', () => {
+  /**
+   * Shadow `ctx.tools` with an own property that reads as `undefined`,
+   * mimicking the reconcile-and-remount race where a live cordis binding for
+   * a required service goes stale mid-await. `ctx` is a Proxy over the raw
+   * Context instance (see `ReflectService.handler` in
+   * `vendor/cordis/src/reflect.ts`): its `get` trap checks
+   * `Reflect.has(target, prop)` before falling into service resolution, so
+   * `Object.defineProperty(ctx, 'tools', ...)` — which the proxy forwards to
+   * the underlying target because no `defineProperty` trap is installed —
+   * intercepts every `ctx.tools` read until the shadow is removed.
+   */
+  function disposeTools(ctx: Context): void {
+    Object.defineProperty(ctx, 'tools', { get: () => undefined, configurable: true })
+  }
+
+  /** Remove the shadow, letting normal service resolution find `tools` again. */
+  function remountTools(ctx: Context): void {
+    // oxlint-disable-next-line typescript/no-explicit-any typescript/no-unsafe-member-access -- deleting a test-only shadow property
+    delete (ctx as any).tools
+  }
+
+  it('recovers when the tools service is transiently disposed and remounted mid-call', async () => {
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    // Let prepare/dispatch run against the live scheduler — the call is
+    // in flight (its body is blocked on the gate) before we disturb `tools`.
+    await until(() => gated.started.length === 1)
+
+    // Simulate the reconcile-and-remount race landing while the call is
+    // in flight: `tools` goes undefined for a short window, then comes back
+    // once the remount completes — before the bounded retry/backoff for the
+    // pending `finish`/`finalize` call would give up.
+    disposeTools(ctx)
+    setTimeout(() => { remountTools(ctx) }, 20)
+    gated.release('1')
+    await waitForIdle(ctx, agent)
+
+    const results = events(agent).filter(e => e.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.data.message.content[0].isError).toBeFalsy()
+    expect(results[0]!.data.error).toBeUndefined()
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd?.data.reason.kind).not.toBe('error')
+  })
+
+  it('still fails loudly when the tools service never comes back (permanent disposal)', async () => {
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
+    ])
+    const ctx = await harness(adapter)
+    const gated = gatedParallelTool('p')
+    ctx.tools.register(gated.tool)
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await until(() => gated.started.length === 1)
+
+    // The tools service is gone for good — no remount ever restores it.
+    disposeTools(ctx)
+    gated.release('1')
+    await waitForIdle(ctx, agent)
+
+    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
+    expect(turnEnd).toMatchObject({
+      data: {
+        reason: {
+          kind: 'error',
+          error: {
+            message: 'agent loop: the tool runtime was disposed while a tool call was in flight',
+            code: 'UNKNOWN',
+          },
+        },
+      },
+    })
+  })
+})
+
 describe('PTC mode native-tool denial through the agent loop', () => {
   /** A minimal in-process PTC runtime for test purposes — never actually runs. */
   class FakePtcRuntime extends PtcRuntime {

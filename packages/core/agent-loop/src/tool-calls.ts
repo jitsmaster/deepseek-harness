@@ -28,6 +28,15 @@ interface Slot {
   exec: ToolRunContext
   result: ToolExecutionResult
   needsPost: boolean
+  /**
+   * The exact scheduler instance resolved at this call's `prepare()` admission
+   * point. `finalize`/`finish` must reuse this same object rather than
+   * re-resolving {@link toolScheduler}: a real disposal+remount between
+   * `prepare` and commit can swap in a new `ToolRuntime` instance whose
+   * per-instance `WeakMap`s never saw this call's `exec`, turning a graceful
+   * disposal error into a confusing internal-invariant error.
+   */
+  scheduler: Context['tools'][typeof TOOL_RUNTIME_SCHEDULER]
 }
 
 /** One scheduler group outcome, including a drained cancellation. */
@@ -86,7 +95,7 @@ export async function executeToolCalls(
     // Commit before classifying again so registry changes affect unstarted calls.
     // oxlint-disable-next-line typescript/no-non-null-assertion -- bounded by the loop condition
     const first = planned[next]!
-    const mode = ctx.tools.executionMode(first.exec).kind
+    const mode = (await toolsService(ctx)).executionMode(first.exec).kind
     const group = mode === 'parallel' ? planned.slice(next) : [first]
     const outcome = await runGroup(
       ctx, turn, step, group, mode, signal, acceptContext,
@@ -108,6 +117,53 @@ function parseArguments(raw: string): unknown {
   } catch {
     return raw
   }
+}
+
+/** Delay between {@link toolScheduler} retry polls, in milliseconds. */
+const TOOL_SCHEDULER_RETRY_DELAY_MS = 40
+
+/**
+ * Bounded retry attempts for {@link toolScheduler}. Combined with the delay
+ * above, this covers a window well past a host's brief reconcile-and-remount
+ * gap (observed around 20ms) while staying short enough that the permanent-
+ * disposal path still fails promptly.
+ */
+const TOOL_SCHEDULER_RETRY_ATTEMPTS = 5
+
+/** Await one retry delay tick. */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * The injected `tools` service, guarded against the disposal race where an
+ * in-flight tool call straddles the owning `tools` service's own teardown:
+ * a live cordis binding can go stale mid-await even though `ctx.tools` is a
+ * required service — surfacing as a raw "Cannot read properties of
+ * undefined (reading 'prepare')" (or 'executionMode') instead of an
+ * actionable message.
+ *
+ * A transient disposal (e.g. a host reconciling and remounting the shared
+ * `tools` mount mid-session) can leave `ctx.tools` momentarily undefined.
+ * Rather than fail an in-flight call immediately, poll with a short bounded
+ * backoff so the retry is invisible once the mount comes back; a permanent
+ * disposal still throws the same message once the window is exhausted. Every
+ * direct read of `ctx.tools` on the hot path goes through this helper so the
+ * retry logic is not duplicated at each call site.
+ */
+async function toolsService(ctx: Context): Promise<Context['tools']> {
+  for (let attempt = 0; attempt < TOOL_SCHEDULER_RETRY_ATTEMPTS; attempt++) {
+    const tools = ctx.tools
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- tools can go transiently undefined during a disposal race.
+    if (tools !== undefined) return tools
+    if (attempt < TOOL_SCHEDULER_RETRY_ATTEMPTS - 1) await delay(TOOL_SCHEDULER_RETRY_DELAY_MS)
+  }
+  throw new Error('agent loop: the tool runtime was disposed while a tool call was in flight')
+}
+
+/** The injected tool scheduler, guarded via {@link toolsService}. */
+async function toolScheduler(ctx: Context): Promise<Context['tools'][typeof TOOL_RUNTIME_SCHEDULER]> {
+  return (await toolsService(ctx))[TOOL_RUNTIME_SCHEDULER]
 }
 
 /**
@@ -149,9 +205,15 @@ async function runGroup(
       const slot = slots[committed]
       if (slot === undefined) break
       const call = group[committed]
+      // `slot.scheduler` stays a live reference even after a permanent
+      // disposal, so calling it directly would silently succeed against a
+      // torn-down runtime. Re-check liveness through the retrying accessor
+      // (ignoring its result) so a permanent disposal still fails loudly
+      // here instead of surfacing later as an unrelated failure.
+      await toolsService(ctx)
       const result = slot.needsPost
-        ? await ctx.tools[TOOL_RUNTIME_SCHEDULER].finalize(slot.exec, slot.result)
-        : ctx.tools[TOOL_RUNTIME_SCHEDULER].finish(slot.exec, slot.result)
+        ? await slot.scheduler.finalize(slot.exec, slot.result)
+        : slot.scheduler.finish(slot.exec, slot.result)
       // oxlint-disable-next-line typescript/no-non-null-assertion -- bounded index
       appendToolResult(session, turn, step, call!.block, result, callSeqs[committed]!)
       for (const context of result.additionalContexts ?? []) acceptContext(context)
@@ -167,13 +229,19 @@ async function runGroup(
     const call = group[index]!
     callSeqs[index] = appendToolCall(session, turn, step, call.block)
     started++
-    const prepared = await ctx.tools[TOOL_RUNTIME_SCHEDULER].prepare(call.exec)
+    const prepareScheduler = await toolScheduler(ctx)
+    const prepared = await prepareScheduler.prepare(call.exec)
     throwSchedulerFailure()
     switch (prepared.kind) {
       case 'dispatch': {
-        const promise = ctx.tools[TOOL_RUNTIME_SCHEDULER].dispatch(prepared.exec).then(
+        // Reuse the same scheduler instance `prepare` ran on for the rest of
+        // this call's lifecycle — see the `Slot.scheduler` doc comment.
+        const promise = prepareScheduler.dispatch(prepared.exec).then(
           (outcome) => {
-            slots[index] = { exec: prepared.exec, result: outcome.result, needsPost: outcome.kind === 'post-result' }
+            slots[index] = {
+              exec: prepared.exec, result: outcome.result,
+              needsPost: outcome.kind === 'post-result', scheduler: prepareScheduler,
+            }
             return index
           },
           (error: unknown) => {
@@ -185,10 +253,10 @@ async function runGroup(
         break
       }
       case 'post-result':
-        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: true }
+        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: true, scheduler: prepareScheduler }
         break
       case 'final-result':
-        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: false }
+        slots[index] = { exec: prepared.exec, result: prepared.result, needsPost: false, scheduler: prepareScheduler }
         break
       /* v8 ignore next -- closed-union exhaustiveness guard */
       default:
@@ -201,8 +269,10 @@ async function runGroup(
       // Re-read later modes after ordered commits so registry changes can create a barrier.
       // oxlint-disable-next-line typescript/no-non-null-assertion -- bounded by the loop condition
       const nextCall = group[nextToStart]!
-      if (nextToStart > 0 && mode === 'parallel'
-        && ctx.tools.executionMode(nextCall.exec).kind !== 'parallel') break
+      if (nextToStart > 0 && mode === 'parallel') {
+        const nextMode = (await toolsService(ctx)).executionMode(nextCall.exec).kind
+        if (nextMode !== 'parallel') break
+      }
       await startCall(nextToStart)
       nextToStart++
       throwSchedulerFailure()
