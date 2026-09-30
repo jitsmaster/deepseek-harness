@@ -230,6 +230,34 @@ describe('claude-skill-commands — SDK-backed listing (bugs 1-3)', () => {
     expect(ctx.commands.list(agent).some(c => c.name === 'modes:sparc')).toBe(true)
   })
 
+  it('registers skills but not Claude Code\'s own session/config commands, which the CLI reports in the same list', async () => {
+    queryMock.mockImplementation((params) => {
+      params.options.spawnClaudeCodeProcess!({
+        ...stubClaudeCliCommand, cwd: process.cwd(), env: {}, signal: new AbortController().signal,
+      } as never)
+      return fakeListingQuery([
+        { name: 'modes:sparc', description: 'Boomerang Commander Mode', argumentHint: '<goal>' },
+        { name: 'simplify', description: 'Review the changed code', argumentHint: '' },
+        { name: 'compact', description: 'Free up context by summarizing the conversation', argumentHint: '' },
+        { name: 'clear', description: 'Start a new session with empty context', argumentHint: '' },
+        { name: 'config', description: 'Set a setting by key', argumentHint: '' },
+        { name: '__remote-workflow', description: 'Run the workflow script delivered in this session', argumentHint: '' },
+      ])
+    })
+    const ctx = await bootHost('/home/operator')
+    const agent = agentWithProvider(ctx, '/workspace', 'anthropic')
+
+    ctx.emit('agent/created', { agent, source: 'startup' })
+    await tickPreStep(ctx, agent)
+
+    const names = ctx.commands.list(agent).map(c => c.name)
+    expect(names).toContain('modes:sparc')
+    expect(names).toContain('simplify')
+    for (const builtin of ['compact', 'clear', 'config', '__remote-workflow']) {
+      expect(names).not.toContain(builtin)
+    }
+  })
+
   it('/refresh-skills re-lists via the SDK asynchronously and picks up a command that only appears on the second call', async () => {
     let call = 0
     queryMock.mockImplementation((params) => {

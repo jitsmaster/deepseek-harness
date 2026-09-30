@@ -22,6 +22,7 @@ import {
   runClaudeCodeSlashCommand,
   type ClaudeCodeRunSpec,
 } from '@deepseek-ai/dsh-subagent-claude-code'
+import { isClaudeCodeBuiltinCommand } from './builtin-commands.ts'
 import { currentProviderOf } from './model-gate.ts'
 
 export const name = 'claude-skill-commands'
@@ -292,7 +293,13 @@ function mountPerAgent(
       agentCtx.logger.warn(`claude-skill-commands: failed to list Claude Code commands: ${String(error)}`)
       return { added: 0, removed: 0 }
     }
-    const found = new Map(reported.map(command => [command.name, command]))
+    // Claude Code's own session/config commands ride the same listing as real
+    // skills; only skills are worth a one-shot subprocess (see `builtin-commands.ts`).
+    const found = new Map(
+      reported
+        .filter(command => !isClaudeCodeBuiltinCommand(command.name))
+        .map(command => [command.name, command]),
+    )
     const current = registered ?? new Map<string, RegisteredCommand>()
     let added = 0
     let removed = 0
