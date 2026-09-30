@@ -1062,11 +1062,23 @@ function locationIdentity(location: ConversationLocation): string {
   return `${location.kind}:${coordinates.turn ?? ''}:${coordinates.step ?? ''}`
 }
 
+/**
+ * Whether one chat node is visible activity for the Conversation shell. An
+ * ordinary command is bookkeeping and keeps a blank session on the hero; a
+ * command imported from another agent tool does real work and returns output,
+ * so it must open the conversation or the user never sees it run.
+ */
+function isVisibleActivity(raw: ChatConversationViewNode | undefined): boolean {
+  if (raw === undefined) return false
+  const node = raw as ChatNode
+  return node.kind !== 'command' || node.data.origin !== undefined
+}
+
 /** Chat target factory contributed to the Conversation view registry. */
 export const chatViewDefinition: ConversationViewDefinition<ChatConversationViewNode, ChatSnapshot> = {
   target: 'chat',
   create: () => new ChatSnapshotBuilder(),
-  isActive: snapshot => snapshot.order.some(key => snapshot.nodes.get(key)?.kind !== 'command'),
+  isActive: snapshot => snapshot.order.some(key => isVisibleActivity(snapshot.nodes.get(key))),
 }
 
 /**

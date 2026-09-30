@@ -3,6 +3,7 @@
 // live readers rather than time-point views.
 
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
+import type { CommandOrigin } from '@deepseek-ai/dsh-commands/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -238,6 +239,11 @@ export interface CommandNode {
    * when omitted by the command or when the run fell outside the window.
    */
   args: string | null
+  /**
+   * Where the command was imported from (run payload); absent for a DSH-native
+   * command and when the run fell outside the window.
+   */
+  origin?: CommandOrigin
   /** Settlement outcome (done payload); null while the command is still executing. */
   outcome: {
     kind: 'success' | 'error'

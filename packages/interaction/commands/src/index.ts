@@ -387,6 +387,7 @@ export class CommandRuntime extends TypertRemoteService {
       name: parsed.name,
       ...command.definition.recordInput === false ? {} : { args: parsed.rawInput },
       source: { kind: 'user' },
+      ...command.definition.origin === undefined ? {} : { origin: command.definition.origin },
     })
     const settle = (result: CommandResult): CommandExecution => {
       this.appendLifecycle(agent.session, 'command/done', {

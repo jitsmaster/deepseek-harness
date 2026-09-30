@@ -43,6 +43,7 @@ function commandFromRun(match: ConversationMatch): CommandNode {
     commandId: data.commandId,
     name: data.name,
     args: data.args ?? null,
+    ...data.origin === undefined ? {} : { origin: data.origin },
     outcome: null,
   }
 }
@@ -62,6 +63,7 @@ function commandFromDone(match: ConversationMatch, previous?: CommandNode): Comm
     commandId: data.commandId,
     name: previous?.name ?? null,
     args: previous?.args ?? null,
+    ...previous?.origin === undefined ? {} : { origin: previous.origin },
     outcome: {
       kind: data.kind,
       ...data.text === undefined ? {} : { text: data.text },

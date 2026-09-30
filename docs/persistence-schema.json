@@ -3857,7 +3857,7 @@
       "kind": "event",
       "event": "command/run",
       "surface": false,
-      "digest": "37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006",
+      "digest": "29b2478167a9119247a76f813f2166b0af969f94d1b6109be020cdb95d7c613e",
       "schema": {
         "root": 0,
         "nodes": [
@@ -3871,22 +3871,22 @@
               },
               {
                 "name": "ignorable",
-                "type": 5,
+                "type": 6,
                 "optional": true
               },
               {
                 "name": "seq",
-                "type": 6,
+                "type": 7,
                 "optional": false
               },
               {
                 "name": "time",
-                "type": 6,
+                "type": 7,
                 "optional": false
               },
               {
                 "name": "type",
-                "type": 7,
+                "type": 8,
                 "optional": false
               }
             ],
@@ -3911,8 +3911,13 @@
                 "optional": false
               },
               {
-                "name": "source",
+                "name": "origin",
                 "type": 3,
+                "optional": true
+              },
+              {
+                "name": "source",
+                "type": 4,
                 "optional": false
               }
             ],
@@ -3923,11 +3928,15 @@
             "type": "string"
           },
           {
+            "kind": "literal",
+            "value": "claude-code"
+          },
+          {
             "kind": "object",
             "properties": [
               {
                 "name": "kind",
-                "type": 4,
+                "type": 5,
                 "optional": false
               }
             ],
@@ -13539,6 +13548,216 @@
       }
     },
     {
+      "key": "event:web/anthropic-search-llm-request",
+      "kind": "event",
+      "event": "web/anthropic-search-llm-request",
+      "surface": false,
+      "digest": "4fd4e6e96fce699a145b91ad7d54912edbd907430c260fd267ad12dec68d3303",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 15,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 16,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "apiVersion",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "body",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "endpoint",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_tokens",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "messages",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "model",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "system",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "tools",
+                "type": 11,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 6,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "content",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "role",
+                "type": 10,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 8,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "text",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "text"
+          },
+          {
+            "kind": "literal",
+            "value": "user"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 12,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_uses",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 13,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 14,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "web_search"
+          },
+          {
+            "kind": "literal",
+            "value": "web_search_20250305"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "web/anthropic-search-llm-request"
+          }
+        ]
+      }
+    },
+    {
       "key": "event:web/deepseek-search-llm-request",
       "kind": "event",
       "event": "web/deepseek-search-llm-request",
@@ -23126,6 +23345,115 @@
       "sources": []
     },
     {
+      "digest": "29b2478167a9119247a76f813f2166b0af969f94d1b6109be020cdb95d7c613e",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 8,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "args",
+                "type": 2,
+                "optional": true
+              },
+              {
+                "name": "commandId",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "origin",
+                "type": 3,
+                "optional": true
+              },
+              {
+                "name": "source",
+                "type": 4,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": "claude-code"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "kind",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "user"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "command/run"
+          }
+        ]
+      },
+      "names": [
+        "event:command/run"
+      ],
+      "sources": []
+    },
+    {
       "digest": "2a7f86849ae54b3398ee49661a757c4fcb59a6192b7036ee2ff514617e13fb42",
       "schema": {
         "root": 0,
@@ -23733,10 +24061,164 @@
         ]
       },
       "names": [
+        "event:web/anthropic-search-llm-request.data.body.tools[0]",
         "event:web/deepseek-search-llm-request.data.body.tools[0]"
       ],
       "sources": [
+        "packages/web/web-search-anthropic/src/provider.ts:85",
         "packages/web/web-search-deepseek/src/provider.ts:71"
+      ]
+    },
+    {
+      "digest": "2d61305dbc96897c09df9a4658c93e8ed6b869a24c4413412978b78636ff1bce",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_tokens",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "messages",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "model",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "system",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "tools",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 3,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "content",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "role",
+                "type": 8,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 5,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "text",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 7,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": "text"
+          },
+          {
+            "kind": "literal",
+            "value": "user"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 10,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_uses",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 11,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 12,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "web_search"
+          },
+          {
+            "kind": "literal",
+            "value": "web_search_20250305"
+          }
+        ]
+      },
+      "names": [
+        "event:web/anthropic-search-llm-request.data.body"
+      ],
+      "sources": [
+        "packages/web/web-search-anthropic/src/provider.ts:74"
       ]
     },
     {
@@ -27628,106 +28110,6 @@
       "sources": []
     },
     {
-      "digest": "37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006",
-      "schema": {
-        "root": 0,
-        "nodes": [
-          {
-            "kind": "object",
-            "properties": [
-              {
-                "name": "data",
-                "type": 1,
-                "optional": false
-              },
-              {
-                "name": "ignorable",
-                "type": 5,
-                "optional": true
-              },
-              {
-                "name": "seq",
-                "type": 6,
-                "optional": false
-              },
-              {
-                "name": "time",
-                "type": 6,
-                "optional": false
-              },
-              {
-                "name": "type",
-                "type": 7,
-                "optional": false
-              }
-            ],
-            "indices": []
-          },
-          {
-            "kind": "object",
-            "properties": [
-              {
-                "name": "args",
-                "type": 2,
-                "optional": true
-              },
-              {
-                "name": "commandId",
-                "type": 2,
-                "optional": false
-              },
-              {
-                "name": "name",
-                "type": 2,
-                "optional": false
-              },
-              {
-                "name": "source",
-                "type": 3,
-                "optional": false
-              }
-            ],
-            "indices": []
-          },
-          {
-            "kind": "primitive",
-            "type": "string"
-          },
-          {
-            "kind": "object",
-            "properties": [
-              {
-                "name": "kind",
-                "type": 4,
-                "optional": false
-              }
-            ],
-            "indices": []
-          },
-          {
-            "kind": "literal",
-            "value": "user"
-          },
-          {
-            "kind": "literal",
-            "value": true
-          },
-          {
-            "kind": "primitive",
-            "type": "number"
-          },
-          {
-            "kind": "literal",
-            "value": "command/run"
-          }
-        ]
-      },
-      "names": [
-        "event:command/run"
-      ],
-      "sources": []
-    },
-    {
       "digest": "374fdd68aee5ff844e378c0cbdd961d247a0f22e4ade0bb03d800cd2a46a2b8b",
       "schema": {
         "root": 0,
@@ -28841,7 +29223,7 @@
         "packages/core/tools/src/index.ts#ToolRestriction"
       ],
       "sources": [
-        "packages/core/tools/src/index.ts:682"
+        "packages/core/tools/src/index.ts:692"
       ]
     },
     {
@@ -31207,6 +31589,7 @@
         ]
       },
       "names": [
+        "event:web/anthropic-search-llm-request.data.body.tools",
         "event:web/deepseek-search-llm-request.data.body.tools"
       ],
       "sources": []
@@ -33267,11 +33650,15 @@
         ]
       },
       "names": [
+        "event:web/anthropic-search-llm-request.data.body.messages[0].content[0]",
+        "event:web/anthropic-search-llm-request.data.body.system[0]",
         "event:web/deepseek-search-llm-request.data.body.messages[0].content[0]",
         "packages/llm/llm/src/types.ts#TextBlock"
       ],
       "sources": [
         "packages/llm/llm/src/types.ts:61",
+        "packages/web/web-search-anthropic/src/provider.ts:77",
+        "packages/web/web-search-anthropic/src/provider.ts:80",
         "packages/web/web-search-deepseek/src/provider.ts:66"
       ]
     },
@@ -33596,6 +33983,216 @@
       },
       "names": [
         "event:team/member"
+      ],
+      "sources": []
+    },
+    {
+      "digest": "4fd4e6e96fce699a145b91ad7d54912edbd907430c260fd267ad12dec68d3303",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 15,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 16,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "apiVersion",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "body",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "endpoint",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_tokens",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "messages",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "model",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "system",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "tools",
+                "type": 11,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 6,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "content",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "role",
+                "type": 10,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 8,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "text",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "text"
+          },
+          {
+            "kind": "literal",
+            "value": "user"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 12,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_uses",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 13,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 14,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "web_search"
+          },
+          {
+            "kind": "literal",
+            "value": "web_search_20250305"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "web/anthropic-search-llm-request"
+          }
+        ]
+      },
+      "names": [
+        "event:web/anthropic-search-llm-request"
       ],
       "sources": []
     },
@@ -34973,7 +35570,7 @@
         "event:command/done.data"
       ],
       "sources": [
-        "packages/interaction/commands/src/types.ts:112"
+        "packages/interaction/commands/src/types.ts:127"
       ]
     },
     {
@@ -40980,6 +41577,20 @@
       ]
     },
     {
+      "digest": "81f2d6299094208c9096557c1a710f80ef55611968dc77a4e1b8f30e3df30e52",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "literal",
+            "value": "web/anthropic-search-llm-request"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "82470020b5bfcb1a843e2aa05602af7d37df99e82d01f015c7c589ba054fd89d",
       "schema": {
         "root": 0,
@@ -43637,6 +44248,8 @@
         ]
       },
       "names": [
+        "event:web/anthropic-search-llm-request.data.body.messages[0].content",
+        "event:web/anthropic-search-llm-request.data.body.system",
         "event:web/deepseek-search-llm-request.data.body.messages[0].content"
       ],
       "sources": []
@@ -44627,9 +45240,11 @@
         ]
       },
       "names": [
+        "event:web/anthropic-search-llm-request.data.body.messages[0]",
         "event:web/deepseek-search-llm-request.data.body.messages[0]"
       ],
       "sources": [
+        "packages/web/web-search-anthropic/src/provider.ts:78",
         "packages/web/web-search-deepseek/src/provider.ts:64"
       ]
     },
@@ -44884,6 +45499,179 @@
       ],
       "sources": [
         "packages/webhook/webhook/src/types.ts:74"
+      ]
+    },
+    {
+      "digest": "9f5ee416f2bcb4781513fc4c9484e5f6ec6c8dbb273e4de582585794381581d7",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "apiVersion",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "body",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "endpoint",
+                "type": 1,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_tokens",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "messages",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "model",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "system",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "tools",
+                "type": 10,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 5,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "content",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "role",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 7,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "text",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 8,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "text"
+          },
+          {
+            "kind": "literal",
+            "value": "user"
+          },
+          {
+            "kind": "tuple",
+            "elements": [
+              {
+                "type": 11,
+                "optional": false,
+                "rest": false
+              }
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "max_uses",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 12,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 13,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "web_search"
+          },
+          {
+            "kind": "literal",
+            "value": "web_search_20250305"
+          }
+        ]
+      },
+      "names": [
+        "packages/web/web-search-anthropic/src/provider.ts#AnthropicSearchLlmRequest"
+      ],
+      "sources": [
+        "packages/web/web-search-anthropic/src/provider.ts:68"
       ]
     },
     {
@@ -48555,65 +49343,6 @@
       ]
     },
     {
-      "digest": "a853902cfab417b8f08aa51ad6855fea46f34ed4588a74e47403035111d0fb86",
-      "schema": {
-        "root": 0,
-        "nodes": [
-          {
-            "kind": "object",
-            "properties": [
-              {
-                "name": "args",
-                "type": 1,
-                "optional": true
-              },
-              {
-                "name": "commandId",
-                "type": 1,
-                "optional": false
-              },
-              {
-                "name": "name",
-                "type": 1,
-                "optional": false
-              },
-              {
-                "name": "source",
-                "type": 2,
-                "optional": false
-              }
-            ],
-            "indices": []
-          },
-          {
-            "kind": "primitive",
-            "type": "string"
-          },
-          {
-            "kind": "object",
-            "properties": [
-              {
-                "name": "kind",
-                "type": 3,
-                "optional": false
-              }
-            ],
-            "indices": []
-          },
-          {
-            "kind": "literal",
-            "value": "user"
-          }
-        ]
-      },
-      "names": [
-        "event:command/run.data"
-      ],
-      "sources": [
-        "packages/interaction/commands/src/types.ts:105"
-      ]
-    },
-    {
       "digest": "a8a2b9011fc067862df7ce40748868467e5778283d7ac193c13f77684a914c57",
       "schema": {
         "root": 0,
@@ -49080,8 +49809,8 @@
       ],
       "sources": [
         "packages/core/session/src/types.ts:189",
-        "packages/interaction/commands/src/types.ts:75",
-        "packages/interaction/commands/src/types.ts:79",
+        "packages/interaction/commands/src/types.ts:87",
+        "packages/interaction/commands/src/types.ts:91",
         "packages/llm/llm/src/message.ts:103",
         "packages/session/session-title/src/types.ts:35"
       ]
@@ -49279,8 +50008,12 @@
           }
         ]
       },
-      "names": [],
-      "sources": []
+      "names": [
+        "packages/interaction/commands/src/types.ts#CommandOrigin"
+      ],
+      "sources": [
+        "packages/interaction/commands/src/types.ts:64"
+      ]
     },
     {
       "digest": "b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d",
@@ -51274,6 +52007,7 @@
         ]
       },
       "names": [
+        "event:web/anthropic-search-llm-request.data.body.messages",
         "event:web/deepseek-search-llm-request.data.body.messages"
       ],
       "sources": []
@@ -58605,6 +59339,7 @@
         "SessionEventEnvelope[54]",
         "SessionEventEnvelope[56]",
         "SessionEventEnvelope[57]",
+        "SessionEventEnvelope[58]",
         "SessionEventEnvelope[5]",
         "SessionEventEnvelope[7]",
         "SessionEventEnvelope[8]",
@@ -59875,6 +60610,74 @@
       ],
       "sources": [
         "packages/llm/llm/src/types.ts:432"
+      ]
+    },
+    {
+      "digest": "f2d78f5038efb26145354cbd100667626a1fe883d43ce3c4aacd09a5bac9eff8",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "args",
+                "type": 1,
+                "optional": true
+              },
+              {
+                "name": "commandId",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "origin",
+                "type": 2,
+                "optional": true
+              },
+              {
+                "name": "source",
+                "type": 3,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": "claude-code"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "kind",
+                "type": 4,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "user"
+          }
+        ]
+      },
+      "names": [
+        "event:command/run.data"
+      ],
+      "sources": [
+        "packages/interaction/commands/src/types.ts:120"
       ]
     },
     {

@@ -264,6 +264,35 @@ describe('built-in conversation node Definitions', () => {
     expect(chatViewDefinition.isActive?.(current)).toBe(false)
   })
 
+  it('treats a command imported from another agent tool as visible activity, running or settled', () => {
+    const running = snapshot(assembler([
+      at(1, 'command/run', {
+        commandId: 'command-2',
+        name: 'simplify',
+        source: { kind: 'user' },
+        origin: 'claude-code',
+      }),
+    ]))
+    const settled = snapshot(assembler([
+      at(1, 'command/run', {
+        commandId: 'command-2',
+        name: 'simplify',
+        source: { kind: 'user' },
+        origin: 'claude-code',
+      }),
+      at(2, 'command/done', {
+        commandId: 'command-2',
+        kind: 'success',
+        text: 'Reviewed 3 files.',
+      }),
+    ]))
+
+    expect(running.nodes.get(running.order[0] ?? '')?.kind).toBe('command')
+    expect(chatViewDefinition.isActive?.(running)).toBe(true)
+    expect(chatViewDefinition.isActive?.(settled)).toBe(true)
+    expect((settled.nodes.get(settled.order[0] ?? '') as { data: { origin?: string } }).data.origin).toBe('claude-code')
+  })
+
   it('keeps the Turn rail projection current when a chunk updates one node in place', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),

@@ -30,7 +30,7 @@
 | `event:assistant/attempt` | event | `c80c89da83c46db7a454f034c10f969e03cfb574859c7316e5bff683f5a14b0e` | [`event:assistant/attempt`](#persistence-type-eventassistantattempt) |
 | `event:assistant/message` | event | `1169b301aaabcd992657b93ec93750c43175dda81ada5cac086f14f2eaaeed6d` | [`event:assistant/message`](#persistence-type-eventassistantmessage) |
 | `event:command/done` | event | `15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff` | [`event:command/done`](#persistence-type-eventcommanddone) |
-| `event:command/run` | event | `37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006` | [`event:command/run`](#persistence-type-eventcommandrun) |
+| `event:command/run` | event | `29b2478167a9119247a76f813f2166b0af969f94d1b6109be020cdb95d7c613e` | [`event:command/run`](#persistence-type-eventcommandrun) |
 | `event:compaction/end` | event | `b0127044ab31a702bddfd785d345f5abd7a70876746e895ce443afa3e60ddf2d` | [`event:compaction/end`](#persistence-type-eventcompactionend) |
 | `event:compaction/prune` | event | `7f7fd5a6b0064f597534b29ff62ef26e786dffccf5e14f654a7d4fcea2c35f04` | [`event:compaction/prune`](#persistence-type-eventcompactionprune) |
 | `event:compaction/start` | event | `db874d463b0fdec77e9da1c4568f37cb70bd6596781eb93800db44fb8a116965` | [`event:compaction/start`](#persistence-type-eventcompactionstart) |
@@ -78,6 +78,7 @@
 | `event:turn/end` | event | `bab768260853e13a7cf2e22e65af572a1e76a5b2c01f3cdc2ce09d39b87fb70b` | [`event:turn/end`](#persistence-type-eventturnend) |
 | `event:turn/start` | event | `aa0957eca50aeb28bcd2e6930b95809926edacb550c8c340ba526ba6b861b3d8` | [`event:turn/start`](#persistence-type-eventturnstart) |
 | `event:user/message` | event | `314765bdff29c7862fb6ce820f1773563ba3094a680d163ea21180a2591b8578` | [`event:user/message`](#persistence-type-eventusermessage) |
+| `event:web/anthropic-search-llm-request` | event | `4fd4e6e96fce699a145b91ad7d54912edbd907430c260fd267ad12dec68d3303` | [`event:web/anthropic-search-llm-request`](#persistence-type-eventwebanthropic-search-llm-request) |
 | `event:web/deepseek-search-llm-request` | event | `cf6e3aaf1e2de6480aa0157730a41b9a492108a55304100b0f7e112711dd4331` | [`event:web/deepseek-search-llm-request`](#persistence-type-eventwebdeepseek-search-llm-request) |
 | `event:workspace/changes` | event | `e308ccf867a5398e316e0af8cb6ce238a8d33a63b9b384c8250a686786285f72` | [`event:workspace/changes`](#persistence-type-eventworkspacechanges) |
 
@@ -335,7 +336,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/interaction/commands/src/types.ts:112`](../packages/interaction/commands/src/types.ts)
+来源：[`packages/interaction/commands/src/types.ts:127`](../packages/interaction/commands/src/types.ts)
 
 <a id="commandrun--log-only"></a>
 
@@ -350,12 +351,15 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  * separator whitespace included), so a consumer (a projection unit
  * folding its own command records, a rich command card) never re-parses
  * a line. `args` is absent when the definition sets `recordInput: false`
- * because an authoritative domain event owns the input payload.
+ * because an authoritative domain event owns the input payload. `origin`
+ * repeats the definition's {@link CommandOrigin} and is absent for a
+ * DSH-native command, so a client can tell an imported command's real
+ * work apart from a native command's bookkeeping without a registry lookup.
  */
-'command/run': { commandId: CommandId; name: string; args?: string; source: CommandSource }
+'command/run': { commandId: CommandId; name: string; args?: string; source: CommandSource; origin?: CommandOrigin }
 ```
 
-来源：[`packages/interaction/commands/src/types.ts:105`](../packages/interaction/commands/src/types.ts)
+来源：[`packages/interaction/commands/src/types.ts:120`](../packages/interaction/commands/src/types.ts)
 
 ### `compaction/*`
 
@@ -1232,6 +1236,17 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 ### `web/*`
 
+<a id="webanthropic-search-llm-request--log-only"></a>
+
+#### `web/anthropic-search-llm-request` — log-only
+
+```ts persistence-catalog
+/** Secret-free auxiliary Anthropic search request recorded before dispatch. */
+'web/anthropic-search-llm-request': AnthropicSearchLlmRequest
+```
+
+来源：[`packages/web/web-search-anthropic/src/provider.ts:96`](../packages/web/web-search-anthropic/src/provider.ts)
+
 <a id="webdeepseek-search-llm-request--log-only"></a>
 
 #### `web/deepseek-search-llm-request` — log-only
@@ -1526,6 +1541,8 @@ SHA-256: `14230f9b8b5797bb7e8c621fa636531cfbde2ffba1ef5f1fd058216ff21952a0`
 
 SHA-256: `aff60ef947c18b012644852bdd0d5bfe72065e061dd563787c76c646b4a10f6b`
 
+来源：[`packages/interaction/commands/src/types.ts:64`](../packages/interaction/commands/src/types.ts)
+
 `"claude-code"`
 
 <a id="persistence-type-clear"></a>
@@ -1787,7 +1804,7 @@ SHA-256: `0f46153645c297846a3fad3911636659ca4717a5e7d71c9f50bffacd312115ef`
 
 SHA-256: `ada310bf0bdb8fed51f3b56ea63f6ea6b18bbd587f04fccb63a14ab0b2a24e05`
 
-来源：[`packages/core/session/src/types.ts:189`](../packages/core/session/src/types.ts) · [`packages/interaction/commands/src/types.ts:75`](../packages/interaction/commands/src/types.ts) · [`packages/interaction/commands/src/types.ts:79`](../packages/interaction/commands/src/types.ts) · [`packages/llm/llm/src/message.ts:103`](../packages/llm/llm/src/message.ts) · [`packages/session/session-title/src/types.ts:35`](../packages/session/session-title/src/types.ts)
+来源：[`packages/core/session/src/types.ts:189`](../packages/core/session/src/types.ts) · [`packages/interaction/commands/src/types.ts:87`](../packages/interaction/commands/src/types.ts) · [`packages/interaction/commands/src/types.ts:91`](../packages/interaction/commands/src/types.ts) · [`packages/llm/llm/src/message.ts:103`](../packages/llm/llm/src/message.ts) · [`packages/session/session-title/src/types.ts:35`](../packages/session/session-title/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -2401,7 +2418,7 @@ SHA-256: `15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff`
 
 SHA-256: `5b6fb1f226ff56402db08a6aae82af76100b14056271875f69ec526a1ae05d51`
 
-来源：[`packages/interaction/commands/src/types.ts:112`](../packages/interaction/commands/src/types.ts)
+来源：[`packages/interaction/commands/src/types.ts:127`](../packages/interaction/commands/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -2425,7 +2442,7 @@ SHA-256: `1ab2ef1296f157ba96998f179bb5daa9d21a82480da2901127aeab2730797c92`
 
 ### `event:command/run`
 
-SHA-256: `37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006`
+SHA-256: `29b2478167a9119247a76f813f2166b0af969f94d1b6109be020cdb95d7c613e`
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -2439,15 +2456,16 @@ SHA-256: `37184378c6439257d105c4e2022d80fc9c3a3f7c7f6ac661b00bc9f18d871006`
 
 ### `event:command/run.data`
 
-SHA-256: `a853902cfab417b8f08aa51ad6855fea46f34ed4588a74e47403035111d0fb86`
+SHA-256: `f2d78f5038efb26145354cbd100667626a1fe883d43ce3c4aacd09a5bac9eff8`
 
-来源：[`packages/interaction/commands/src/types.ts:105`](../packages/interaction/commands/src/types.ts)
+来源：[`packages/interaction/commands/src/types.ts:120`](../packages/interaction/commands/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
 | `args` | 可选 | `string` |
 | `commandId` | 必需 | `string` |
 | `name` | 必需 | `string` |
+| `origin` | 可选 | `"claude-code"` |
 | `source` | 必需 | [`event:agent/inbox/spliced.data.inserted[0].source[0]`](#persistence-type-eventagentinboxspliceddatainserted0source0) |
 
 <a id="persistence-type-eventcompactionend"></a>
@@ -3944,6 +3962,106 @@ SHA-256: `314765bdff29c7862fb6ce820f1773563ba3094a680d163ea21180a2591b8578`
 | `time` | 必需 | `number` |
 | `type` | 必需 | `"user/message"` |
 
+<a id="persistence-type-eventwebanthropic-search-llm-request"></a>
+
+### `event:web/anthropic-search-llm-request`
+
+SHA-256: `4fd4e6e96fce699a145b91ad7d54912edbd907430c260fd267ad12dec68d3303`
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `data` | 必需 | [`packages/web/web-search-anthropic/src/provider.ts#AnthropicSearchLlmRequest`](#persistence-type-packageswebweb-search-anthropicsrcprovidertsanthropicsearchllmrequest) |
+| `ignorable` | 可选 | `true` |
+| `seq` | 必需 | `number` |
+| `time` | 必需 | `number` |
+| `type` | 必需 | `"web/anthropic-search-llm-request"` |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabody"></a>
+
+### `event:web/anthropic-search-llm-request.data.body`
+
+SHA-256: `2d61305dbc96897c09df9a4658c93e8ed6b869a24c4413412978b78636ff1bce`
+
+来源：[`packages/web/web-search-anthropic/src/provider.ts:74`](../packages/web/web-search-anthropic/src/provider.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `max_tokens` | 必需 | `number` |
+| `messages` | 必需 | [`event:web/anthropic-search-llm-request.data.body.messages`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages) |
+| `model` | 必需 | `string` |
+| `system` | 必需 | [`event:web/anthropic-search-llm-request.data.body.messages[0].content`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0content) |
+| `tools` | 必需 | [`event:web/anthropic-search-llm-request.data.body.tools`](#persistence-type-eventwebanthropic-search-llm-requestdatabodytools) |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabodymessages"></a>
+
+### `event:web/anthropic-search-llm-request.data.body.messages`
+
+SHA-256: `b993441f8ce7d27b80e619e113e232ae8e62d3d5a8340f6bfe12d8c4c018e62f`
+
+| 位置 | 存在性 | 类型 |
+|---|---|---|
+| 0 | 必需 | [`event:web/anthropic-search-llm-request.data.body.messages[0]`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0) |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0"></a>
+
+### `event:web/anthropic-search-llm-request.data.body.messages[0]`
+
+SHA-256: `9a2a9029f8d7ede05336980d8342737557f487b913bfd28853d0ab5214600ab5`
+
+来源：[`packages/web/web-search-anthropic/src/provider.ts:78`](../packages/web/web-search-anthropic/src/provider.ts) · [`packages/web/web-search-deepseek/src/provider.ts:64`](../packages/web/web-search-deepseek/src/provider.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `content` | 必需 | [`event:web/anthropic-search-llm-request.data.body.messages[0].content`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0content) |
+| `role` | 必需 | `"user"` |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0content"></a>
+
+### `event:web/anthropic-search-llm-request.data.body.messages[0].content`
+
+SHA-256: `8f6d609794bf5afc01d7ccf3e03811d32f4b8047f58a2c9a98db0154c2ad7cb9`
+
+| 位置 | 存在性 | 类型 |
+|---|---|---|
+| 0 | 必需 | [`event:web/anthropic-search-llm-request.data.body.messages[0].content[0]`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0content0) |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0content0"></a>
+
+### `event:web/anthropic-search-llm-request.data.body.messages[0].content[0]`
+
+SHA-256: `4e887768586528565381dadbddee6cef555874148089f4579e0b4b1ad096fc9c`
+
+来源：[`packages/llm/llm/src/types.ts:61`](../packages/llm/llm/src/types.ts) · [`packages/web/web-search-anthropic/src/provider.ts:77`](../packages/web/web-search-anthropic/src/provider.ts) · [`packages/web/web-search-anthropic/src/provider.ts:80`](../packages/web/web-search-anthropic/src/provider.ts) · [`packages/web/web-search-deepseek/src/provider.ts:66`](../packages/web/web-search-deepseek/src/provider.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `text` | 必需 | `string` |
+| `type` | 必需 | `"text"` |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabodytools"></a>
+
+### `event:web/anthropic-search-llm-request.data.body.tools`
+
+SHA-256: `4aed17ec726b5397c29f6cb4bcd7905dc1a12bb6140f1657f073cd24380f2af8`
+
+| 位置 | 存在性 | 类型 |
+|---|---|---|
+| 0 | 必需 | [`event:web/anthropic-search-llm-request.data.body.tools[0]`](#persistence-type-eventwebanthropic-search-llm-requestdatabodytools0) |
+
+<a id="persistence-type-eventwebanthropic-search-llm-requestdatabodytools0"></a>
+
+### `event:web/anthropic-search-llm-request.data.body.tools[0]`
+
+SHA-256: `2d11ca7b0d4493e244b74eba093227866b33249841e59a1e9bf56afed38604c3`
+
+来源：[`packages/web/web-search-anthropic/src/provider.ts:85`](../packages/web/web-search-anthropic/src/provider.ts) · [`packages/web/web-search-deepseek/src/provider.ts:71`](../packages/web/web-search-deepseek/src/provider.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `max_uses` | 必需 | `number` |
+| `name` | 必需 | `"web_search"` |
+| `type` | 必需 | `"web_search_20250305"` |
+
 <a id="persistence-type-eventwebdeepseek-search-llm-request"></a>
 
 ### `event:web/deepseek-search-llm-request`
@@ -3969,79 +4087,9 @@ SHA-256: `930a6567a10bb62ddd157bd8abdf4b182810c8c3b49d91309b3b009a5fed9731`
 | 属性 | 存在性 | 类型 |
 |---|---|---|
 | `max_tokens` | 必需 | `number` |
-| `messages` | 必需 | [`event:web/deepseek-search-llm-request.data.body.messages`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages) |
+| `messages` | 必需 | [`event:web/anthropic-search-llm-request.data.body.messages`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages) |
 | `model` | 必需 | `string` |
-| `tools` | 必需 | [`event:web/deepseek-search-llm-request.data.body.tools`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodytools) |
-
-<a id="persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages"></a>
-
-### `event:web/deepseek-search-llm-request.data.body.messages`
-
-SHA-256: `b993441f8ce7d27b80e619e113e232ae8e62d3d5a8340f6bfe12d8c4c018e62f`
-
-| 位置 | 存在性 | 类型 |
-|---|---|---|
-| 0 | 必需 | [`event:web/deepseek-search-llm-request.data.body.messages[0]`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0) |
-
-<a id="persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0"></a>
-
-### `event:web/deepseek-search-llm-request.data.body.messages[0]`
-
-SHA-256: `9a2a9029f8d7ede05336980d8342737557f487b913bfd28853d0ab5214600ab5`
-
-来源：[`packages/web/web-search-deepseek/src/provider.ts:64`](../packages/web/web-search-deepseek/src/provider.ts)
-
-| 属性 | 存在性 | 类型 |
-|---|---|---|
-| `content` | 必需 | [`event:web/deepseek-search-llm-request.data.body.messages[0].content`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0content) |
-| `role` | 必需 | `"user"` |
-
-<a id="persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0content"></a>
-
-### `event:web/deepseek-search-llm-request.data.body.messages[0].content`
-
-SHA-256: `8f6d609794bf5afc01d7ccf3e03811d32f4b8047f58a2c9a98db0154c2ad7cb9`
-
-| 位置 | 存在性 | 类型 |
-|---|---|---|
-| 0 | 必需 | [`event:web/deepseek-search-llm-request.data.body.messages[0].content[0]`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0content0) |
-
-<a id="persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0content0"></a>
-
-### `event:web/deepseek-search-llm-request.data.body.messages[0].content[0]`
-
-SHA-256: `4e887768586528565381dadbddee6cef555874148089f4579e0b4b1ad096fc9c`
-
-来源：[`packages/llm/llm/src/types.ts:61`](../packages/llm/llm/src/types.ts) · [`packages/web/web-search-deepseek/src/provider.ts:66`](../packages/web/web-search-deepseek/src/provider.ts)
-
-| 属性 | 存在性 | 类型 |
-|---|---|---|
-| `text` | 必需 | `string` |
-| `type` | 必需 | `"text"` |
-
-<a id="persistence-type-eventwebdeepseek-search-llm-requestdatabodytools"></a>
-
-### `event:web/deepseek-search-llm-request.data.body.tools`
-
-SHA-256: `4aed17ec726b5397c29f6cb4bcd7905dc1a12bb6140f1657f073cd24380f2af8`
-
-| 位置 | 存在性 | 类型 |
-|---|---|---|
-| 0 | 必需 | [`event:web/deepseek-search-llm-request.data.body.tools[0]`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodytools0) |
-
-<a id="persistence-type-eventwebdeepseek-search-llm-requestdatabodytools0"></a>
-
-### `event:web/deepseek-search-llm-request.data.body.tools[0]`
-
-SHA-256: `2d11ca7b0d4493e244b74eba093227866b33249841e59a1e9bf56afed38604c3`
-
-来源：[`packages/web/web-search-deepseek/src/provider.ts:71`](../packages/web/web-search-deepseek/src/provider.ts)
-
-| 属性 | 存在性 | 类型 |
-|---|---|---|
-| `max_uses` | 必需 | `number` |
-| `name` | 必需 | `"web_search"` |
-| `type` | 必需 | `"web_search_20250305"` |
+| `tools` | 必需 | [`event:web/anthropic-search-llm-request.data.body.tools`](#persistence-type-eventwebanthropic-search-llm-requestdatabodytools) |
 
 <a id="persistence-type-eventworkspacechanges"></a>
 
@@ -4662,7 +4710,7 @@ SHA-256: `a5a8c15f08af1b0f26f40906e0797b6b0920fd01069e660becce35ab7fc48d77`
 
 SHA-256: `3cfc3a56502da1f8c6153c2c56657bab4b749056968634dd0991d325ec1c919f`
 
-来源：[`packages/core/tools/src/index.ts:682`](../packages/core/tools/src/index.ts)
+来源：[`packages/core/tools/src/index.ts:692`](../packages/core/tools/src/index.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -5277,7 +5325,7 @@ SHA-256: `c7b24be059d34d08929593049a1a81eaa3855166aacfe9d7603c0bc8bb728d56`
 以下类型之一：
 
 - [`packages/llm/llm/src/types.ts#ReasoningBlock`](#persistence-type-packagesllmllmsrctypestsreasoningblock)
-- [`event:web/deepseek-search-llm-request.data.body.messages[0].content[0]`](#persistence-type-eventwebdeepseek-search-llm-requestdatabodymessages0content0)
+- [`event:web/anthropic-search-llm-request.data.body.messages[0].content[0]`](#persistence-type-eventwebanthropic-search-llm-requestdatabodymessages0content0)
 - [`packages/llm/llm/src/types.ts#ToolCallBlock`](#persistence-type-packagesllmllmsrctypeststoolcallblock)
 - [`packages/llm/llm/src/types.ts#ImageBlock`](#persistence-type-packagesllmllmsrctypestsimageblock)
 - [`packages/llm/llm/src/types.ts#FileBlock`](#persistence-type-packagesllmllmsrctypestsfileblock)
@@ -5822,6 +5870,20 @@ SHA-256: `a99f76fd149051c363f960bfeeb5b9509587ecaf7591a42797e4bfe810d8987a`
 |---|---|---|
 | `content` | 必需 | `string` |
 | `status` | 必需 | [`event:todo/write.data.todos[0].status`](#persistence-type-eventtodowritedatatodos0status) |
+
+<a id="persistence-type-packageswebweb-search-anthropicsrcprovidertsanthropicsearchllmrequest"></a>
+
+### `packages/web/web-search-anthropic/src/provider.ts#AnthropicSearchLlmRequest`
+
+SHA-256: `9f5ee416f2bcb4781513fc4c9484e5f6ec6c8dbb273e4de582585794381581d7`
+
+来源：[`packages/web/web-search-anthropic/src/provider.ts:68`](../packages/web/web-search-anthropic/src/provider.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `apiVersion` | 必需 | `string` |
+| `body` | 必需 | [`event:web/anthropic-search-llm-request.data.body`](#persistence-type-eventwebanthropic-search-llm-requestdatabody) |
+| `endpoint` | 必需 | `string` |
 
 <a id="persistence-type-packageswebweb-search-deepseeksrcprovidertsdeepseeksearchllmrequest"></a>
 
@@ -6678,6 +6740,14 @@ SHA-256: `935c8d486292b13c87b57ca280eb8c58b5b2f5239be86fcd4334c33fdeb87682`
 SHA-256: `0116b1f89c05221d56b0ba35c83d302bf4857bc7277d247e9bbaf74b27d2c66e`
 
 `"web_search_20250305"`
+
+<a id="persistence-type-webanthropic-search-llm-request"></a>
+
+### `"web/anthropic-search-llm-request"`
+
+SHA-256: `81f2d6299094208c9096557c1a710f80ef55611968dc77a4e1b8f30e3df30e52`
+
+`"web/anthropic-search-llm-request"`
 
 <a id="persistence-type-webdeepseek-search-llm-request"></a>
 

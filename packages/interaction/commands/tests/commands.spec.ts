@@ -354,6 +354,22 @@ describe('CommandRuntime', () => {
     ])
   })
 
+  it('records the definition origin on command/run only for an imported command', async () => {
+    const ctx = await mount()
+    const { agent } = await mintAgentScope(ctx, 'a')
+    ctx.commands.register(command('native', 'ok'))
+    ctx.commands.register({ ...command('imported', 'ok'), origin: 'claude-code' })
+
+    await ctx.commands.execute(agent, '/native', [], new AbortController().signal)
+    await ctx.commands.execute(agent, '/imported', [], new AbortController().signal)
+
+    const runs = agent.session.snapshotEvents().filter(event => event.type === 'command/run')
+    const dataOf = (name: string): object | undefined =>
+      runs.find(event => event.type === 'command/run' && event.data.name === name)?.data
+    expect(Object.hasOwn(dataOf('native') ?? {}, 'origin')).toBe(false)
+    expect(dataOf('imported')).toMatchObject({ origin: 'claude-code' })
+  })
+
   it('preserves an earlier authoritative domain-event reference on successful settlement', async () => {
     const ctx = await mount()
     const { agent } = await mintAgentScope(ctx, 'a')

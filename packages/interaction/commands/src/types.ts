@@ -112,9 +112,12 @@ declare module '@deepseek-ai/dsh-session/types' {
      * separator whitespace included), so a consumer (a projection unit
      * folding its own command records, a rich command card) never re-parses
      * a line. `args` is absent when the definition sets `recordInput: false`
-     * because an authoritative domain event owns the input payload.
+     * because an authoritative domain event owns the input payload. `origin`
+     * repeats the definition's {@link CommandOrigin} and is absent for a
+     * DSH-native command, so a client can tell an imported command's real
+     * work apart from a native command's bookkeeping without a registry lookup.
      */
-    'command/run': { commandId: CommandId; name: string; args?: string; source: CommandSource }
+    'command/run': { commandId: CommandId; name: string; args?: string; source: CommandSource; origin?: CommandOrigin }
     /**
      * The paired command settled. `kind`/`text` carry the handler's verbatim
      * outcome (a thrown/aborted handler settles as `kind: 'error'` with the
