@@ -13,7 +13,7 @@ describe('parseClaudeDocument', () => {
   })
 
   it('ignores a leading byte order mark', () => {
-    expect(parseClaudeDocument('﻿---\nname: a\n---\nB').data).toEqual({ name: 'a' })
+    expect(parseClaudeDocument('\uFEFF---\nname: a\n---\nB').data).toEqual({ name: 'a' })
   })
 
   it('falls back to line parsing when a value contains an unquoted colon', () => {
@@ -47,6 +47,18 @@ describe('parseClaudeDocument', () => {
   it('treats a scalar or empty frontmatter block as no fields', () => {
     expect(parseClaudeDocument('---\njust a string\n---\nBody')).toEqual({ data: {}, body: 'Body' })
     expect(parseClaudeDocument('---\n---\nBody')).toEqual({ data: {}, body: 'Body' })
+  })
+
+  it('parses CRLF frontmatter without stray carriage returns in values', () => {
+    const document = parseClaudeDocument('---\r\nname: a\r\ndescription: b\r\n---\r\nBody\r\n')
+    expect(document.data).toEqual({ name: 'a', description: 'b' })
+    expect(document.body).toBe('Body\r\n')
+  })
+
+  it('splits CRLF lines in the lenient fallback without trailing carriage returns', () => {
+    const document = parseClaudeDocument('---\r\nname: x\r\ndescription: a: b\r\n---\r\nBody')
+    expect(document.data).toEqual({ name: 'x', description: 'a: b' })
+    expect(document.body).toBe('Body')
   })
 
   it('treats an unclosed frontmatter block as all body', () => {

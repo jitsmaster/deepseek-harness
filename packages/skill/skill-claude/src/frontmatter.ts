@@ -29,7 +29,7 @@ const HEADING = /^#{1,6}[ \t]+(.+?)[ \t]*$/m
  * @returns the frontmatter fields and body.
  */
 export function parseClaudeDocument(raw: string): ClaudeDocument {
-  const text = raw.startsWith('﻿') ? raw.slice(1) : raw
+  const text = raw.startsWith('\uFEFF') ? raw.slice(1) : raw
   const split = splitSkillFrontmatter(text)
   if (split === undefined) return { data: {}, body: text }
   return { data: strictFields(split.yaml) ?? lenientFields(split.yaml), body: split.body }
