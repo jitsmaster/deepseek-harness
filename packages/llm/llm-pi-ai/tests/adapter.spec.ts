@@ -911,7 +911,8 @@ describe('provider profile lifecycle', () => {
 
     await expect(drain({
       provider: 'deepseek',
-      model: 'deepseek-flash',
+      // pi-ai 0.99 gives deepseek-flash image input; deepseek-v4-pro stays text-only.
+      model: 'deepseek-v4-pro',
       messages: [createUserMessage({
         content: [{ type: 'image', attachment: IMAGE_REF }],
         source: { kind: 'plugin', plugin: 'test' },

@@ -55,6 +55,17 @@ describe('pi-ai gateway compatibility declarations', () => {
       .toThrow(/which is not configurable here/)
   })
 
+  it.each([
+    ['openai-completions', 'supportsMidConvoSystemMessages'],
+    ['openai-completions', 'supportsMidConvoToolAdditions'],
+    ['openai-responses', 'supportsMidConvoSystemMessages'],
+    ['anthropic-messages', 'supportsMidConvoSystemMessages'],
+    ['anthropic-messages', 'supportsMidConvoToolChanges'],
+  ])('withholds catalog-owned mid-conversation switch on %s: %s', (api, field) => {
+    expect(() => resolved({ [field]: true }, api))
+      .toThrow(/which is not configurable here/)
+  })
+
   it('keeps generic additions absent unless configured', () => {
     expect(resolved({})).toBeUndefined()
   })
