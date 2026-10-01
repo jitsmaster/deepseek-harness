@@ -1,0 +1,10 @@
+version: 1
+scenario: claude-skill-load
+profile: headless
+composition: claude-skills
+recording: authored
+header:
+  class: claude-skills
+  pin: true
+  systemPromptSource: text-turn
+  toolSchemasSource: text-turn
