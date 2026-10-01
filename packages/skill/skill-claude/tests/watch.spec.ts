@@ -165,6 +165,17 @@ describe('RootWatcher', () => {
     expect(changes.count).toBe(0)
   })
 
+  it('leaves no open watcher when dispose runs during an in-flight sync', async () => {
+    const dir = await tempDir()
+    const { watcher } = setup()
+
+    const syncing = watcher.sync([{ path: dir, shallow: false }])
+    await watcher.dispose()
+    await syncing
+
+    expect(harness.watchers).toHaveLength(0)
+  })
+
   it('warns when a watcher fails to close', async () => {
     const dir = await tempDir()
     const { watcher, warnings } = setup()
