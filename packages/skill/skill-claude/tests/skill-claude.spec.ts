@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SkillRegistry from '@deepseek-ai/dsh-skill'
+import SkillRegistry, { type SkillCandidate } from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
 import * as SkillClaude from '../src/index.ts'
 
@@ -104,6 +104,23 @@ describe('ClaudeSkillProvider', () => {
     expect(await withoutProject.skills.list({ cwd: join(project, 'src') })).toEqual([])
   })
 
+  it('resolves a relative cwd against the process directory before looking for the project root', async () => {
+    const home = await tempDir('home-relative')
+    const project = await tempDir('project-relative')
+    await mkdir(join(project, '.git'), { recursive: true })
+    await writeSkill(join(project, '.claude', 'skills'), 'project-only', 'd')
+    const ctx = await setup({ claudeHome: home })
+    // The relative lookup must use the process directory the path resolves against, not the real one.
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(project)
+    try {
+      const skills = await ctx.skills.list({ cwd: 'src' })
+      expect(skills.map(skill => skill.name)).toEqual(['project-only'])
+      expect((await ctx.skills.get('project-only', { cwd: 'src' }))?.path).toBe(join(project, '.claude', 'skills', 'project-only', 'SKILL.md'))
+    } finally {
+      cwd.mockRestore()
+    }
+  })
+
   it('skips plugins when includePlugins is off', async () => {
     const home = await tempDir('home-noplugins')
     const plugin = join(home, 'cache', 'p')
@@ -124,7 +141,9 @@ describe('ClaudeSkillProvider', () => {
     const provider = new SkillClaude.ClaudeSkillProvider({}, { signal: controller.signal, invalidate: () => {} }, () => {})
     try {
       expect(provider.name).toBe('claude')
-      expect((await provider.list({})).map(candidate => candidate.name)).toEqual(['direct'])
+      const listed = await provider.list({})
+      expect('candidates' in listed).toBe(false)
+      expect((listed as readonly SkillCandidate[]).map(candidate => candidate.name)).toEqual(['direct'])
     } finally {
       await provider.dispose()
       if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR

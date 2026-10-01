@@ -6,6 +6,7 @@
  * @module @deepseek-ai/dsh-skill-claude
  */
 
+import { resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
@@ -14,6 +15,7 @@ import type {
   SkillDefinition,
   SkillLookupOptions,
   SkillProvider,
+  SkillProviderObservation,
   SkillProviderControl,
 } from '@deepseek-ai/dsh-skill'
 import { loadDefinition, scanRoot } from './scan.ts'
@@ -113,11 +115,12 @@ export class ClaudeSkillProvider implements SkillProvider {
   /**
    * List every Claude skill and command visible from a working directory.
    * @param options - lookup options; `cwd` selects the project, `signal` cancels work.
-   * @returns candidates from the project, user, and plugin roots.
+   * @returns candidates from the project, user, and plugin roots; a watcher failure
+   *   returns them as an incomplete observation so the registry does not cache them.
    */
-  async list(options: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
+  async list(options: SkillLookupOptions): Promise<readonly SkillCandidate[] | SkillProviderObservation> {
     const projectRoot = this.includeProject && options.cwd !== undefined
-      ? await findProjectRoot(options.cwd)
+      ? await findProjectRoot(resolve(options.cwd))
       : undefined
     const sources = await resolveSources({
       claudeHome: this.claudeHome,
@@ -126,18 +129,22 @@ export class ClaudeSkillProvider implements SkillProvider {
       warn: this.warn,
     })
     const targets: WatchTarget[] = [
-      ...sources.roots.map(root => ({ path: root.dir, shallow: false })),
-      ...sources.shallowDirs.map(path => ({ path, shallow: true })),
+      ...sources.roots.map(root => ({ path: root.dir, shallow: false as const })),
+      ...sources.shallowDirs.map(dir => ({ path: dir.path, shallow: true as const, names: dir.names })),
     ]
+    let complete = true
     try {
       await this.watcher?.sync(targets)
     } catch (error) {
-      // A watcher failure only costs live updates; the scan below still serves the catalog.
+      // A watcher failure only costs live updates; the scan below still serves the catalog,
+      // but without a working watcher nothing would ever invalidate a cached copy of it.
+      complete = false
       this.warn('watch', `watching for changes failed: ${String(error)}`)
     }
     options.signal?.throwIfAborted()
     const scanned = await Promise.all(sources.roots.map(root => scanRoot(root, this.name, this.warn)))
-    return scanned.flat()
+    const candidates = scanned.flat()
+    return complete ? candidates : { candidates, complete }
   }
 
   /**

@@ -24,12 +24,20 @@ export interface SkillRoot {
   readonly plugin?: string
 }
 
+/** A directory watched non-recursively for changes to a fixed set of direct children. */
+export interface ShallowDir {
+  /** Absolute directory path. */
+  readonly path: string
+  /** Basenames of the direct children whose changes matter; every other entry is ignored. */
+  readonly names: readonly string[]
+}
+
 /** Directories to scan plus directories whose direct children signal a configuration change. */
 export interface ResolvedSources {
   /** Skill and command roots, best rank first. */
   readonly roots: readonly SkillRoot[]
   /** Directories watched non-recursively so new roots and configuration files are noticed. */
-  readonly shallowDirs: readonly string[]
+  readonly shallowDirs: readonly ShallowDir[]
 }
 
 /** Opaque handle the provider stores in each candidate and receives back in `get()`. */

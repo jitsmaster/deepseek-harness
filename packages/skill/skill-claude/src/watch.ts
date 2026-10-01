@@ -7,19 +7,31 @@
  */
 
 import { access } from 'node:fs/promises'
+import { basename, dirname, resolve } from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import type { Warn } from './types.ts'
 
 /** Dependency folders hold no skills and can contain very large trees. */
 const IGNORED_DEPENDENCIES = /(^|[\\/])node_modules([\\/]|$)/
 
-/** One path to watch. */
-export interface WatchTarget {
+/** A directory watched recursively. */
+export interface DeepWatchTarget {
   /** Absolute path of an existing directory. */
   readonly path: string
-  /** Whether only the directory's direct children are watched. */
-  readonly shallow: boolean
+  readonly shallow: false
 }
+
+/** A directory whose listed direct children are watched, and nothing deeper. */
+export interface ShallowWatchTarget {
+  /** Absolute path of an existing directory. */
+  readonly path: string
+  readonly shallow: true
+  /** Basenames of the direct children that raise events; every other entry is ignored. */
+  readonly names: readonly string[]
+}
+
+/** One path to watch. */
+export type WatchTarget = DeepWatchTarget | ShallowWatchTarget
 
 /** Chokidar behavior shared by every watcher of one provider. */
 export interface WatchOptions {
@@ -95,7 +107,7 @@ export class RootWatcher {
       persistent: true,
       ignoreInitial: true,
       ...target.shallow ? { depth: 0 } : {},
-      ignored: IGNORED_DEPENDENCIES,
+      ignored: target.shallow ? admitOnly(target.path, target.names) : IGNORED_DEPENDENCIES,
       atomic: true,
       awaitWriteFinish: {
         stabilityThreshold: this.options.stabilityThresholdMs,
@@ -116,6 +128,22 @@ export class RootWatcher {
       this.pending = false
       if (!this.disposed) this.onChange()
     })
+  }
+}
+
+/**
+ * Build a chokidar `ignored` predicate that admits the watched directory and its listed direct children.
+ * @param root - the watched directory; chokidar tests it too, and ignoring it would silence the watcher.
+ * @param names - basenames of the direct children to admit.
+ * @returns a predicate that is `true` for every other path.
+ */
+function admitOnly(root: string, names: readonly string[]): (path: string) => boolean {
+  const base = resolve(root)
+  const admitted = new Set(names)
+  return (path) => {
+    const full = resolve(path)
+    if (full === base) return false
+    return dirname(full) !== base || !admitted.has(basename(full))
   }
 }
 

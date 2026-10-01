@@ -9,7 +9,16 @@ import { access, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { isMissing } from './fs-error.ts'
-import type { ResolvedSources, SkillRoot, Warn } from './types.ts'
+import type { ResolvedSources, ShallowDir, SkillRoot, Warn } from './types.ts'
+
+/**
+ * Direct children of each shallow watch directory that can change the catalog.
+ * Claude Code keeps logs and state files beside them (`history.jsonl` grows on every prompt),
+ * so everything else is ignored rather than invalidating the catalog.
+ */
+const CLAUDE_HOME_WATCH_NAMES: readonly string[] = ['skills', 'commands', 'plugins', 'settings.json']
+const PLUGINS_WATCH_NAMES: readonly string[] = ['installed_plugins.json']
+const PROJECT_WATCH_NAMES: readonly string[] = ['skills', 'commands', 'settings.json', 'settings.local.json']
 
 /** Registry ranks; every workspace source outranks every global source. */
 export const CLAUDE_RANK = {
@@ -83,7 +92,7 @@ export async function resolveSources(options: ResolveOptions): Promise<ResolvedS
     ? undefined
     : options.projectRoot
   const roots: SkillRoot[] = []
-  const shallowDirs: string[] = [claudeHome]
+  const shallowDirs: ShallowDir[] = [{ path: claudeHome, names: CLAUDE_HOME_WATCH_NAMES }]
   if (projectRoot !== undefined) {
     const projectClaude = join(projectRoot, '.claude')
     roots.push(
@@ -97,7 +106,7 @@ export async function resolveSources(options: ResolveOptions): Promise<ResolvedS
   )
   if (includePlugins) {
     const pluginsDir = join(claudeHome, 'plugins')
-    shallowDirs.push(pluginsDir)
+    shallowDirs.push({ path: pluginsDir, names: PLUGINS_WATCH_NAMES })
     const settingsPaths = [join(claudeHome, 'settings.json')]
     if (projectRoot !== undefined) {
       settingsPaths.push(join(projectRoot, '.claude', 'settings.json'), join(projectRoot, '.claude', 'settings.local.json'))
@@ -106,7 +115,7 @@ export async function resolveSources(options: ResolveOptions): Promise<ResolvedS
     const installed = await readJson(join(pluginsDir, 'installed_plugins.json'), warn)
     roots.push(...pluginRoots(installed, enabledPluginKeys(settings), warn))
   }
-  if (projectRoot !== undefined) shallowDirs.push(join(projectRoot, '.claude'))
+  if (projectRoot !== undefined) shallowDirs.push({ path: join(projectRoot, '.claude'), names: PROJECT_WATCH_NAMES })
   return { roots, shallowDirs }
 }
 
@@ -132,7 +141,8 @@ async function readJson(path: string, warn: Warn): Promise<unknown> {
     return undefined
   }
   try {
-    return JSON.parse(text) as unknown
+    // Editors on Windows save JSON with a UTF-8 byte order mark, which JSON.parse rejects.
+    return JSON.parse(text.startsWith('﻿') ? text.slice(1) : text) as unknown
   } catch (error) {
     warn(path, `${path} ignored: invalid JSON: ${String(error)}`)
     return undefined

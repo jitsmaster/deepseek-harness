@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Warn } from '../src/types.ts'
 
@@ -64,7 +64,11 @@ describe('RootWatcher', () => {
     const dir = await tempDir()
     const { watcher } = setup()
 
-    await watcher.sync([{ path: dir, shallow: false }, { path: join(dir, 'absent'), shallow: false }, { path: dir, shallow: true }])
+    await watcher.sync([
+      { path: dir, shallow: false },
+      { path: join(dir, 'absent'), shallow: false },
+      { path: dir, shallow: true, names: ['skills'] },
+    ])
 
     expect(harness.watchers.map(entry => entry.path)).toEqual([dir, dir])
     expect(harness.watchers[0]?.options).toMatchObject({
@@ -81,10 +85,43 @@ describe('RootWatcher', () => {
     await watcher.dispose()
   })
 
+  it('ignores dependency folders under deep targets at any depth', async () => {
+    const dir = await tempDir()
+    const { watcher } = setup()
+
+    await watcher.sync([{ path: dir, shallow: false }])
+
+    const ignored = harness.watchers[0]?.options.ignored as RegExp
+    expect(ignored.test(join(dir, 'node_modules'))).toBe(true)
+    expect(ignored.test(join(dir, 'a', 'node_modules', 'pkg', 'index.js'))).toBe(true)
+    expect(ignored.test(join(dir, 'a', 'SKILL.md'))).toBe(false)
+    expect(ignored.test(join(dir, 'my_node_modules_x'))).toBe(false)
+    await watcher.dispose()
+  })
+
+  it('admits only the root and the listed direct children under shallow targets', async () => {
+    const dir = await tempDir()
+    const { watcher } = setup()
+
+    await watcher.sync([{ path: dir, shallow: true, names: ['skills', 'settings.json'] }])
+
+    const ignored = harness.watchers[0]?.options.ignored as (path: string) => boolean
+    expect(typeof ignored).toBe('function')
+    expect(ignored(dir)).toBe(false)
+    expect(ignored(`${dir}${sep}`)).toBe(false)
+    expect(ignored(join(dir, 'skills'))).toBe(false)
+    expect(ignored(join(dir, 'settings.json'))).toBe(false)
+    expect(ignored(join(dir, 'history.jsonl'))).toBe(true)
+    expect(ignored(join(dir, 'daemon.log'))).toBe(true)
+    expect(ignored(join(dir, 'skills', 'one', 'SKILL.md'))).toBe(true)
+    expect(ignored(join(dirname(dir), 'skills'))).toBe(true)
+    await watcher.dispose()
+  })
+
   it('does not reopen a watched target and retries a target that appears later', async () => {
     const dir = await tempDir()
     const { watcher } = setup()
-    const target = { path: join(dir, 'late'), shallow: false }
+    const target = { path: join(dir, 'late'), shallow: false as const }
 
     await watcher.sync([target])
     expect(harness.watchers).toHaveLength(0)
@@ -146,7 +183,7 @@ describe('RootWatcher', () => {
     await watcher.dispose()
     emitter?.emit('all', 'add', join(dir, 'a'))
     await settle()
-    await watcher.sync([{ path: dir, shallow: true }])
+    await watcher.sync([{ path: dir, shallow: true, names: ['skills'] }])
 
     expect(harness.watchers[0]?.closeCalls).toBe(1)
     expect(harness.watchers).toHaveLength(1)

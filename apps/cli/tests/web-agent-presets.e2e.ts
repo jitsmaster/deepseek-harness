@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -198,12 +198,36 @@ function enablePresetTool(composition: string, id: string): string {
   return composition.slice(0, disabled) + composition.slice(disabled + '      disabled: true\n'.length)
 }
 
+/**
+ * Skill roots resolve inside a preset, a subtree this file's overrides cannot
+ * reach, so the providers fall back to the environment. Pin the two Claude and
+ * agents homes for the whole file: without it the developer's real `~/.claude`
+ * and `~/.agents` skills would enter every booted composition, and the result
+ * would depend on whose machine runs it. Same pins as the web scaffold.
+ */
+const SKILL_ROOT_ENVIRONMENT = ['DSH_AGENTS_HOME', 'CLAUDE_CONFIG_DIR'] as const
+const originalSkillRootEnvironment = new Map<string, string | undefined>()
+let skillRootScratch: string | undefined
+
 let ctx: Context
 beforeAll(async () => {
+  skillRootScratch = await mkdtemp(join(tmpdir(), 'dsh-web-presets-skill-roots-'))
+  for (const key of SKILL_ROOT_ENVIRONMENT) originalSkillRootEnvironment.set(key, process.env[key])
+  process.env.DSH_AGENTS_HOME = join(skillRootScratch, '.agents-home')
+  process.env.CLAUDE_CONFIG_DIR = join(skillRootScratch, '.claude-home')
   const settingsFile = join(await mkdtemp(join(tmpdir(), 'dsh-web-presets-')), 'settings.yaml')
   await writeFile(settingsFile, '{}\n')
   ctx = await bootWeb(settingsFile)
 }, 120_000)
+
+afterAll(async () => {
+  for (const [key, value] of originalSkillRootEnvironment) {
+    if (value === undefined) Reflect.deleteProperty(process.env, key)
+    else process.env[key] = value
+  }
+  originalSkillRootEnvironment.clear()
+  if (skillRootScratch !== undefined) await rm(skillRootScratch, { recursive: true, force: true })
+})
 
 describe('the shipped Web composition', () => {
   it('leaves the global tool layer empty', () => {

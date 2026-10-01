@@ -43,7 +43,7 @@ YAML 拒绝但 Claude Code 接受的值（例如 `description: a: b`）由逐行
 
 ### 根目录与优先级
 
-根目录按 rank 顺序扫描，rank 较低者在同名时胜出：
+各根目录并行扫描；rank 只决定同名时哪个条目胜出，rank 较低者胜出：
 
 | Rank | 来源 | 根目录 |
 |---|---|---|
@@ -81,11 +81,11 @@ YAML 拒绝但 Claude Code 接受的值（例如 `description: a: b`）由逐行
 
 ### 变更检测
 
-已存在的根目录被递归监视，`node_modules` 除外。`<claudeHome>`、`<claudeHome>/plugins` 和 `<project>/.claude` 只监视一层，使新增的根目录、插件安装或设置变更都能进入目录。不存在的目标会在下一次列举时重试。同一事件循环轮次内到达的事件只触发一次失效。
+已存在的根目录被递归监视，`node_modules` 除外。`<claudeHome>`、`<claudeHome>/plugins` 和 `<project>/.claude` 只监视一层，并且只关注可能改变目录的条目，使新增的根目录、插件安装或设置变更都能进入目录：`<claudeHome>` 下的 `skills`、`commands`、`plugins` 和 `settings.json`；`<claudeHome>/plugins` 下的 `installed_plugins.json`；`<project>/.claude` 下的 `skills`、`commands`、`settings.json` 和 `settings.local.json`。这些目录中 Claude Code 自己的日志与历史文件不会使目录失效。不存在的目标会在下一次列举时重试。同一事件循环轮次内到达的事件只触发一次失效。
 
 ### 可观察的成功与失败
 
-配置正确时，会话的 skill 目录和 `/` 菜单会列出这些 Claude skill。下列每种情况都会按路径和消息各记录一条警告，其余目录仍照常加载：无法读取的文件或目录、没有描述的文件、不含字母或数字的名称、无法读取或 JSON 无效的 `settings.json` 或 `installed_plugins.json`、已启用但未安装的插件，以及没有 `scope: "user"` 条目的已安装插件。根目录不存在，或 skill 目录中没有 `SKILL.md`，则静默处理。监视器失败只会损失实时更新，扫描仍会提供目录。
+配置正确时，会话的 skill 目录和 `/` 菜单会列出这些 Claude skill。下列每种情况都会按路径和消息各记录一条警告，其余目录仍照常加载：无法读取的文件或目录、没有描述的文件、不含字母或数字的名称、无法读取或 JSON 无效的 `settings.json` 或 `installed_plugins.json`、已启用但未安装的插件，以及没有 `scope: "user"` 条目的已安装插件。根目录不存在，或 skill 目录中没有 `SKILL.md`，则静默处理。监视器失败只会损失实时更新，扫描仍会提供目录，但结果按未完成返回、注册表不会缓存，下一次查询会重新扫描。
 
 -----
 
@@ -156,7 +156,7 @@ watcher 触发的失效可促使上述消费方在现有请求历史中追加替
 - **Claude Code 工具名不会被翻译**——已加载的正文保留对 Claude Code 工具的引用，`$ARGUMENTS` 占位符也保持原样。
 - **名称冲突是静默的**——规范化后相同的名称（`a:b` 与 `a-b`）按 rank 再按提供方顺序决出胜负，注册表不会报告落选者。
 - **skill 的发现深度为一层**——只识别 `<root>/<dir>/SKILL.md`；忽略嵌套的 skill 树。
-- **根目录存在后才会被监视**——直接在 `<claudeHome>`、`<claudeHome>/plugins` 或 `<project>/.claude` 下创建目录会到达目录；新建的 `<project>/.claude` 或插件新建的 `skills` 目录，要等其他变更使目录失效后才会被附加。
+- **根目录存在后才会被监视**——直接在 `<claudeHome>` 下创建 `skills`、`commands` 或 `plugins`，或在 `<project>/.claude` 下创建 `skills` 或 `commands`，会到达目录；新建的 `<project>/.claude` 或插件新建的 `skills` 目录，要等其他变更使目录失效后才会被附加。
 
 <a id="dev-note"></a>
 ### 开发备注

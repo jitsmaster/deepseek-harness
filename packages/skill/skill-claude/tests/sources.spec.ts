@@ -30,6 +30,18 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeText(path, JSON.stringify(value))
 }
 
+function homeDir(path: string): { path: string; names: readonly string[] } {
+  return { path, names: ['skills', 'commands', 'plugins', 'settings.json'] }
+}
+
+function pluginsDir(home: string): { path: string; names: readonly string[] } {
+  return { path: join(home, 'plugins'), names: ['installed_plugins.json'] }
+}
+
+function projectDir(project: string): { path: string; names: readonly string[] } {
+  return { path: join(project, '.claude'), names: ['skills', 'commands', 'settings.json', 'settings.local.json'] }
+}
+
 describe('resolveClaudeHome', () => {
   it('prefers the configured directory, then CLAUDE_CONFIG_DIR, then ~/.claude', () => {
     expect(resolveClaudeHome('/configured', { CLAUDE_CONFIG_DIR: '/env' })).toBe('/configured')
@@ -76,7 +88,7 @@ describe('resolveSources', () => {
       ['skills', join(home, 'skills'), CLAUDE_RANK.userSkills, 'claude-user'],
       ['commands', join(home, 'commands'), CLAUDE_RANK.userCommands, 'claude-user'],
     ])
-    expect(sources.shallowDirs).toEqual([home, join(project, '.claude')])
+    expect(sources.shallowDirs).toEqual([homeDir(home), projectDir(project)])
     expect(messages).toEqual([])
   })
 
@@ -85,7 +97,7 @@ describe('resolveSources', () => {
     const { warn } = collector()
     const sources = await resolveSources({ claudeHome: home, projectRoot: undefined, includePlugins: false, warn })
     expect(sources.roots.map(root => root.rank)).toEqual([CLAUDE_RANK.userSkills, CLAUDE_RANK.userCommands])
-    expect(sources.shallowDirs).toEqual([home])
+    expect(sources.shallowDirs).toEqual([homeDir(home)])
   })
 
   it('resolves enabled user-scope plugins from installed_plugins.json', async () => {
@@ -121,7 +133,7 @@ describe('resolveSources', () => {
       ['superpowers', 'skills', CLAUDE_RANK.pluginSkills, join(cache('superpowers'), 'skills'), 'claude-plugin'],
       ['superpowers', 'commands', CLAUDE_RANK.pluginCommands, join(cache('superpowers'), 'commands'), 'claude-plugin'],
     ])
-    expect(sources.shallowDirs).toEqual([home, join(home, 'plugins')])
+    expect(sources.shallowDirs).toEqual([homeDir(home), pluginsDir(home)])
     expect(messages).toEqual([
       'plugin ghost@market is enabled but not installed',
       'plugin scoped@market skipped: only scope "user" entries are supported',
@@ -145,7 +157,7 @@ describe('resolveSources', () => {
     const sources = await resolveSources({ claudeHome: home, projectRoot: project, includePlugins: true, warn })
 
     expect([...new Set(sources.roots.flatMap(root => root.plugin === undefined ? [] : [root.plugin]))]).toEqual(['on'])
-    expect(sources.shallowDirs).toEqual([home, join(home, 'plugins'), join(project, '.claude')])
+    expect(sources.shallowDirs).toEqual([homeDir(home), pluginsDir(home), projectDir(project)])
   })
 
   describe('when the project .claude directory is the Claude home', () => {
@@ -170,7 +182,7 @@ describe('resolveSources', () => {
         CLAUDE_RANK.pluginSkills,
         CLAUDE_RANK.pluginCommands,
       ])
-      expect(sources.shallowDirs).toEqual([home, join(home, 'plugins')])
+      expect(sources.shallowDirs).toEqual([homeDir(home), pluginsDir(home)])
       expect(messages).toEqual([])
     })
 
@@ -191,7 +203,7 @@ describe('resolveSources', () => {
       const sources = await resolveSources({ claudeHome: home.toUpperCase(), projectRoot: project, includePlugins: false, warn })
 
       expect(sources.roots.map(root => root.rank)).toEqual([CLAUDE_RANK.userSkills, CLAUDE_RANK.userCommands])
-      expect(sources.shallowDirs).toEqual([home.toUpperCase()])
+      expect(sources.shallowDirs).toEqual([homeDir(home.toUpperCase())])
     })
   })
 
@@ -207,6 +219,22 @@ describe('resolveSources', () => {
     expect(messages).toHaveLength(1)
     expect(messages[0]).toContain('invalid JSON')
     expect(messages[0]).toContain(join(home, 'settings.json'))
+  })
+
+  it('reads settings and the plugin registry that start with a UTF-8 byte order mark', async () => {
+    const home = await tempDir('bom')
+    const { warn, messages } = collector()
+    const bom = '﻿'
+    await writeText(join(home, 'settings.json'), bom + JSON.stringify({ enabledPlugins: { 'a@b': true } }))
+    await writeText(
+      join(home, 'plugins', 'installed_plugins.json'),
+      bom + JSON.stringify({ plugins: { 'a@b': [{ scope: 'user', installPath: join(home, 'x') }] } }),
+    )
+
+    const sources = await resolveSources({ claudeHome: home, projectRoot: undefined, includePlugins: true, warn })
+
+    expect(sources.roots.filter(root => root.plugin === 'a').map(root => root.dir)).toEqual([join(home, 'x', 'skills'), join(home, 'x', 'commands')])
+    expect(messages).toEqual([])
   })
 
   it('reads enabledPlugins only when it is an object', async () => {

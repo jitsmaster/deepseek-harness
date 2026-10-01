@@ -70,6 +70,34 @@ describe('skill-claude change watching', () => {
     await fiber.dispose()
   })
 
+  it('wakes shallow watchers only for the entries that change the catalog', async () => {
+    const home = await tempDir()
+    const project = await tempDir()
+    await mkdir(join(project, '.git'), { recursive: true })
+    await mkdir(join(project, '.claude'), { recursive: true })
+    await mkdir(join(home, 'plugins'), { recursive: true })
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const fiber = await ctx.plugin(SkillClaude, { claudeHome: home })
+
+    await ctx.skills.list({ cwd: project })
+
+    const admits = (dir: string, child: string): boolean => {
+      const watcher = harness.watchers.find(entry => entry.path === dir && entry.options.depth === 0)
+      const ignored = watcher?.options.ignored as ((path: string) => boolean) | undefined
+      if (ignored === undefined) throw new Error(`no shallow watcher for ${dir}`)
+      return !ignored(join(dir, child))
+    }
+    const noise = ['history.jsonl', 'daemon.log', 'tts-failures.log', 'audio.pids', 'policy-limits.json']
+    for (const child of ['skills', 'commands', 'plugins', 'settings.json']) expect(admits(home, child)).toBe(true)
+    for (const child of ['skills', 'commands', 'settings.json', 'settings.local.json']) expect(admits(join(project, '.claude'), child)).toBe(true)
+    expect(admits(join(home, 'plugins'), 'installed_plugins.json')).toBe(true)
+    for (const dir of [home, join(home, 'plugins'), join(project, '.claude')]) {
+      for (const child of noise) expect(admits(dir, child)).toBe(false)
+    }
+    await fiber.dispose()
+  })
+
   it('honors explicit watch options', async () => {
     const home = await tempDir()
     await writeSkill(join(home, 'skills'), 'one')
@@ -152,8 +180,15 @@ describe('skill-claude change watching', () => {
 
     expect(first.map(skill => skill.name)).toEqual(['one'])
     expect(second.skills.map(skill => skill.name)).toEqual(['one'])
-    expect(second.complete).toBe(true)
+    expect(second.complete).toBe(false)
     expect(warnings.filter(message => message.includes('native watch unavailable'))).toHaveLength(1)
+
+    harness.watchThrows = false
+    const recovered = await ctx.skills.snapshot()
+
+    expect(recovered.skills.map(skill => skill.name)).toEqual(['one'])
+    expect(recovered.complete).toBe(true)
+    expect(harness.watchers.length).toBeGreaterThan(0)
     await fiber.dispose()
   })
 })

@@ -264,7 +264,8 @@
 # in the user's skill root: it documents THIS deployment's two planes, and a
 # preset is the unit that gets copied and edited. `baseUrl` is the preset's
 # own directory, so the root resolves wherever the preset is installed.
-# Both rows register into THIS preset's layer of the host skill registry, so
+# All three rows below (the filesystem and Claude providers and the skill
+# tool) register into THIS preset's layer of the host skill registry, so
 # they need no realm; the agent's merged catalog also carries whatever the
 # deployment registered globally (repository plugins).
 - id: skill-filesystem

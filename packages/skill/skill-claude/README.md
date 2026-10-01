@@ -43,7 +43,7 @@ The catalog and the body have separate lifecycles: discovery parses frontmatter 
 
 ### Roots and priority
 
-Roots are scanned in rank order, and a lower rank wins a duplicate name:
+Roots are scanned in parallel; rank only decides which entry wins a duplicate name, and the lower rank wins:
 
 | Rank | Source | Root |
 |---|---|---|
@@ -81,11 +81,11 @@ The remaining `watch*` fields tune Chokidar: polling, stability window, and poll
 
 ### Change detection
 
-Existing roots are watched recursively, excluding `node_modules`. `<claudeHome>`, `<claudeHome>/plugins`, and `<project>/.claude` are watched one level deep, so a new root, a plugin install, or a settings change reaches the catalog. A target that does not exist is retried on the next listing. Events that arrive in one event-loop turn produce one invalidation.
+Existing roots are watched recursively, excluding `node_modules`. `<claudeHome>`, `<claudeHome>/plugins`, and `<project>/.claude` are watched one level deep, and only for the entries that can change the catalog, so a new root, a plugin install, or a settings change reaches the catalog: `skills`, `commands`, `plugins`, and `settings.json` under `<claudeHome>`; `installed_plugins.json` under `<claudeHome>/plugins`; `skills`, `commands`, `settings.json`, and `settings.local.json` under `<project>/.claude`. Claude Code's own logs and history files in those directories never invalidate the catalog. A target that does not exist is retried on the next listing. Events that arrive in one event-loop turn produce one invalidation.
 
 ### Observable success and failures
 
-A working setup lists the Claude skills in the session's skill catalog and the `/` menu. Each of these logs one warning per path and message, and the rest of the catalog still loads: an unreadable file or directory, a file with no description, a name with no letters or digits, a `settings.json` or `installed_plugins.json` that is unreadable or invalid JSON, a plugin that is enabled but not installed, and an installed plugin with no `scope: "user"` entry. A missing root or a skill directory without `SKILL.md` is silent. A watcher failure only costs live updates; the scan still serves the catalog.
+A working setup lists the Claude skills in the session's skill catalog and the `/` menu. Each of these logs one warning per path and message, and the rest of the catalog still loads: an unreadable file or directory, a file with no description, a name with no letters or digits, a `settings.json` or `installed_plugins.json` that is unreadable or invalid JSON, a plugin that is enabled but not installed, and an installed plugin with no `scope: "user"` entry. A missing root or a skill directory without `SKILL.md` is silent. A watcher failure only costs live updates; the scan still serves the catalog, but as an incomplete result the registry does not cache, so the next lookup scans again.
 
 -----
 
@@ -156,7 +156,7 @@ These limits define when the provider is a poor fit or needs special operational
 - **Claude Code tool names are not translated** — a loaded body keeps its references to Claude Code tools, and `$ARGUMENTS` placeholders stay as written.
 - **Name collisions are silent** — names that normalize to the same string (`a:b` and `a-b`) resolve by rank and then provider order, and the registry does not report the loser.
 - **Discovery is one level deep for skills** — only `<root>/<dir>/SKILL.md` is recognized; nested skill trees are ignored.
-- **A root is watched only once it exists** — creating a directory directly under `<claudeHome>`, `<claudeHome>/plugins`, or `<project>/.claude` reaches the catalog; a new `<project>/.claude` or a plugin's new `skills` directory is attached only after another change invalidates the catalog.
+- **A root is watched only once it exists** — creating `skills`, `commands`, or `plugins` directly under `<claudeHome>`, or `skills` or `commands` directly under `<project>/.claude`, reaches the catalog; a new `<project>/.claude` or a plugin's new `skills` directory is attached only after another change invalidates the catalog.
 
 <a id="dev-note"></a>
 ### Dev Note
