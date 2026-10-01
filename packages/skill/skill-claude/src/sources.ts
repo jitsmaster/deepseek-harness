@@ -142,7 +142,7 @@ async function readJson(path: string, warn: Warn): Promise<unknown> {
   }
   try {
     // Editors on Windows save JSON with a UTF-8 byte order mark, which JSON.parse rejects.
-    return JSON.parse(text.startsWith('﻿') ? text.slice(1) : text) as unknown
+    return JSON.parse(text.startsWith('\uFEFF') ? text.slice(1) : text) as unknown
   } catch (error) {
     warn(path, `${path} ignored: invalid JSON: ${String(error)}`)
     return undefined

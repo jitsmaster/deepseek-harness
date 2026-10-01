@@ -224,7 +224,7 @@ describe('resolveSources', () => {
   it('reads settings and the plugin registry that start with a UTF-8 byte order mark', async () => {
     const home = await tempDir('bom')
     const { warn, messages } = collector()
-    const bom = '﻿'
+    const bom = '\uFEFF'
     await writeText(join(home, 'settings.json'), bom + JSON.stringify({ enabledPlugins: { 'a@b': true } }))
     await writeText(
       join(home, 'plugins', 'installed_plugins.json'),
