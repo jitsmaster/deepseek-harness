@@ -129,12 +129,12 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
                 <span
                   class="localBuildTitle"
                 >
-                  DSH Local Build
+                  DSH with Claude Subscription
                 </span>
                 <span
                   class="buildVersion"
                 >
-                  1.2.3-rc.4-abc1234-dirty
+                  1.2.3-rc.4-abc1234-dirty-aw
                 </span>
               </span>
             </div>
@@ -355,12 +355,12 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
                 <span
                   class="localBuildTitle"
                 >
-                  DSH Local Build
+                  DSH with Claude Subscription
                 </span>
                 <span
                   class="buildVersion"
                 >
-                  1.2.3-rc.4-abc1234-dirty
+                  1.2.3-rc.4-abc1234-dirty-aw
                 </span>
               </span>
             </div>
@@ -485,12 +485,12 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
                 <span
                   class="localBuildTitle"
                 >
-                  DSH 本地构建
+                  DSH with Claude Subscription
                 </span>
                 <span
                   class="buildVersion"
                 >
-                  1.2.3-rc.4-abc1234-dirty
+                  1.2.3-rc.4-abc1234-dirty-aw
                 </span>
               </span>
             </div>

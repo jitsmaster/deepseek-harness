@@ -38,6 +38,9 @@ const COLLAPSE_SETTLE_MS = 150
  */
 const SCROLLBAR_LINGER_MS = 2000
 
+/** Final version-badge suffix that marks builds of this fork (`-aw`). */
+const FORK_VERSION_SUFFIX = '-aw'
+
 /** Format complete-build metadata for the local brand badge. */
 function localBuildVersion(): string | undefined {
   const version = process.env.DSH_CLIENT_VERSION
@@ -46,6 +49,7 @@ function localBuildVersion(): string | undefined {
   return version
     + (commit === undefined ? '' : `-${commit}`)
     + (process.env.DSH_CLIENT_GIT_DIRTY === 'true' ? '-dirty' : '')
+    + FORK_VERSION_SUFFIX
 }
 
 type PanelRowProps =
