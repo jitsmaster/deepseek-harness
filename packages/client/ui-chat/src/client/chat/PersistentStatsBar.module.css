@@ -7,7 +7,9 @@
 .root {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  /* Sits close to the viewport edge so the pills stay below the composer's
+     prompt input box instead of overlapping its lower edge and send button. */
+  bottom: 4px;
   /* Local ordering only, within shell.overlay's occupants — the overlay
      layer already establishes its own stacking context above the app. */
   z-index: 1;
