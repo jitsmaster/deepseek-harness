@@ -914,7 +914,13 @@ async function nodeEntryKind(fullPath: string, entry: { isDirectory(): boolean; 
   }
 }
 
-function parseFrontmatter(raw: string): { data: Record<string, unknown>; body: string } | undefined {
+/**
+ * Split `---` delimited frontmatter from a skill file without parsing the YAML.
+ * @param raw - complete file text.
+ * @returns the YAML text between the delimiters and the text after the closing
+ *   delimiter, or `undefined` when the file has no complete frontmatter block.
+ */
+export function splitSkillFrontmatter(raw: string): { yaml: string; body: string } | undefined {
   const firstLineEnd = raw.indexOf('\n')
   if (firstLineEnd < 0) return undefined
   const firstLine = raw.slice(0, firstLineEnd).replace(/\r$/, '')
@@ -922,10 +928,15 @@ function parseFrontmatter(raw: string): { data: Record<string, unknown>; body: s
   const start = firstLineEnd + 1
   const closing = findClosingFrontmatter(raw, start)
   if (closing === undefined) return undefined
-  const yaml = raw.slice(start, closing.start)
-  const parsed = parseYaml(yaml) as unknown
+  return { yaml: raw.slice(start, closing.start), body: raw.slice(closing.bodyStart) }
+}
+
+function parseFrontmatter(raw: string): { data: Record<string, unknown>; body: string } | undefined {
+  const split = splitSkillFrontmatter(raw)
+  if (split === undefined) return undefined
+  const parsed = parseYaml(split.yaml) as unknown
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
-  return { data: parsed as Record<string, unknown>, body: raw.slice(closing.bodyStart) }
+  return { data: parsed as Record<string, unknown>, body: split.body }
 }
 
 function findClosingFrontmatter(raw: string, start: number): { start: number; bodyStart: number } | undefined {
