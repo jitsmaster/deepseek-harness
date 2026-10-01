@@ -432,6 +432,7 @@
       "@deepseek-ai/dsh-shell": ["./packages/shell/shell/src"],
       "@deepseek-ai/dsh-skill": ["./packages/skill/skill/src"],
       "@deepseek-ai/dsh-skill-badge": ["./packages/skill/skill-badge/src"],
+      "@deepseek-ai/dsh-skill-claude": ["./packages/skill/skill-claude/src"],
       "@deepseek-ai/dsh-skill-filesystem": ["./packages/skill/skill-filesystem/src"],
       "@deepseek-ai/dsh-skill-office": ["./packages/skill/skill-office/src"],
       "@deepseek-ai/dsh-spill": ["./packages/spill/spill/src"],
