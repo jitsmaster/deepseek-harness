@@ -80,6 +80,10 @@ interface SkillProviderControl {
 
 Chokidar 会监视现有根目录中直属 bundle 和平铺条目的添加与移除，以及直属 skill 条目的变更。缺失的根目录会从最近的现有祖先开始，逐个跟踪缺失路径段，直至 Chokidar 可以附加。bundle 下的资源文件变更不属于目录变更。面向模型的 `write` 和 `edit` 观测会在目标路径与目录相关时同步使提供方目录失效，而宿主 watcher 覆盖 IDE、Git、shell 和外部进程产生的变更。watcher 失败会使当前观测不完整，但不会在直接加载时隐藏可读候选项；项目作用域 watcher 使用按配置设限的 LRU。
 
+## Claude skill 提供方
+
+`dsh-skill-claude` 把 Claude Code 的 skill、命令文件和已启用的用户级插件 skill 注册为 DSH skill，并与本地提供方处于同一预设层，因此两者的 rank 共同决定同名项的归属。工作区来源优先于全局来源：项目 skill 为 rank 210，项目命令为 220，介于 `project-agents`（200）与 `custom`（300）之间；用户 skill 530，用户命令 540，插件 skill 550，插件命令 560。Claude 名称转为小写，非字母数字的连续字符替换为 `-`（`modes:sparc` 注册为 `modes-sparc`）。详见[包 README](../../packages/skill/skill-claude/README.zh.md)。
+
 ## skill 身份
 
 skill 名称为 kebab-case（`^[a-z0-9]+(?:-[a-z0-9]+)*$`）。本地提供方接受目录包（`<name>/SKILL.md`）和扁平 Markdown 文件（`<name>.md`）。嵌套递归的 `**/SKILL.md` 发现不受支持。

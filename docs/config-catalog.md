@@ -2437,6 +2437,36 @@ export interface Config {
 
 Source: [`packages/skill/skill/src/index.ts:278`](../packages/skill/skill/src/index.ts)
 
+<a id="deepseek-aidsh-skill-claude"></a>
+
+## `@deepseek-ai/dsh-skill-claude`
+
+Requires: `skills`
+
+```ts config-catalog
+/** Claude skill provider configuration. */
+export interface Config {
+  /** Unique provider name. Defaults to `claude`. */
+  providerName?: string
+  /** Claude configuration root. Defaults to `$CLAUDE_CONFIG_DIR` or `~/.claude`. */
+  claudeHome?: string
+  /** Whether the project's `.claude/skills` and `.claude/commands` are scanned. */
+  includeProject?: boolean
+  /** Whether skills and commands of enabled user-scope plugins are scanned. */
+  includePlugins?: boolean
+  /** Whether scanned roots and configuration files are watched for catalog changes. */
+  watch?: boolean
+  /** Whether Chokidar uses polling instead of native filesystem events. */
+  watchUsePolling?: boolean
+  /** Milliseconds a changed file must remain stable before it is observed. */
+  watchStabilityThresholdMs?: number
+  /** Milliseconds between Chokidar stability or polling probes. */
+  watchPollIntervalMs?: number
+}
+```
+
+Source: [`packages/skill/skill-claude/src/index.ts:32`](../packages/skill/skill-claude/src/index.ts)
+
 <a id="deepseek-aidsh-skill-filesystem"></a>
 
 ## `@deepseek-ai/dsh-skill-filesystem`
@@ -2760,7 +2790,7 @@ export interface Config {
 export type ClaudeCodePermissionMode = typeof CLAUDE_CODE_PERMISSION_MODES[number]
 ```
 
-Source: [`packages/subagent/subagent-claude-code/src/index.ts:38`](../packages/subagent/subagent-claude-code/src/index.ts)
+Source: [`packages/subagent/subagent-claude-code/src/index.ts:44`](../packages/subagent/subagent-claude-code/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-codex"></a>
 

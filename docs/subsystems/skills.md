@@ -80,6 +80,10 @@ The project root is the nearest ancestor containing `.git`; without one, the cur
 
 Chokidar watches existing roots for direct bundle/flat-entry additions and removals plus direct skill-entry changes. A missing root is followed one absent path segment at a time from its nearest existing ancestor until Chokidar can attach. Resource files below a bundle are not catalog changes. Model-facing `write` and `edit` observations synchronously invalidate the provider when their target is catalog-relevant, while the host watcher covers IDE, Git, shell, and external-process mutations. Watcher failures make the current observation incomplete without hiding readable candidates from direct loads; project-scoped watchers use a configured bounded LRU.
 
+## Claude skill provider
+
+`dsh-skill-claude` registers Claude Code skills, command files, and enabled user-scope plugin skills as DSH skills, in the same preset layer as the local provider so ranks decide duplicates across both. Workspace sources outrank global ones: project skills take rank 210 and project commands 220, between `project-agents` (200) and `custom` (300); user skills take 530, user commands 540, plugin skills 550, plugin commands 560. Claude names are lowercased and non-alphanumeric runs become `-` (`modes:sparc` registers as `modes-sparc`). Details: [package README](../../packages/skill/skill-claude/README.md).
+
 ## Skill identity
 
 Skill names are kebab-case (`^[a-z0-9]+(?:-[a-z0-9]+)*$`). The local provider accepts directory bundles (`<name>/SKILL.md`) and flat Markdown files (`<name>.md`). Nested recursive `**/SKILL.md` discovery is not supported.
