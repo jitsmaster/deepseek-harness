@@ -229,9 +229,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
       // owns) used to throw here, which discarded the ENTIRE candidate list
       // for this call — dropping every other host row and contribution row
       // along with it, not just the offending one. Skip and warn instead, so
-      // one bad row never blanks the whole '/' menu; mirrors the
-      // collision-skip pattern in `claude-skill-commands/src/index.ts`'s
-      // `performRescan()`.
+      // one bad row never blanks the whole '/' menu.
       if (seen.has(contribution.name)) {
         this.ctx.logger.warn(`ui-commands: skipping contribution /${contribution.name} — collides with a host command`)
         continue

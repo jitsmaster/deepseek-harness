@@ -55,6 +55,7 @@ function cleanEnvironment(root: string, dshHome: string): NodeJS.ProcessEnv {
   return {
     ...env,
     DSH_AGENTS_HOME: join(root, '.agents'),
+    CLAUDE_CONFIG_DIR: join(root, '.claude-home'),
     DSH_HOME: dshHome,
     DSH_TELEMETRY_DISABLED: '1',
     NODE_NO_WARNINGS: '1',

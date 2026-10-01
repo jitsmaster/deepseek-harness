@@ -100,6 +100,7 @@ describe('Python SDK dsh profile keyless smoke', () => {
       env: {
         ...launch.env,
         DSH_HOME: join(root, '.dsh'),
+        CLAUDE_CONFIG_DIR: join(root, '.claude-home'),
         DSH_PERMISSION_MODE: 'danger-full-access',
         DSH_TELEMETRY_DISABLED: '1',
         DEEPSEEK_API_KEY: 'keyless-smoke-no-call',
@@ -249,6 +250,7 @@ describe('Python SDK dsh profile keyless smoke', () => {
       env: {
         ...launch.env,
         DSH_HOME: join(root, '.dsh'),
+        CLAUDE_CONFIG_DIR: join(root, '.claude-home'),
         DSH_SYSTEM_PROMPT: 'Minimal allowlist prompt.',
         DEEPSEEK_API_KEY: 'keyless-smoke-no-call',
         DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}`,
@@ -347,7 +349,7 @@ describe('Python SDK dsh profile keyless smoke', () => {
       ...launch.args, '--profile', 'sdk', '--patch', patch,
     ], {
       cwd: repoRoot,
-      env: { ...launch.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', DEEPSEEK_API_KEY: 'keyless-no-call' },
+      env: { ...launch.env, DSH_HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude-home'), DSH_TELEMETRY_DISABLED: '1', DEEPSEEK_API_KEY: 'keyless-no-call' },
       stdin: 'pipe',
       stripFinalNewline: false,
       timeout: 25_000,
@@ -389,6 +391,7 @@ describe('Python SDK dsh profile keyless smoke', () => {
         env: {
           ...launch.env,
           DSH_HOME: join(root, '.dsh'),
+          CLAUDE_CONFIG_DIR: join(root, '.claude-home'),
           DEEPSEEK_API_KEY: 'keyless-smoke-no-call',
           DSH_MAX_TOKENS_AS_SUCCESS: 'sometimes',
         },

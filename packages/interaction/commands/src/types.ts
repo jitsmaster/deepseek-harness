@@ -57,9 +57,10 @@ export interface CommandExecution {
  * Provenance tag an owning plugin may attach to a registration so UI rows and
  * dispatch logic can tell a command imported from an external agent tool
  * apart from a command DSH itself defines. `'claude-code'` marks a command
- * `@deepseek-ai/dsh-claude-skill-commands` derived from a Claude Code
- * `SKILL.md` or `.claude/commands/*.md` file on disk — never hand-authored
- * inside DSH.
+ * derived from a Claude Code skill or command file. No current plugin
+ * registers such commands (Claude files are served as skills by
+ * `@deepseek-ai/dsh-skill-claude`); the value stays so saved sessions that
+ * carry it still parse.
  */
 export type CommandOrigin = 'claude-code'
 

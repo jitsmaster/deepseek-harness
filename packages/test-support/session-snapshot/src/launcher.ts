@@ -131,6 +131,7 @@ export function launchAcpTestAgent(options: AcpTestLaunchOptions): LaunchedAcpTe
       ...options.env,
       DSH_HOME: join(cwd, '.dsh'),
       DSH_AGENTS_HOME: join(cwd, '.agents'),
+      CLAUDE_CONFIG_DIR: join(cwd, '.claude-home'),
     },
   })
   const child = spawn(

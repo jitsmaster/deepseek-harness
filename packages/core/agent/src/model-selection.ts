@@ -63,12 +63,11 @@ function modelSwitchNotice(previous: ModelSelection, selected: ModelSelection) {
  * computed lazily, and only as far as needed, so a caller that already has a
  * `pending` value never pays for reading the logged request or the default.
  *
- * Centralizing this precedence rule keeps `session-controller`'s
- * `ApiSessionAgentController.selectionFor()` and
- * `claude-skill-commands`'s `currentProviderOf()` from drifting apart —
- * both read the same "pending wins, else logged, else default" rule off a
- * durable `modelSelection` projection, one to install a full
- * {@link ModelSelection} and the other to report just its `provider`.
+ * Centralizing this precedence rule keeps every reader of a durable
+ * `modelSelection` projection (such as `session-controller`'s
+ * `ApiSessionAgentController.selectionFor()`) on the same "pending wins, else
+ * logged, else default" rule, whether it installs a full
+ * {@link ModelSelection} or reports just its `provider`.
  * @param pending - explicit pending value, when a switch is already decided.
  * @param computeLogged - lazily produces the value observed on the last
  *   logged request, or `undefined` when none has logged yet. Not called when

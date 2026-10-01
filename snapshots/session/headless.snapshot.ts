@@ -665,6 +665,7 @@ async function verifyProviderCwdResume(
   const otherHostCwd = await mkdtemp(join(tmpdir(), 'dsh-provider-resume-'))
   const env = {
     DSH_HOME: join(cwd, '.dsh'),
+    CLAUDE_CONFIG_DIR: join(cwd, '.claude-home'),
     DSH_SNAPSHOT: 'replay',
     DSH_SNAPSHOT_FILE: fixture,
     DSH_SNAPSHOT_PROVIDER: model.provider,

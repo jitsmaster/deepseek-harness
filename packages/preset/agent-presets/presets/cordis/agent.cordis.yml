@@ -273,6 +273,9 @@
     customSkillDirs:
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
 
+- id: skill-claude
+  name: '@deepseek-ai/dsh-skill-claude'
+
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
 

@@ -315,8 +315,6 @@
       "@deepseek-ai/dsh-chunked-list": ["./packages/util/chunked-list/src"],
       "@deepseek-ai/dsh-claude-session-import": ["./packages/session/claude-session-import/src"],
       "@deepseek-ai/dsh-claude-session-import/invariant": ["./packages/session/claude-session-import/src/invariant.ts"],
-      "@deepseek-ai/dsh-claude-skill-commands": ["./packages/interaction/claude-skill-commands/src"],
-      "@deepseek-ai/dsh-claude-skill-commands/invariant": ["./packages/interaction/claude-skill-commands/src/invariant.ts"],
       "@deepseek-ai/dsh-client-runtime": ["./packages/compat/client-runtime/src"],
       "@deepseek-ai/dsh-cmdline": ["./packages/boot/cmdline/src"],
       "@deepseek-ai/dsh-command-compact": ["./packages/compaction/command-compact/src"],

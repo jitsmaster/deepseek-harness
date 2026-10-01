@@ -30,10 +30,10 @@ export type * from './types.ts'
 
 export const name = 'commands'
 
-// Exported so dependent packages (e.g. `@deepseek-ai/dsh-claude-skill-commands`,
-// which validates a skill's frontmatter `name` against this same shape before
-// ever handing it to `register()`) can assert their copy stays in sync with
-// this canonical pattern, instead of drifting silently.
+/**
+ * The canonical shape every registered command name must match. Exported so
+ * callers and tests can check a candidate name before `register()` does.
+ */
 export const COMMAND_NAME = /^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)?$/u
 
 /** Shared frozen attachments value for attachment-free invocations. */

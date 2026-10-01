@@ -370,6 +370,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('GitHub webhook through the real 
       env: {
         ...process.env,
         DSH_AGENTS_HOME: join(root, '.agents'),
+        CLAUDE_CONFIG_DIR: join(root, '.claude-home'),
         DSH_GITHUB_E2E_MARKER: MARKER,
         DSH_GITHUB_E2E_WORKSPACE: workspacePath,
         DSH_GITHUB_WEBHOOK_PORT: String(webhookPort),

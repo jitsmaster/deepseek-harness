@@ -505,6 +505,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   const skillRootEnvironment = {
     DSH_HOME: harnessHome,
     DSH_AGENTS_HOME: join(workspaceCwd, '.agents-home'),
+    CLAUDE_CONFIG_DIR: join(workspaceCwd, '.claude-home'),
     DSH_BUNDLED_SKILL_DIR: join(workspaceCwd, '.bundled-skills'),
   }
   const originalSkillRootEnvironment = Object.fromEntries(

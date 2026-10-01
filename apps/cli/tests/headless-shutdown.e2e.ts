@@ -88,6 +88,7 @@ async function runHeadlessPtySmoke(): Promise<string> {
       env: {
         DSH_HOME: home,
         DSH_AGENTS_HOME: join(cwd, '.agents'),
+        CLAUDE_CONFIG_DIR: join(cwd, '.claude-home'),
         DEEPSEEK_API_KEY: 'keyless-shutdown-no-call',
         DSH_TELEMETRY_DISABLED: '1',
         DSH_TEST_SHUTDOWN_ARM_FILE: join(cwd, 'shutdown-armed'),

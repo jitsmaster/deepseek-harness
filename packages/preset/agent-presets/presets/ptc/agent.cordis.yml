@@ -88,8 +88,12 @@
 # `skill-filesystem` contributes local-root discovery for agents on this preset, and
 # `tool-skill` gives them the catalog and loader; the merged catalog also
 # carries whatever the deployment registered globally (repository plugins).
+# `skill-claude` adds Claude Code skills, command files, and enabled plugins in the same layer, so rank order decides duplicates across both providers.
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: skill-claude
+  name: '@deepseek-ai/dsh-skill-claude'
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'

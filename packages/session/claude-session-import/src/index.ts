@@ -363,7 +363,7 @@ export class ClaudeSessionImportController extends TypertRemoteService {
       // itself just below.
       const safeName = escapeEmbeddedBoundaryMarkers(discovered.name)
       // Memory content is the operator's own trusted notes (same trust level
-      // as a user-tier skill — see claude-skill-commands' Fix C), so unlike
+      // as a user-tier skill), so unlike
       // `safeName` above it needs no escaping against the transcript's own
       // turn-boundary markers. Appended AFTER the transcript, not before: the
       // client's context-notice disclosure bounds what it renders up front
