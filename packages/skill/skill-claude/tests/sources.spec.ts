@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { CLAUDE_RANK, findProjectRoot, resolveClaudeHome, resolveSources } from '../src/sources.ts'
+import { CLAUDE_RANK, findProjectRoot, resolveClaudeHome, resolveSources, samePath } from '../src/sources.ts'
 import type { Warn } from '../src/types.ts'
 
 const tempDirs: string[] = []
@@ -50,6 +50,15 @@ describe('findProjectRoot', () => {
   it('returns the starting directory when no ancestor has .git', async () => {
     const root = await tempDir('no-git')
     expect(await findProjectRoot(root)).toBe(root)
+  })
+})
+
+describe('samePath', () => {
+  it('normalises paths and ignores case only for win32', () => {
+    expect(samePath(join('/a', 'b', '..', 'c'), join('/a', 'c'), 'linux')).toBe(true)
+    expect(samePath('/a/C', '/a/c', 'linux')).toBe(false)
+    expect(samePath('/a/C', '/a/c', 'win32')).toBe(true)
+    expect(samePath('/a/c', '/a/d', 'win32')).toBe(false)
   })
 })
 
@@ -137,6 +146,53 @@ describe('resolveSources', () => {
 
     expect([...new Set(sources.roots.flatMap(root => root.plugin === undefined ? [] : [root.plugin]))]).toEqual(['on'])
     expect(sources.shallowDirs).toEqual([home, join(home, 'plugins'), join(project, '.claude')])
+  })
+
+  describe('when the project .claude directory is the Claude home', () => {
+    async function homeProject(): Promise<{ project: string; home: string }> {
+      const project = await tempDir('home-project')
+      return { project, home: join(project, '.claude') }
+    }
+
+    it('lists user roots, plugin roots, and watch directories once', async () => {
+      const { project, home } = await homeProject()
+      const { warn, messages } = collector()
+      await writeJson(join(home, 'plugins', 'installed_plugins.json'), {
+        plugins: { 'one@market': [{ scope: 'user', installPath: join(home, 'cache', 'one') }] },
+      })
+      await writeJson(join(home, 'settings.json'), { enabledPlugins: { 'one@market': true } })
+
+      const sources = await resolveSources({ claudeHome: home, projectRoot: project, includePlugins: true, warn })
+
+      expect(sources.roots.map(root => root.rank)).toEqual([
+        CLAUDE_RANK.userSkills,
+        CLAUDE_RANK.userCommands,
+        CLAUDE_RANK.pluginSkills,
+        CLAUDE_RANK.pluginCommands,
+      ])
+      expect(sources.shallowDirs).toEqual([home, join(home, 'plugins')])
+      expect(messages).toEqual([])
+    })
+
+    it('reads settings.json once', async () => {
+      const { project, home } = await homeProject()
+      const { warn, messages } = collector()
+      await writeText(join(home, 'settings.json'), '{not json')
+
+      await resolveSources({ claudeHome: home, projectRoot: project, includePlugins: true, warn })
+
+      expect(messages).toHaveLength(1)
+    })
+
+    it.runIf(process.platform === 'win32')('matches paths that differ only in case on Windows', async () => {
+      const { project, home } = await homeProject()
+      const { warn } = collector()
+
+      const sources = await resolveSources({ claudeHome: home.toUpperCase(), projectRoot: project, includePlugins: false, warn })
+
+      expect(sources.roots.map(root => root.rank)).toEqual([CLAUDE_RANK.userSkills, CLAUDE_RANK.userCommands])
+      expect(sources.shallowDirs).toEqual([home.toUpperCase()])
+    })
   })
 
   it('tolerates absent files, wrong shapes, and invalid JSON without throwing', async () => {

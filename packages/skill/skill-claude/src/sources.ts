@@ -7,7 +7,7 @@
 
 import { access, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { isMissing } from './fs-error.ts'
 import type { ResolvedSources, SkillRoot, Warn } from './types.ts'
 
@@ -77,7 +77,11 @@ async function exists(path: string): Promise<boolean> {
  * @returns scan roots (project, user, then plugin roots) and shallow watch directories.
  */
 export async function resolveSources(options: ResolveOptions): Promise<ResolvedSources> {
-  const { claudeHome, projectRoot, includePlugins, warn } = options
+  const { claudeHome, includePlugins, warn } = options
+  // A project whose `.claude` is the user config directory must not be listed a second time as a project source.
+  const projectRoot = options.projectRoot !== undefined && samePath(join(options.projectRoot, '.claude'), claudeHome)
+    ? undefined
+    : options.projectRoot
   const roots: SkillRoot[] = []
   const shallowDirs: string[] = [claudeHome]
   if (projectRoot !== undefined) {
@@ -104,6 +108,19 @@ export async function resolveSources(options: ResolveOptions): Promise<ResolvedS
   }
   if (projectRoot !== undefined) shallowDirs.push(join(projectRoot, '.claude'))
   return { roots, shallowDirs }
+}
+
+/**
+ * Compare two paths after normalisation; Windows paths compare case-insensitively.
+ * @param left - first path.
+ * @param right - second path.
+ * @param platform - platform whose path rules apply.
+ * @returns whether both paths name the same location.
+ */
+export function samePath(left: string, right: string, platform: NodeJS.Platform = process.platform): boolean {
+  const a = resolve(left)
+  const b = resolve(right)
+  return platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 }
 
 async function readJson(path: string, warn: Warn): Promise<unknown> {
