@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { Button, IconSearchOutline16, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconSearchOutlineRegular, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DiscoveredSessionView } from '@deepseek-ai/dsh-api-remotes/client'
 import { en, type SessionImportKey } from './locales.ts'
 import { groupAndSortSessions } from './session-grouping.ts'
@@ -181,7 +181,7 @@ export function ImportDialog(props: ImportDialogProps): ReactNode {
           : (
             <>
               <Input
-                icon={<IconSearchOutline16 />}
+                icon={<IconSearchOutlineRegular />}
                 className={styles['search'] ?? ''}
                 type="text"
                 value={query}

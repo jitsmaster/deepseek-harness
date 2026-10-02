@@ -934,7 +934,7 @@ export function splitSkillFrontmatter(raw: string): { yaml: string; body: string
 function parseFrontmatter(raw: string): { data: Record<string, unknown>; body: string } | undefined {
   const split = splitSkillFrontmatter(raw)
   if (split === undefined) return undefined
-  const parsed = parseYaml(split.yaml) as unknown
+  const parsed: unknown = parseYaml(split.yaml)
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
   return { data: parsed as Record<string, unknown>, body: split.body }
 }

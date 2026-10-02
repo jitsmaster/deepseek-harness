@@ -37,6 +37,7 @@ const DeepSeekConfig = Schema.object({
 function piAiNamespace(providers: Record<string, JsonValue>): SettingsNamespaceView {
   return {
     ns: 'llm-pi-ai',
+    autoGenerate: true,
     schema: JSON.parse(JSON.stringify(PiAiConfig.toJSON())) as JsonValue,
     value: { providers },
     base: { providers: {} },
@@ -50,6 +51,7 @@ function piAiNamespace(providers: Record<string, JsonValue>): SettingsNamespaceV
 function deepseekNamespace(): SettingsNamespaceView {
   return {
     ns: 'llm-deepseek',
+    autoGenerate: true,
     schema: JSON.parse(JSON.stringify(DeepSeekConfig.toJSON())) as JsonValue,
     value: {},
     base: {},

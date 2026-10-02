@@ -18,10 +18,15 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 /** One `claude agents --json --all` entry, as surfaced to the import picker. */
 export interface DiscoveredSession {
+  /** Eight-character display prefix of the Claude Code session identifier. */
   readonly id: string
+  /** Display name Claude Code gives the session. */
   readonly name: string
+  /** Working directory the session ran in. */
   readonly cwd: string
+  /** Lifecycle label Claude Code reports, such as `idle`, `busy`, or `done`. */
   readonly status: string
+  /** ISO-8601 time the session started. */
   readonly startedAt: string
 }
 

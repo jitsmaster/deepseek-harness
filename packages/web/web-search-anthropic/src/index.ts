@@ -75,9 +75,6 @@ export const Config: z<Config> = z.object({
   maxUses: z.number().step(1).min(1).default(ANTHROPIC_DEFAULT_MAX_USES),
 })
 
-/** Settings namespace carrying this provider's route, endpoint, and model. */
-export const WEB_SEARCH_ANTHROPIC_SETTINGS_NAMESPACE = 'web-search-anthropic'
-
 /** Safety margin subtracted from a grant's `expires` timestamp before treating it as usable. */
 const EXPIRY_SAFETY_MARGIN_MS = 30_000
 
@@ -135,16 +132,5 @@ function resolveOptions(ctx: Context, config: Config): AnthropicSearchProviderOp
 
 /** Register the Anthropic-subscription search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
-  let current: () => Config = () => config
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, WEB_SEARCH_ANTHROPIC_SETTINGS_NAMESPACE, Config, config, {
-      setSource: (source) => {
-        current = source
-      },
-      // The registration carries no resolved value: the provider projects the
-      // section per search, so a committed change needs no re-registration.
-      onChange: () => {},
-    })
-  })
-  ctx.web.registerSearchProvider(new AnthropicSearchProvider(() => resolveOptions(ctx, current())))
+  ctx.web.registerSearchProvider(new AnthropicSearchProvider(() => resolveOptions(ctx, config)))
 }

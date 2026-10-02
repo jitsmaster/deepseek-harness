@@ -24,7 +24,7 @@
       "path": "../ui-workspace"
     },
     {
-      "path": "../locale"
+      "path": "../locale/tsconfig.client.json"
     },
     {
       "path": "../../runtime-diagnostics/invariants"

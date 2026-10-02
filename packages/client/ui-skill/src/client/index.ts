@@ -25,6 +25,8 @@
  * not kill the prewarm other consumers will hit, so it carries its own
  * abort (fired only on invalidation/teardown) while a candidates caller
  * with an aborted signal just returns early.
+ * Catalog RPCs retain an existing Client Session through completion and
+ * wait for its initial history open to succeed before contacting the Host.
  *
  * This browser half also owns the `skill` keyed toolview: a replay-stable
  * accent row derived only from each logged call/result slice.
@@ -37,13 +39,20 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
-import { IconSkillOutline16, rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconSkillOutlineRegular, rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { SkillRow } from './SkillRow.tsx'
 import { en, NS, zh, type SkillKey } from './locales.ts'
+
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap {
+    /** A skill-catalog fetch waiting for initial history and its RPC result. */
+    skillCatalog: unknown
+  }
+}
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -100,10 +109,20 @@ export function apply(ctx: ClientContext): void {
     if (existing !== undefined) return existing
     const abort = new AbortController()
     const promise = (async () => {
-      const result = await skills.list({ sessionId }, abort.signal)
-      abort.signal.throwIfAborted()
-      if (!result.ok) throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`)
-      return result.value.skills
+      if (sessions.binding(sessionId) === undefined) {
+        throw new Error(`skill catalog requires a retained session "${sessionId}"`)
+      }
+      return sessions.using(sessionId, { source: 'skillCatalog', signal: abort.signal }, async (reference) => {
+        abort.signal.throwIfAborted()
+        const state = reference.binding.session.getSnapshot()
+        if (state.openState !== 'open') {
+          throw state.openError ?? new Error(`session "${sessionId}" is not open`)
+        }
+        const result = await skills.list({ sessionId }, abort.signal)
+        abort.signal.throwIfAborted()
+        if (!result.ok) throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`)
+        return result.value.skills
+      })
     })()
     const entry: CatalogFetch = { promise, abort }
     fetches.set(sessionId, entry)
@@ -151,7 +170,7 @@ export function apply(ctx: ClientContext): void {
       return rankByName(skills, query)
         .map(skill => ({
           name: skill.name,
-          icon: IconSkillOutline16,
+          icon: IconSkillOutlineRegular,
           // The user-only marker rides the description (the menu's only
           // secondary text); `hint` is the claim-state ghost text, not a badge.
           description: skill.modelInvocable ? skill.description : `${t('menu.userOnly')} · ${skill.description}`,

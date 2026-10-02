@@ -11,7 +11,7 @@ import { stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentHandle, ModelSelection } from '@deepseek-ai/dsh-agent'
-import { createUserMessage, type LlmCallConfig } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContextFormed, type LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -22,6 +22,13 @@ import { readProjectMemory as readProjectMemoryDefault } from './project-memory.
 import type { ClaudeSessionImportCreateValue, ClaudeSessionImportListValue } from './types.ts'
 
 export type * from './types.ts'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Historical context imported from a Claude Code session. */
+    'claude-session-import': { kind: 'claude-session-import' } & ContextFormed
+  }
+}
 
 /** Every session this feature creates starts pinned to this model. */
 const IMPORTED_SESSION_MODEL: Readonly<Pick<LlmCallConfig, 'provider' | 'model'>> = {
@@ -410,7 +417,7 @@ export class ClaudeSessionImportController extends TypertRemoteService {
             + rendered
             + memorySection,
         }],
-        source: { kind: 'plugin', plugin: 'claude-session-import', form: 'notice', summary: 'Imported a prior Claude Code conversation' },
+        source: { kind: 'claude-session-import', form: 'notice', summary: 'Imported a prior Claude Code conversation' },
       }))
     } catch (error) {
       await handle.dispose()

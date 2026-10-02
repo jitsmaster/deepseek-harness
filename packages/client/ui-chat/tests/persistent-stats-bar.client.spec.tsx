@@ -66,12 +66,12 @@ const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
 function emptySessions() {
   return bindSnapshotSelector(createSnapshotStore<SessionListState>({
-    ids: [], byId: {}, phase: 'ready', subagentsByParent: {}, jobsBySession: {},
+    ids: [], byId: {}, phase: 'ready', projectionsBySession: {},
   }))
 }
 function emptyWorkspaces() {
   return bindSnapshotSelector(createSnapshotStore<WorkspaceSnapshot>({
-    items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+    items: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   }))
 }
 function noSessionStatus() {
