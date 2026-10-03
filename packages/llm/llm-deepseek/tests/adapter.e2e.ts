@@ -144,14 +144,14 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('DeepSeek Messages real API', () 
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SessionStore)
     await ctx.plugin(DeepSeekLlmApiExtensionRegistry)
-    await ctx.plugin(SessionLogDeepSeek, enabled ? {} : { enabled: false })
+    await ctx.plugin(SessionLogDeepSeek, { enabled })
     ctx.baseUrl = import.meta.url
     // Select the source module while Loader owns its active package entry.
     ctx.loader.internal = sourceModuleLoader(async (specifier) => {
       if (specifier !== '@deepseek-ai/dsh-plugin-package-inventory-deepseek') throw new Error(`unexpected Loader import: ${specifier}`)
       return PluginPackageInventoryDeepSeek
     })
-    await ctx.loader.create({ name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek' })
+    await ctx.loader.create({ name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek', config: { enabled: true } })
     await ctx.loader.await()
     const packagePath = createRequire(import.meta.url).resolve('@deepseek-ai/dsh-plugin-package-inventory-deepseek/package.json')
     const packageIdentity = JSON.parse(await readFile(packagePath, 'utf8')) as { name: string; version: string }

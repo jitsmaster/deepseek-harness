@@ -47,7 +47,8 @@ async function fixture(reload: 'live' | 'startup' = 'live', overlay = false, pre
     writeFileSync(join(path, 'cordis.patch.yml'), JSON.stringify([{ insert: rows }]))
     writeFileSync(join(path, 'plugin.mjs'), 'export function apply(ctx, config) { if (config?.fail) throw new Error("test activation failed"); ctx.provide(config?.service ?? "managedProbe", true) }\n')
   }
-  bundle('core', [{ id: 'manager', name: 'cordis:manager', config }])
+  // The shipped default is an empty fallback list; these tests exercise a two-registry plan unless one overrides it.
+  bundle('core', [{ id: 'manager', name: 'cordis:manager', config: { fallbackRegistries: ['https://registry.npmmirror.com/'], ...config } }])
   bundle('extra', [{ id: 'managed', name: './plugin.mjs' }])
   const manifest = readProfileManifest('test', dir)
   manifest.dependencies = { extra: '1.0.0' }
@@ -1324,6 +1325,7 @@ it('reports a stop that lands before a run starts, while the registries are read
 
 it('answers the configured registries in pnpm\'s comparison form with what pnpm names, and refuses one that is not an http(s) URL at load', async () => {
   expect(await (await fixture()).manager.registries()).toEqual({ registry: null, fallbackRegistries: [MIRROR], resolved: OFFICIAL })
+  expect(PluginManager.Config({}).fallbackRegistries).toEqual([])
   const { manager } = await fixture(undefined, false, undefined, { registry: 'https://NPM.corp.example', fallbackRegistries: [] })
   expect(await manager.registries()).toEqual({ registry: 'https://npm.corp.example/', fallbackRegistries: [], resolved: OFFICIAL })
   expect(() => PluginManager.Config({ registry: 'npm.corp.example' })).toThrow()

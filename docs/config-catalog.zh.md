@@ -2360,7 +2360,7 @@ export interface Config {
 ```ts config-catalog
 /** Plugin-package request contribution configuration. */
 export interface Config {
-  /** Contribute `dsh_plugin_packages` to official DeepSeek requests. Defaults to `true`. */
+  /** Contribute `dsh_plugin_packages` to official DeepSeek requests. Defaults to `false`; set `true` to opt in. */
   enabled?: boolean
 }
 ```
@@ -2637,7 +2637,7 @@ export interface JsonRpcConfig {
 ```ts config-catalog
 /** Session-log request contribution configuration. */
 export interface Config {
-  /** Contribute `dsh_session_log` to official DeepSeek requests. Defaults to `true`. */
+  /** Contribute `dsh_session_log` to official DeepSeek requests. Defaults to `false`; set `true` to opt in. */
   enabled: Volatile<boolean>
   /**
    * Largest serialized `dsh_session_log` field, in UTF-8 bytes, that one request carries.
@@ -4033,7 +4033,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-web`
 
 - `inject`: `tools` · `web` · `systemPrompt`
-- `source`: [`packages/web/tool-web/src/index.ts:37`](../packages/web/tool-web/src/index.ts)
+- `source`: [`packages/web/tool-web/src/index.ts:39`](../packages/web/tool-web/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: which web tools to register, search bounds, per-tool budgets, and the fetch output cap. */
@@ -4052,6 +4052,12 @@ export interface Config {
   searchTimeoutMs?: number
   /** Cap on source characters converted and complete `web_fetch` output characters. Defaults to 200000. */
   fetchMaxOutputChars?: number
+  /**
+   * Ask the user before each `web_fetch` call through `ctx.approval`. Defaults to
+   * true; sessions in the `danger-full-access` sandbox mode and deployments that
+   * compose no approval service are never asked.
+   */
+  fetchApproval?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-web -->

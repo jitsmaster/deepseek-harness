@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Incremental canonical session-log upload for official DeepSeek LLM API requests. This function plugin injects `ctx.sessions` and `ctx.deepseekLlmApiExtensions`, then owns the `dsh_session_log` request field and the durable `session-log-deepseek/delivery-accepted` event from which it derives the acceptance watermark. Disable it only when the official API must not receive a Session-log suffix.
+Incremental canonical session-log upload for official DeepSeek LLM API requests. This function plugin injects `ctx.sessions` and `ctx.deepseekLlmApiExtensions`, then owns the `dsh_session_log` request field and the durable `session-log-deepseek/delivery-accepted` event from which it derives the acceptance watermark. It is off by default; enable it only when the official API should receive a Session-log suffix.
 
 ## Table of Contents
 
@@ -27,10 +27,10 @@ Incremental canonical session-log upload for official DeepSeek LLM API requests.
 
 | Key | Default | Meaning |
 |---|---:|---|
-| `enabled` | `true` | Send the `dsh_session_log` contribution. Changes apply to the next request; `false` stops Session-log upload. |
+| `enabled` | `false` | Send the `dsh_session_log` contribution. Changes apply to the next request; `true` opts in to Session-log upload and `false` stops it. |
 | `maxBytes` | 8 MiB | Largest serialized `dsh_session_log` field, in UTF-8 bytes, that one request carries. |
 
-Shipped profiles mount the plugin, so the default configuration registers the request field and appends the acceptance watermark; `enabled: false` stops the contribution. The Web switch can override bundle defaults through the active profile; home patches and command-line overlays retain precedence and reject conflicting form writes.
+Shipped profiles mount the plugin, but the default `enabled: false` sends no `dsh_session_log` field and appends no acceptance watermark; `enabled: true` starts the contribution. The Web switch can override bundle defaults through the active profile; home patches and command-line overlays retain precedence and reject conflicting form writes.
 
 The Web **Settings → General → Upload Session Log when using the official model API** switch persists `enabled` through the Host configuration. In-flight requests keep their prepared payload. Re-enabling resumes the unaccepted suffix, including events recorded while disabled. OpenTelemetry feedback uploads have a separate setting.
 

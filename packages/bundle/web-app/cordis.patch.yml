@@ -42,9 +42,12 @@
 # `dsh.client` rows are the browser roster the modules node half scans into
 # window.__DSH_BOOT__; the modules row is simultaneously a host row.
 - insert:
+    # Desktop product analytics are opt-in: both rows mount only in the desktop
+    # profile AND when DSH_PRODUCT_ANALYTICS_OTLP_URL names a collector, so no
+    # default endpoint receives events. Unset, nothing is mounted or exported.
     - id: desktop-product-telemetry
       name: '@deepseek-ai/dsh-host-product-telemetry-otel'
-      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
       config:
         scheduledDelayMillis: 30000
         timeoutMillis: 15000
@@ -56,7 +59,7 @@
 
     - id: product-analytics
       name: '@deepseek-ai/dsh-client-product-analytics'
-      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
       config:
         enabled: true
         appVersion: !!js process.env.DSH_CLIENT_VERSION
@@ -137,8 +140,11 @@
     - id: ui-settings-account
       name: '@deepseek-ai/dsh-client-ui-settings-account'
 
+    # Serves the DeepSeek account sign-in. It waits for the `deepseekAccount` service,
+    # which the shared base disables by default, so it stays off with it.
     - id: account-controller
       name: '@deepseek-ai/dsh-api-account-controller'
+      disabled: true
 
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
@@ -297,8 +303,11 @@
     # Plugin management: the sidebar Plugins page installs, enables, disables,
     # and removes the profile's bundles through the `pluginManager` Remote.
     # Without a profile-backed Host it reports itself unavailable.
+    # The fastest-registry probe pings registry.npmmirror.com, so it is off by default.
     - id: ui-plugin-manager
       name: '@deepseek-ai/dsh-client-ui-plugin-manager'
+      config:
+        registryProbeEnabled: false
 
     # Read-only Plugin list tab in the Settings Plugins section; the built-in
     # bundles the sidebar page leaves out are inspected here.

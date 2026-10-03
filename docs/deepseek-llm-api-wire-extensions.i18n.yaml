@@ -15,11 +15,11 @@
   en: f0b1443c364a431c
   zh: 16d16ddf5c451e8e
 /official-deepseek-llm-api-wire-extensions/dsh-plugin-packages:
-  en: 49d6f011e9d985a7
-  zh: bbf61b4e4480c555
+  en: 5767259ee9cfd477
+  zh: 9e9a3825105e3e88
 /official-deepseek-llm-api-wire-extensions/dsh-session-log:
-  en: de1a3f2c377d74e3
-  zh: 7c803345f71117c5
+  en: cd323edb8fde638c
+  zh: 068256e3390f0198
 /official-deepseek-llm-api-wire-extensions/dsh-session-log/wire-session-header:
   en: ccd8fcd773df21c4
   zh: 7ea020068ad093ae
@@ -30,5 +30,5 @@
   en: 4d84cb1e61f9cf58
   zh: 8a63ce3069e2f0b3
 /official-deepseek-llm-api-wire-extensions/exposure-and-receiver-requirements:
-  en: ae93d9a44245b12f
-  zh: 8b95fc66c6e653c2
+  en: 3282023783e3f55e
+  zh: fe46659a6032ed57

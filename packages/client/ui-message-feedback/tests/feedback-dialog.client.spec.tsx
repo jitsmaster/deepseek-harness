@@ -42,8 +42,8 @@ function mount(overrides: Partial<FeedbackDialogState> = {}) {
 
 describe('FeedbackDialog', () => {
   it('owns the conversation-log disclosure and stability category in both supported locales', () => {
-    expect(zh['dialog.hint']).toBe('填写详情以帮助我们改进体验，提交内容会包括当前对话的日志')
-    expect(en['dialog.hint']).toBe('Add details to help us improve. Your submission will include the current conversation log.')
+    expect(zh['dialog.hint']).toBe('填写详情，说明这条回答的问题。反馈会记录在当前对话的日志中，仅在启用会话遥测时才会上传')
+    expect(en['dialog.hint']).toBe('Add details about this response. Feedback is saved in the conversation log and is uploaded only if session telemetry is enabled.')
     expect(zh['category.service-stability']).toBe('稳定性和速度')
     expect(en['category.service-stability']).toBe('Stability and speed')
   })

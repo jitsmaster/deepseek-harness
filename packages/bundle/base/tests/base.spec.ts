@@ -34,7 +34,7 @@ describe('dsh-base bundle', () => {
     expect(rows.some(row => row.id === 'agent-loop')).toBe(true)
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.disabled).toBeUndefined()
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.config?.['mode']).toEqual({
-      __jsExpr: "process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'",
+      __jsExpr: "process.env.DSH_TELEMETRY_MODE || 'DISABLED'",
     })
     expect(rows.find(row => row.id === 'hmr')).toMatchObject({
       config: { root: [] },
@@ -81,5 +81,32 @@ describe('dsh-base bundle', () => {
     }
     // The platform layer folded into these rows: no separate patch file ships.
     expect(existsSync(resolve(root, 'windows.cordis.patch.yml'))).toBe(false)
+  })
+
+  it('defaults chat, search and sign-in to Anthropic with the DeepSeek rows off', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>
+    }
+    const parsed = yaml.load(
+      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
+      { schema: entryListSchema },
+    )
+    if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
+    const rows = parsed.flatMap((patch): { id?: string; config?: Record<string, unknown>; disabled?: boolean }[] =>
+      typeof patch === 'object' && patch !== null
+        ? (patch as { insert?: { id?: string; config?: Record<string, unknown>; disabled?: boolean }[] }).insert ?? []
+        : [],
+    )
+    expect(rows.find(row => row.id === 'agent-default-model')?.config).toEqual({
+      provider: 'anthropic',
+      model: 'claude-sonnet-5-5',
+    })
+    expect(rows.find(row => row.id === 'llm-pi-ai')?.config).toEqual({ providers: { anthropic: {} } })
+    expect(rows.find(row => row.id === 'web-search-anthropic')).toBeDefined()
+    expect(rows.find(row => row.id === 'web-search-anthropic')?.disabled).toBeUndefined()
+    expect(rows.find(row => row.id === 'web-search-deepseek')?.disabled).toBe(true)
+    expect(rows.find(row => row.id === 'deepseek-account')?.disabled).toBe(true)
+    expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-web-search-anthropic')
   })
 })

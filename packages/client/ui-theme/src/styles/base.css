@@ -26,6 +26,10 @@ body {
   --dsw-alias-settings-card-stroke: var(--dsw-alias-border-l4);
 }
 
+::selection {
+  background: var(--dsw-alias-bg-text-selection);
+}
+
 [data-dsh-automatic-focus]:focus,
 [data-dsh-automatic-focus]:focus:focus-visible {
   outline: none;

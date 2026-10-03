@@ -11,11 +11,13 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
 import { applyWebSearchTool, WEB_SEARCH_MAX_QUERIES, WEB_SEARCH_MAX_RESULTS } from './search.ts'
 import { applyWebFetchTool } from './fetch.ts'
+import { applyWebFetchApproval } from './approval.ts'
 
 export { WEB_SEARCH_MAX_QUERIES, WEB_SEARCH_MAX_RESULTS, applyWebSearchTool, formatSearchOutput, presentSearchCall, presentSearchResult, searchMetaFromValue, searchMetaFromResult } from './search.ts'
 export type { WebSearchMeta } from './search.ts'
 export { applyWebFetchTool, formatFetchOutput, parseFetchArgs, presentFetchCall, presentFetchResult, fetchMetaFromValue, fetchMetaFromResult } from './fetch.ts'
 export type { WebFetchMeta } from './fetch.ts'
+export { applyWebFetchApproval } from './approval.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-web'
@@ -49,6 +51,12 @@ export interface Config {
   searchTimeoutMs?: number
   /** Cap on source characters converted and complete `web_fetch` output characters. Defaults to 200000. */
   fetchMaxOutputChars?: number
+  /**
+   * Ask the user before each `web_fetch` call through `ctx.approval`. Defaults to
+   * true; sessions in the `danger-full-access` sandbox mode and deployments that
+   * compose no approval service are never asked.
+   */
+  fetchApproval?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -59,6 +67,7 @@ export const Config: z<Config> = z.object({
   fetchTimeoutMs: z.number().default(DEFAULT_WEB_TOOL_TIMEOUT_MS),
   searchTimeoutMs: z.number().default(DEFAULT_WEB_TOOL_TIMEOUT_MS),
   fetchMaxOutputChars: z.number().default(DEFAULT_FETCH_MAX_OUTPUT_CHARS),
+  fetchApproval: z.boolean().default(true),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -76,7 +85,9 @@ function assertPositiveInteger(name: string, value: number): void {
  * that wants only one disables the other in config. Each tool's cooperative
  * timeout budget (`fetchTimeoutMs`/`searchTimeoutMs`, default 30000) is resolved
  * here and attached to the tool as `ToolDefinition.timeoutMs` for
- * `@deepseek-ai/dsh-tool-call-timeout-policy` to enforce. The tools' disposers are
+ * `@deepseek-ai/dsh-tool-call-timeout-policy` to enforce. With `fetchApproval`
+ * (default true), each `web_fetch` call also asks the user through
+ * `ctx.approval` (see {@link applyWebFetchApproval}). The tools' disposers are
  * fiber-scoped (the effect-based registries clean up on dispose), so no manual
  * teardown is needed.
  */
@@ -91,5 +102,8 @@ export function apply(ctx: Context, config: Config): void {
   if (resolved.search) {
     applyWebSearchTool(ctx, resolved.searchMaxResults, resolved.searchMaxQueries, resolved.searchTimeoutMs, resolved.fetch)
   }
-  if (resolved.fetch) applyWebFetchTool(ctx, resolved.fetchTimeoutMs, resolved.fetchMaxOutputChars)
+  if (resolved.fetch) {
+    applyWebFetchTool(ctx, resolved.fetchTimeoutMs, resolved.fetchMaxOutputChars)
+    if (resolved.fetchApproval) applyWebFetchApproval(ctx)
+  }
 }

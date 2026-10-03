@@ -16,3 +16,7 @@
   name: '@deepseek-ai/dsh-tool-web'
   config:
     search: false
+    # The headless composition has no approval answerer and this scenario's
+    # recorded session predates the per-call web_fetch approval; the fixture
+    # server is deterministic loopback content, not a public host.
+    fetchApproval: false

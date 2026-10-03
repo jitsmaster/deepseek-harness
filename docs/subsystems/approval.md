@@ -87,6 +87,10 @@ interface ApprovalRequest extends ApprovalRequestEvent {
 
 The audit events are log-only and do not enter the model transcript. Model-visible behavior is the caller's derived tool result plus the current runtime-context snapshot. Service disposal removes its context contribution; answerer listeners are independently effect-bound to their owning plugins.
 
+### Built-in gate: `web_fetch`
+
+`@deepseek-ai/dsh-tool-web` registers a `tools/pre-execute` listener that turns every otherwise-allowed `web_fetch` call (including `run_code` sub-calls) into an `ask`, so the registry runs the fetch only after `ctx.approval` returns `allowed-once`. The gate does nothing when no approval service is composed or when the session's sandbox mode is `danger-full-access` (the Full access and Auto presets and children delegated from them). Other listeners' `deny`, `cancel`, and `ask` decisions win over this gate.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

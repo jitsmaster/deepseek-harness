@@ -85,7 +85,7 @@ describe('web e2e: durable per-message feedback', () => {
     await page.getByRole('button', { name: 'Bad response' }).first().click()
     await dialog.waitFor({ timeout: 10_000 })
     await expect.poll(() => dialog.getByRole('textbox', { name: 'Feedback details' }).getAttribute('placeholder'))
-      .toBe('Add details to help us improve. Your submission will include the current conversation log.')
+      .toBe('Add details about this response. Feedback is saved in the conversation log and is uploaded only if session telemetry is enabled.')
     await dialog.getByRole('button', { name: 'Task result', exact: true }).click()
     const details = dialog.getByRole('textbox', { name: 'Feedback details' })
     await details.fill('x'.repeat(8193))

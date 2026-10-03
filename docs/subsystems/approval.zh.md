@@ -87,6 +87,10 @@ interface ApprovalRequest extends ApprovalRequestEvent {
 
 审计事件仅写入日志，不进入模型 transcript（文本记录）。模型可见的行为是调用方派生的工具结果与当前运行时上下文快照。服务 dispose（资源释放）时会移除其上下文贡献；应答者监听器独立地通过 effect 绑定到其所属插件。
 
+### 内置闸门：`web_fetch`
+
+`@deepseek-ai/dsh-tool-web` 注册了一个 `tools/pre-execute` 监听器，把每个本应放行的 `web_fetch` 调用（包括 `run_code` 子调用）转为 `ask`，因此只有在 `ctx.approval` 返回 `allowed-once` 之后，注册表才会执行该抓取。未组合审批服务，或会话沙箱模式为 `danger-full-access`（完全访问与 Auto 预设及由其委派的子会话）时，该闸门不起作用。其他监听器的 `deny`、`cancel` 与 `ask` 决定优先于此闸门。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

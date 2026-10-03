@@ -28,6 +28,12 @@
       "path": "../../guard/timeout-policy"
     },
     {
+      "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../sandbox/sandbox-policy"
+    },
+    {
       "path": "../web"
     }
   ]

@@ -40,6 +40,8 @@
     - id: session
       name: '@deepseek-ai/dsh-session'
 
+    # Official DeepSeek API requests carry the Session-log suffix only when
+    # `enabled: true` (default false); the Web General settings switch writes it.
     - id: session-log-deepseek
       name: '@deepseek-ai/dsh-session-log-deepseek'
 
@@ -82,8 +84,8 @@
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
-        provider: deepseek-official
-        model: deepseek-flash
+        provider: anthropic
+        model: claude-sonnet-5-5
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
@@ -109,8 +111,11 @@
     - id: authorization
       name: '@deepseek-ai/dsh-authorization'
 
+    # DeepSeek account sign-in is off by default; an overlay row with
+    # `disabled: false` restores it.
     - id: deepseek-account
       name: '@deepseek-ai/dsh-deepseek-account-platform'
+      disabled: true
       config:
         desktopPlatform: !!js "ctx.get('profileContext')?.name === 'desktop' && ['darwin', 'win32'].includes(process.platform) ? process.platform : null"
 
@@ -123,15 +128,18 @@
     - id: authorization
       name: '@deepseek-ai/dsh-authorization'
 
-    # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
-    # models in the picker) until a `llm-pi-ai:` settings section supplies provider
-    # profiles — then those routes register live, keys resolving per request
-    # through their apiKeyEnv references, and drop again when the section empties.
-    # Supplying those profiles is exactly what the web Models page does. Which
-    # adapters exist is composition; which providers run is the user's settings
-    # document.
+    # The pi-ai multi-provider twin. The shipped `anthropic` route is the default
+    # chat provider (see `agent-default-model`); it authenticates with the Claude
+    # OAuth sign-in the web Models page offers. Further routes register live when a
+    # `llm-pi-ai:` settings section supplies provider profiles — keys resolving per
+    # request through their apiKeyEnv references — and drop again when that section
+    # no longer names them. Supplying those profiles is exactly what the web Models
+    # page does.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          anthropic: {}
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -194,9 +202,13 @@
     - id: otel
       name: '@deepseek-ai/dsh-otel'
 
-    # OTel releases a Session-log prefix only after explicit user feedback,
-    # regardless of model provider. Ordinary activity never triggers capture.
-    # DSH_TELEMETRY_OTLP_URL overrides the production endpoint. A non-empty
+    # Session upload is OFF by default: `mode` is DISABLED, which builds no OTel
+    # exporter, opens no connection, and keeps submitted feedback local (the row
+    # only warns that it was not uploaded). Set DSH_TELEMETRY_MODE=FEEDBACK_ONLY
+    # to opt in; then OTel releases a Session-log prefix only after explicit
+    # user feedback, regardless of model provider. Ordinary activity never
+    # triggers capture. DSH_TELEMETRY_OTLP_URL overrides the endpoint, which
+    # otherwise is the DeepSeek-operated collector used once opted in. A non-empty
     # DSH_TELEMETRY_DISABLED — any value, including '0'/'false' — opts the
     # process out (the launchers patch the row disabled; config cannot disable
     # a row). Exports carry the harness home's anonymous user id ($DSH_HOME/.anonymous-user-id,
@@ -210,7 +222,7 @@
     - id: session-telemetry-otel
       name: '@deepseek-ai/dsh-session-telemetry-otel'
       config:
-        mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
+        mode: !!js process.env.DSH_TELEMETRY_MODE || 'DISABLED'
         shutdownTimeoutMillis: 3000
         maxRequestBytes: 4000000
         exporter:
@@ -466,22 +478,28 @@
 
     # The shared base enables the stable model-facing web_search and web_fetch
     # tools. The Web app disables this host row and composes both tools per agent
-    # preset; products with a stricter network policy override tool-web. DeepSeek
-    # search resolves the same DEEPSEEK_API_KEY
-    # credential the Models page manages for chat, at each search; its Messages
-    # endpoint is configured independently from the model route, so it takes its own
-    # base-URL override. Anonymous fetch accepts only public HTTP(S) destinations,
+    # preset; products with a stricter network policy override tool-web. Anthropic
+    # search reads the Claude OAuth grant stored for the `anthropic` chat route, at
+    # each search. Anonymous fetch accepts only public HTTP(S) destinations,
     # resolves and validates every destination, and pins every actual connection.
     # Search is a full auxiliary model request with server-side retrieval, so this
-    # shipped DeepSeek route gets 60s while the provider-neutral tool default
+    # shipped route gets 60s while the provider-neutral tool default
     # remains 30s.
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
         fetchProvider: http
 
+    # Default search provider: Anthropic's native web_search, authenticated with the
+    # Claude OAuth grant stored for the `anthropic` chat route.
+    - id: web-search-anthropic
+      name: '@deepseek-ai/dsh-web-search-anthropic'
+
+    # DeepSeek search is off by default; an overlay row with `disabled: false`
+    # restores it.
     - id: web-search-deepseek
       name: '@deepseek-ai/dsh-web-search-deepseek'
+      disabled: true
       config:
         apiKeyEnv: DEEPSEEK_API_KEY
 

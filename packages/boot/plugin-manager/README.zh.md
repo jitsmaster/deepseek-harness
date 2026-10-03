@@ -76,7 +76,7 @@ CLI 提供 `dsh plugin --profile <profile> version-exemptions`、`allow-version 
 | `inspectTimeoutMs` | `20000` | 单次检查所做注册表查询的上限，单位毫秒。 |
 | `githubConnectionTimeoutMs` | `5000` | 安装前 GitHub 仓库连接检查的时限，单位毫秒。 |
 | `registry` | pnpm 自身配置 | 查询与安装首先询问的注册表，http(s) URL；缺省为 pnpm 自身配置指定的那个。 |
-| `fallbackRegistries` | `['https://registry.npmmirror.com/']` | 前一个注册表不可达或没有该包副本时依次询问的注册表，http(s) URL；pnpm 自身的注册表只在它指向 npm 官方源或这里的某一个时才进入顺序。 |
+| `fallbackRegistries` | `[]` | 前一个注册表不可达或没有该包副本时依次询问的注册表，http(s) URL；默认为空，未列出则不会联系任何镜像。pnpm 自身的注册表只在它指向 npm 官方源或这里的某一个时才进入顺序。 |
 | `outputBytes` | `16384` | 每次操作返回的 pnpm 诊断字节上限；完整输出保留在返回的日志路径中。 |
 | `lockWaitMs` | `120000` | 获取 profile 写锁的最长等待毫秒数。 |
 | `idleTimeoutMs` | `600000` | service 包操作允许持续无捕获输出的最长毫秒数，达到即被管理器终止；继承描述符运行的 `dsh plugin` 不受此上界约束。 |
