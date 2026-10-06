@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-09-02-claude-code-session-import.zh.md)
+
 ## Problem
 
 DSH now has a working Claude (Anthropic) route through `llm-pi-ai` (browser OAuth sign-in; see [browser authorization and keyless web search](../../proposed/architecture/2026-09-01-browser-authorization-and-keyless-web-search.md)). A user who also drives Claude Code CLI sessions on the same machine wants to carry a Claude Code conversation into DSH and keep going, without re-explaining context, and wants the same Claude Code Skills they use there available as DSH slash commands once they're working on a Claude-backed DSH session.

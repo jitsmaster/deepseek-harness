@@ -1,5 +1,7 @@
 # @deepseek-ai/dsh-host-apiproxy (compatibility shim)
 
+English | [中文](README.zh.md)
+
 **Legacy package. Do not build new code against it.**
 
 The Host API Proxy was removed in `dsh` 0.1.2-alpha.1 — unary operations moved

@@ -2,7 +2,7 @@
 
 [English](claude-session-import.md) | 中文
 
-发现操作者的 Claude Code CLI 会话，并将其中一个一次性导入到全新的原生 DSH 会话中。两次调用均不会与 Claude Code 保持任何连接；设计理由见[Agent Note](../../.agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.md)。类型定义来自 [`packages/session/claude-session-import/src/types.ts`](../../packages/session/claude-session-import/src/types.ts)。
+发现操作者的 Claude Code CLI 会话，并将其中一个一次性导入到全新的原生 DSH 会话中。两次调用均不会与 Claude Code 保持任何连接；设计理由见[Agent Note](../../.agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.zh.md)。类型定义来自 [`packages/session/claude-session-import/src/types.ts`](../../packages/session/claude-session-import/src/types.ts)。
 
 `DiscoveredSessionView` 是 `claude agents --json --all` 一条记录的线路视图（`id`、`name`、`cwd`、`status`、`startedAt`）。`list()` 解析为携带已发现会话的 `ClaudeSessionImportListValue`；`createFrom()` 解析为携带新会话 id 的 `ClaudeSessionImportCreateValue`。两个稳定的 `RemoteErrorDetailsMap` 错误码覆盖了失败路径：`claude-session-import/not-found`（`list()` 不再报告指定的会话 id）与 `claude-session-import/transcript-unreadable`（无法读取或解析该记录文件）。
 

@@ -111,9 +111,6 @@
       "path": "../../workspace/workspace"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../../session/claude-session-import"
     }
   ]

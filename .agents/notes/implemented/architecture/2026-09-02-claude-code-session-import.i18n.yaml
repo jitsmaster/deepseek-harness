@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for 2026-09-02-claude-code-session-import.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-02-claude-code-session-import.md
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands:
+  en: 2b8e91976d36b0ed
+  zh: f19c886cd17c3ddd
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/problem:
+  en: 3741482eb58b0713
+  zh: 1de81635c354548b
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/decision:
+  en: 998c14a88e78d1dd
+  zh: 72eec585b325446b
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/decision/1-claude-session-import-packages-session-claude-session-import-deepseek-ai-dsh-claude-session-import:
+  en: 6a54ad48d00e686d
+  zh: 3a8bc347d7391063
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/decision/2-claude-skill-commands-packages-interaction-claude-skill-commands-deepseek-ai-dsh-claude-skill-commands:
+  en: 8894bc8d644d5a61
+  zh: fe40bc85b1f85e70
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/decision/error-handling:
+  en: 679dd3bdd8bd96cd
+  zh: 3775c89695b99be7
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/testing:
+  en: 690b5fd140f6603e
+  zh: 18340913b8f51709
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/alternatives-considered:
+  en: 4e94fc85a23c9761
+  zh: 6134b99da36238d8
+/agent-note-claude-code-session-import-and-skill-derived-slash-commands/consequences:
+  en: c607046591c820b9
+  zh: c483ae470d99dd28

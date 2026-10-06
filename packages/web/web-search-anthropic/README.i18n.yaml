@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/web/web-search-anthropic/README.md
+/:
+  en: e27301a5de54ffaa
+  zh: 715011fd68ea8dde
+/deepseek-ai-dsh-web-search-anthropic:
+  en: 99a64f7681397433
+  zh: f60de20d0a16ef1d
+/deepseek-ai-dsh-web-search-anthropic/summary:
+  en: 88ecb1332e4b51e1
+  zh: 1ebdb6b9db3cfa3e
+/deepseek-ai-dsh-web-search-anthropic/table-of-contents:
+  en: 350bfbbf7b7babc9
+  zh: cdc6e1bdd478034b
+/deepseek-ai-dsh-web-search-anthropic/use-this-package:
+  en: e81d9400349905e1
+  zh: db464baea231c170
+/deepseek-ai-dsh-web-search-anthropic/use-this-package/when-to-choose-it:
+  en: 7e8188b70479aec4
+  zh: 1225a5f849dd7ddf
+/deepseek-ai-dsh-web-search-anthropic/use-this-package/minimal-configuration:
+  en: b0fd62cb93d1788e
+  zh: aa6f64385904480d
+/deepseek-ai-dsh-web-search-anthropic/use-this-package/what-a-search-returns:
+  en: b967689c1fdc3726
+  zh: 0bca2b5ea4094a2f
+/deepseek-ai-dsh-web-search-anthropic/use-this-package/failures-and-recovery:
+  en: a0f7b0bc4b4f9105
+  zh: a8649af22566cc51
+/deepseek-ai-dsh-web-search-anthropic/known-limitations-and-deferred-work:
+  en: 9b4d0a14d1626af9
+  zh: d69cc84ecf067d82

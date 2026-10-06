@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-web-search-anthropic
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 With `dsh-web-search-anthropic`, the harness searches the web through Anthropic's own native `web_search_20250305` server tool, authenticated with the same Claude subscription OAuth grant `llm-pi-ai` already stores for chat (default route `anthropic`) — no separate metered API key. Anthropic's OAuth-authenticated endpoint only accepts requests that present as Claude Code, so every search carries the same `anthropic-beta` features, identity headers, and system-prompt identity block Claude Code itself sends. This provider does not perform its own OAuth refresh: an expired grant is refreshed the same way chat refreshes it (send a message on that route, or sign in again), and this provider surfaces that as an actionable error rather than a silent failure. The model-facing `web_search` tool lives in `dsh-tool-web`.

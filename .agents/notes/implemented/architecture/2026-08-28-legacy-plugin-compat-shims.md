@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-08-28-legacy-plugin-compat-shims.zh.md)
+
 ## Problem
 
 `dsh` 0.1.2-alpha.1 migrated two surfaces that third-party plugins still depend on:

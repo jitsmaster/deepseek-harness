@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for 2026-08-28-legacy-plugin-compat-shims.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-28-legacy-plugin-compat-shims.md
+/agent-note-provide-legacy-package-compatibility-shims-for-pre-0-1-2-plugins:
+  en: 646be5b97fce8c1c
+  zh: 41575a409918bcaa
+/agent-note-provide-legacy-package-compatibility-shims-for-pre-0-1-2-plugins/problem:
+  en: e2c6369deb3f7f3e
+  zh: 26b301c6e6c8900d
+/agent-note-provide-legacy-package-compatibility-shims-for-pre-0-1-2-plugins/decision:
+  en: 8cecb6b4ee6b9e2d
+  zh: da04b9ef46554936
+/agent-note-provide-legacy-package-compatibility-shims-for-pre-0-1-2-plugins/consequences:
+  en: 6c7ebf7c46f769e7
+  zh: a3e4f06a0edd8777

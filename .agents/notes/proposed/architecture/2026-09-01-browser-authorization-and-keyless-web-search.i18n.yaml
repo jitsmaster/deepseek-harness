@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for 2026-09-01-browser-authorization-and-keyless-web-search.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-09-01-browser-authorization-and-keyless-web-search.md
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default:
+  en: 577ea28ad2f9306c
+  zh: cf18fbba32bb8fb0
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/problem:
+  en: 08b3733fc42bebdb
+  zh: 7bc80d2062890980
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal:
+  en: 986dd8097aac4d3d
+  zh: 986dd8097aac4d3d
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/1-rpc-contract-expose-ctx-authorization-to-the-browser:
+  en: 53da57a255a8647c
+  zh: 5ef6060e17f59c92
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/2-interaction-bridge-how-notify-prompt-reach-the-browser-mid-begin:
+  en: d2a3a3dcc53be045
+  zh: efafa90493ea12ac
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/3-forwarded-event-allowlist-and-type-re-exports:
+  en: 1f68b0b387be499c
+  zh: 2c7959fe0ecf55b9
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/4-client-operations-layer:
+  en: 0d55aa6415a33bb4
+  zh: 6e62468674a6ac78
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/5-client-ui-plan-providereditor-tsx:
+  en: 101810e33a99f334
+  zh: ef49871d6cf0e9b2
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/6-new-component-authorizationdialog:
+  en: 5995562c86787694
+  zh: 3ab807236ad14c59
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/proposal/web-search-default-fix:
+  en: 6fdd21d7b7692e11
+  zh: 64b18db3593efe09
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/pseudocode:
+  en: 889cc88e4cea0655
+  zh: 889cc88e4cea0655
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/alternatives-considered:
+  en: 472ad5964dacef94
+  zh: 83b4060afaa3e28d
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/acceptance-criteria:
+  en: 409bc24d5705f248
+  zh: 6c9e51b9164bca42
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/risks:
+  en: 4d42029a0bcf196a
+  zh: 49b88715eaca2a80
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/architecture-review-addendum-2026-09-01:
+  en: e345cc2d7b1e8442
+  zh: 20c8ba4cf48112a9
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/architecture-review-addendum-2026-09-01/component-boundary:
+  en: 7329f35a5250303d
+  zh: 9236f2f15c1ee6d4
+/agent-note-browser-oauth-sign-in-via-ctx-authorization-and-a-keyless-web-search-default/architecture-review-addendum-2026-09-01/refinements:
+  en: 5d40625f18d4fbcc
+  zh: 2a2881354d989226

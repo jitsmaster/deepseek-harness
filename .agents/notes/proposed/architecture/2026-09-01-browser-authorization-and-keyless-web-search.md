@@ -2,6 +2,8 @@
 
 Status: proposed
 
+English | [中文](2026-09-01-browser-authorization-and-keyless-web-search.zh.md)
+
 ## Problem
 
 DSH's top-level agent can already run entirely on a user's Claude Pro/Max
