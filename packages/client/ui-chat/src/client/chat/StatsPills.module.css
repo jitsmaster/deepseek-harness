@@ -5,7 +5,10 @@
 /* Entry root and dialog anchor: shrink-wraps its pill so the panel clamp
    measures the pill. */
 .anchor {
-  display: inline-flex;
+  /* Fork: hidden because the frame-wide PersistentStatsBar (shell.overlay)
+     already shows the same turns/steps/usage and sits over this row. The dock
+     entries stay registered so plugins can still replace them by id. */
+  display: none;
   min-width: 0;
   font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
   line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
