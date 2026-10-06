@@ -151,7 +151,7 @@ describe('BrowserAuth', () => {
     // The proxy preserves the browser-facing Host and strips the mount.
     const token = mounted.searchParams.get('token')
     const exchanged = response()
-    expect(auth.authorizeIndex(request(`/?token=${String(token)}`, 'gateway.example'), exchanged.value)).toBe(false)
+    expect(auth.authorizeIndex(request(`/?token=${String(token)}`, 'gateway.example'), exchanged.value)).toBe(true) // fork: serves the index directly instead of redirecting
     const setCookie = exchanged.state.headers?.['set-cookie']
     if (setCookie === undefined) throw new Error('mount exchange did not set a cookie')
     expect(auth.isAuthenticated(request(

@@ -76,7 +76,7 @@ function stubOperations(): { operations: ModelsOperations; describeCredential: R
     storeCredential: vi.fn(() => Promise.resolve(undefined)),
     removeCredential: vi.fn(() => Promise.resolve(undefined)),
     writeSettings: vi.fn(),
-    discoverModels: vi.fn(),
+    discoverModels: vi.fn(() => Promise.resolve({ kind: 'found' as const, models: [] })),
   }
   return { operations, describeCredential }
 }

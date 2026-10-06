@@ -1,4 +1,10 @@
 {
+  "ui-chat/src/client/chat/ContextBody.module.css": [
+    ".showFull: border-radius: 6px"
+  ],
+  "ui-chat/src/client/chat/PersistentStatsBar.module.css": [
+    ".group: border-radius: 24px"
+  ],
   "ui-deliverables/src/client/ChangedFiles.module.css": [
     ".tile: border-radius: 10px"
   ],
@@ -55,6 +61,9 @@
     ".dialogButton: border-radius: 12px",
     ".page .action: border-radius: 12px",
     ".indicator: border-radius: 6px"
+  ],
+  "ui-settings-models/src/client/AuthorizationDialog.module.css": [
+    ".noticeCode: border-radius: 6px"
   ],
   "ui-shortcuts/src/client/Reference.module.css": [
     ".dialog: border-radius: 24px",
