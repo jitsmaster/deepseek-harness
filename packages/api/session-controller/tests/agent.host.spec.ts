@@ -483,7 +483,14 @@ describe('ApiSession create or adoption', () => {
     }] as SessionEvent[]
     const resumed = {
       id: meta.id,
-      session: { id: meta.id, header: meta, events: driftedEvents },
+      session: {
+        id: meta.id,
+        header: meta,
+        snapshotEvents: () => driftedEvents,
+        eventAt: (seq: number) => driftedEvents[seq],
+        seq: driftedEvents.length,
+        inheritedEventCount: 0,
+      },
       status: 'idle',
       ctx,
     } as unknown as Agent
@@ -646,7 +653,14 @@ describe('ApiSession create or adoption', () => {
     }] as SessionEvent[]
     const created = {
       id: meta.id,
-      session: { id: meta.id, header: meta, events },
+      session: {
+        id: meta.id,
+        header: meta,
+        snapshotEvents: () => events,
+        eventAt: (seq: number) => events[seq],
+        seq: events.length,
+        inheritedEventCount: 0,
+      },
       status: 'idle',
       ctx,
     } as unknown as Agent
