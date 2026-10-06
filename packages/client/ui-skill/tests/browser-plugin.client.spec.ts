@@ -244,8 +244,8 @@ describe('candidates: sessionId addressing', () => {
     // Exact payload: session address only — no agent or transport vocabulary.
     expect(payloads).toEqual([{ sessionId: 's1' }])
     expect(items).toEqual([
-      { name: 'commit-helper', description: 'commit flow' },
-      { name: 'code-review', description: 'review flow' },
+      { name: 'commit-helper', icon: expect.any(Function), description: 'commit flow' },
+      { name: 'code-review', icon: expect.any(Function), description: 'review flow' },
     ])
     const names = async (query: string) => (await source.candidates(proj('s1'), req(query))).map(c => c.name)
     // 'de' prefixes deploy and is a subsequence of code-review: the prefix ranks first.
@@ -279,8 +279,8 @@ describe('catalog cache', () => {
     const second = await source.candidates(proj('s1'), req('co'))
     expect(payloads).toHaveLength(1)
     expect(second).toEqual([
-      { name: 'commit-helper', description: 'commit flow' },
-      { name: 'code-review', description: 'review flow' },
+      { name: 'commit-helper', icon: expect.any(Function), description: 'commit flow' },
+      { name: 'code-review', icon: expect.any(Function), description: 'review flow' },
     ])
     // A different session is its own key — one more RPC, not two.
     await source.candidates(proj('s2'), req(''))
@@ -295,7 +295,7 @@ describe('catalog cache', () => {
       source.candidates(proj('s1'), req('co')),
     ])
     expect(payloads).toHaveLength(1)
-    expect(a).toEqual([{ name: 'deploy', description: 'deploy flow' }])
+    expect(a).toEqual([{ name: 'deploy', icon: expect.any(Function), description: 'deploy flow' }])
     expect(b).toHaveLength(2)
   })
 
@@ -448,8 +448,8 @@ describe('user-only marking', () => {
     const { source } = await bench(listOk(rows))
     const candidates = await source.candidates(proj('s1'), req(''))
     expect(candidates).toEqual([
-      { name: 'shared-skill', description: 'both surfaces' },
-      { name: 'user-only-skill', description: '仅用户 · user surface only' },
+      { name: 'shared-skill', icon: expect.any(Function), description: 'both surfaces' },
+      { name: 'user-only-skill', icon: expect.any(Function), description: '仅用户 · user surface only' },
     ])
   })
 })
