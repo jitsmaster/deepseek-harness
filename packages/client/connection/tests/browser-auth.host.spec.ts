@@ -79,11 +79,12 @@ function request(url: string, authority = '127.0.0.1:3080', init?: {
 function exchange(
   auth: BrowserAuth,
   authority = '127.0.0.1:3080',
+  secure = false,
 ): { cookie: string; launchUrl: string; state: ResponseState } {
   const launchUrl = auth.authenticatedUrl(`http://${authority}`)
   const target = new URL(launchUrl)
   const res = response()
-  expect(auth.authorizeIndex(request(`${target.pathname}${target.search}`, authority), res.value)).toBe(true)
+  expect(auth.authorizeIndex(request(`${target.pathname}${target.search}`, authority), res.value, secure)).toBe(true)
   const setCookie = res.state.headers?.['set-cookie']
   if (setCookie === undefined) throw new Error('token exchange did not set a cookie')
   return { cookie: setCookie.split(';', 1)[0]!, launchUrl, state: res.state }
@@ -134,6 +135,34 @@ describe('BrowserAuth', () => {
     // The still-valid token re-mints the cookie and the index is served directly.
     expect(served.state.status).toBeUndefined()
     expect(served.state.headers?.['set-cookie']).toMatch(/^dsh-auth-/u)
+  })
+
+  it('keeps HTTPS port 443 distinct from HTTP port 80 with one signing secret', async () => {
+    const auth = await createAuth(new RecordCredentials())
+    const plain = exchange(auth, 'harness.example')
+    const tls = exchange(auth, 'harness.example', true)
+    expect(auth.isAuthenticated(request('/', 'harness.example', { cookie: plain.cookie }), true)).toBe(false)
+    expect(auth.isAuthenticated(request('/', 'harness.example', { cookie: tls.cookie }), true)).toBe(true)
+    expect(auth.isAuthenticated(request('/', 'harness.example:443', { cookie: tls.cookie }), true)).toBe(true)
+    expect(auth.isAuthenticated(request('/', 'harness.example', { cookie: tls.cookie }))).toBe(false)
+  })
+
+  it('rejects HTTP cookie replay after enabling TLS on the same authority', async () => {
+    const store = new RecordCredentials()
+    const authority = 'harness.example:3080'
+    const plain = exchange(await createAuth(store), authority)
+    const restarted = await createAuth(store)
+    const denied = response()
+    expect(restarted.authorizeIndex(request('/', authority, { cookie: plain.cookie }), denied.value, true)).toBe(false)
+    expect(denied.state.status).toBe(401)
+
+    const tls = exchange(restarted, authority, true)
+    expect(tls.state.headers?.['set-cookie']).toContain('; Secure')
+    expect(restarted.isAuthenticated(request('/', authority, { cookie: tls.cookie }), true)).toBe(true)
+    expect(restarted.isAuthenticated(request('/', authority, { cookie: tls.cookie }))).toBe(false)
+    const tlsName = tls.cookie.slice(0, tls.cookie.indexOf('='))
+    const plainValue = plain.cookie.slice(plain.cookie.indexOf('=') + 1)
+    expect(restarted.isAuthenticated(request('/', authority, { cookie: `${tlsName}=${plainValue}` }), true)).toBe(false)
   })
 
   it('preserves the caller authority and mount while adding only this process token', async () => {

@@ -111,6 +111,9 @@
       "path": "../../workspace/workspace"
     },
     {
+      "path": "../../session/working-directory"
+    },
+    {
       "path": "../../session/claude-session-import"
     }
   ]
