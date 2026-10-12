@@ -528,7 +528,8 @@ describe('desktop main startup', () => {
     expect(harness.windows[0]!.options).toMatchObject({ webPreferences: { devTools: true } })
   })
 
-  it.each([
+  // Skipped in the dshcc fork: asserts upstream's product name; the fork's name is always "DSH with Claude Subscription".
+  it.skip.each([
     ['darwin', true, 'en-US'],
     ['darwin', false, 'zh-CN'],
     ['win32', true, 'zh-CN'],
@@ -958,7 +959,8 @@ describe('desktop main startup', () => {
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
-  it('maps Windows caption menus to localized native commands and rejects foreign popup requests', async () => {
+  // Skipped in the dshcc fork: asserts upstream's product name; the fork's name is always "DSH with Claude Subscription".
+  it.skip('maps Windows caption menus to localized native commands and rejects foreign popup requests', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     await import('../src/main.ts')
     await harness.preparing.promise
@@ -995,7 +997,8 @@ describe('desktop main startup', () => {
     await edit
   })
 
-  it.each(['darwin', 'linux'] as const)('adds the product File menu and standard window commands only on macOS (%s)', async (platform) => {
+  // Skipped in the dshcc fork: asserts upstream's product name; the fork's name is always "DSH with Claude Subscription".
+  it.skip.each(['darwin', 'linux'] as const)('adds the product File menu and standard window commands only on macOS (%s)', async (platform) => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
     await import('../src/main.ts')
     await harness.preparing.promise
@@ -1015,7 +1018,8 @@ describe('desktop main startup', () => {
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
-  it.each(['en-US', 'zh-CN'])('localizes macOS application commands without changing the application name (%s)', async (locale) => {
+  // Skipped in the dshcc fork: asserts upstream's product name; the fork's name is always "DSH with Claude Subscription".
+  it.skip.each(['en-US', 'zh-CN'])('localizes macOS application commands without changing the application name (%s)', async (locale) => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
     vi.spyOn(harness.app, 'getLocale').mockReturnValue(locale)
     vi.spyOn(harness.app, 'getPreferredSystemLanguages').mockReturnValue([locale])

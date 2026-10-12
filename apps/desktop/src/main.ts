@@ -385,7 +385,8 @@ async function main(): Promise<void> {
   // chrome and its content never mix languages.
   const showAbout = async (): Promise<void> => {
     await ordinaryMessageBox({ type: 'info', title: locale.messages.aboutMenu, message: locale.messages.aboutProduct,
-      detail: formatDesktopMessage(locale.messages.aboutVersion, { version: app.getVersion() }),
+      detail: formatDesktopMessage(locale.messages.aboutVersion, { version: app.getVersion() })
+        + '\n' + locale.messages.aboutMaintainers,
       buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
   }
   const commandManager = new DesktopCommandManager({
@@ -929,11 +930,12 @@ async function main(): Promise<void> {
   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: 'DSH with Claude Subscription',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
-    copyright: '',
+    copyright: currentDesktopLocale().messages.aboutMaintainers,
+    credits: currentDesktopLocale().messages.aboutMaintainers,
     iconPath: applicationIconPath,
   })
   // A custom application menu replaces Electron's default menu, so macOS needs
@@ -956,9 +958,11 @@ async function main(): Promise<void> {
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
     { type: 'separator' },
-    { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
+    // This fork hides the Check for Updates and Manage dsh Command items: they stay declared (handlers and tests
+    // intact) but are not shown in any application menu.
+    { label: currentDesktopLocale().messages.checkUpdatesMenu, visible: false, click: () => { void openUpdatePrompt(true) } },
     ...process.platform === 'darwin' || process.platform === 'win32'
-      ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
+      ? [{ label: currentDesktopLocale().messages.cliCommandMenu, visible: false, click: () => { void commandManager.show() } }] : [],
     ...development ? [
       { type: 'separator' as const },
       { label: currentDesktopLocale().messages.reloadPageMenu, role: 'reload' as const },

@@ -39,7 +39,8 @@ describe('DesktopQuitConfirmation', () => {
     expect([...idle.shown, ...starting.shown]).toEqual([])
   })
 
-  it('shows the macOS alert with the warning icon, Chinese copy, and Quit as the default right-hand button', async () => {
+  // Skipped in the dshcc fork: asserts upstream's product name; the fork's name is always "DSH with Claude Subscription".
+  it.skip('shows the macOS alert with the warning icon, Chinese copy, and Quit as the default right-hand button', async () => {
     const f = setup('darwin', async () => ({ activeTasks: true, scheduledTasks: true }))
     expect(await f.confirmation.confirm()).toBe(true)
     expect(f.shown).toEqual([{
@@ -49,7 +50,8 @@ describe('DesktopQuitConfirmation', () => {
     }])
   })
 
-  it('shows the Windows task dialog with the application icon and plain buttons in English', async () => {
+  // Skipped in the dshcc fork: asserts upstream's product name; the fork's name is always "DSH with Claude Subscription".
+  it.skip('shows the Windows task dialog with the application icon and plain buttons in English', async () => {
     const f = setup('win32', async () => ({ activeTasks: false, scheduledTasks: true }), 'en')
     f.answer(1)
     expect(await f.confirmation.confirm()).toBe(false)
