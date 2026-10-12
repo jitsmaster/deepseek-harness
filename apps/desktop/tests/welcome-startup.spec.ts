@@ -1,6 +1,12 @@
 vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
 /** Welcome startup uses the Host before transitioning to the workspace. */
 
+// The fork skips the welcome sign-in; these tests cover upstream's welcome flow, so restore its rule here.
+vi.mock('../src/welcome-api.ts', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/welcome-api.ts')>(),
+  needsWelcome: (authentication: { loggedIn: boolean; hasApiKey: boolean }) => !authentication.loggedIn && !authentication.hasApiKey,
+}))
+
 import { afterEach, expect, it, vi } from 'vitest'
 import type { BrowserWindowConstructorOptions } from 'electron'
 import type { DesktopLocale } from '../src/locale.ts'

@@ -67,9 +67,11 @@ export interface WelcomeAuthentication {
 
 /**
  * Decide whether a startup or sign-out requires the welcome entry.
- * @param authentication - current account and independently stored API-key facts.
- * @returns true only when neither authentication route is configured.
+ * This fork runs on a Claude subscription (Anthropic sign-in lives in the model settings), so a DeepSeek
+ * account or API key is never required and the welcome sign-in is skipped.
+ * @param _authentication - current account and independently stored API-key facts; unused by this fork.
+ * @returns always false.
  */
-export function needsWelcome(authentication: WelcomeAuthentication): boolean {
-  return !authentication.loggedIn && !authentication.hasApiKey
+export function needsWelcome(_authentication: WelcomeAuthentication): boolean {
+  return false
 }
