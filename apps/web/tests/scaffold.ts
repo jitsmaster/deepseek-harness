@@ -894,7 +894,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     if (publicPrefix !== undefined) loginUrl.hostname = '127.0.0.1'
     const login = await fetch(loginUrl, { redirect: 'manual' })
     const setCookie = login.headers.get('set-cookie')
-    if (login.status !== 303 || login.headers.get('location') !== './' || setCookie === null) {
+    // Upstream redirects (303 ./); this fork serves the index directly (200) for a token URL.
+    const exchanged = (login.status === 303 && login.headers.get('location') === './') || login.status === 200
+    if (!exchanged || setCookie === null) {
       throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')
     }
     cookieHeader = setCookie.split(';', 1)[0] ?? ''
