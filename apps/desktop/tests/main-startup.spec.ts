@@ -1495,7 +1495,8 @@ describe('desktop main startup', () => {
     await harness.quitCompleted.promise
   })
 
-  it('shares the failed-check deadline across focus and resume, while explicit checks reset polling', async () => {
+  // Skipped in the dshcc fork: automatic update checks on focus/resume are disabled (they can open a blocking dialog).
+  it.skip('shares the failed-check deadline across focus and resume, while explicit checks reset polling', async () => {
     vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_INTERVAL_MS', '1000')
     vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_MAX_BACKOFF_MS', '4000')
     vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_JITTER', '0')

@@ -149,6 +149,27 @@ interface RuntimeResources {
   readonly dsh: string
 }
 
+/** The dshcc fork has no update channel, so automatic update checks (which can open a blocking dialog) stay off. */
+const FORK_DISABLE_AUTOMATIC_UPDATE_CHECKS = true
+
+/**
+ * Chromium polls DWM to decide when to throttle rendering (native window-occlusion tracking), a known source of
+ * Windows-only window freezes and stutter in Electron apps; VS Code and Orca disable it too. Intensive wake-up
+ * throttling is opted out as well so a hidden or tray-minimised window keeps its timers on time. Must run before
+ * the app is ready.
+ */
+function optOutOfWindowsRenderThrottling(): void {
+  if (process.platform !== 'win32') return
+  try {
+    const existing = app.commandLine.getSwitchValue('disable-features').split(',').filter(feature => feature !== '')
+    const merged = [...new Set([...existing, 'CalculateNativeWinOcclusion', 'IntensiveWakeUpThrottling'])]
+    app.commandLine.appendSwitch('disable-features', merged.join(','))
+  } catch (error) {
+    // Best effort: a missing command line (test doubles) or a late call must never stop startup.
+    console.warn('desktop: could not opt out of Windows render throttling', error)
+  }
+}
+optOutOfWindowsRenderThrottling()
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
   const node = process.execPath
@@ -916,7 +937,11 @@ async function main(): Promise<void> {
     return policy
   }
 
+  // The dshcc fork has no update channel (the Check for Updates menu item is hidden). A check on every window focus or
+  // power resume could open a modal update dialog or overlay that blocks the main window, and while one is open the
+  // close handler refuses to hide the window - the window looks stuck. So automatic checks are off.
   const automaticCheck = (): void => {
+    if (FORK_DISABLE_AUTOMATIC_UPDATE_CHECKS) return
     if (!quitting) void mandatoryPolicy?.check('foreground-or-resume').catch((error: unknown) => { console.error(error) })
     if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
   }
@@ -1110,8 +1135,29 @@ async function main(): Promise<void> {
     window.webContents.on('preload-error', (_event, _path, error) => {
       if (!quitting && !window.isDestroyed()) reportFatal(error, 'renderer')
     })
+    // A renderer that stops answering leaves a frozen window while the Host is fine. After 15 s without recovery,
+    // restart the renderer and reload the page (sessions and drafts live in the Host, so nothing is lost).
+    let hangTimer: NodeJS.Timeout | undefined
+    let watchdogRestart = false
+    window.on('unresponsive', () => {
+      console.warn('desktop: main window is unresponsive')
+      hangTimer ??= setTimeout(() => {
+        hangTimer = undefined
+        if (quitting || window.isDestroyed()) return
+        console.warn('desktop: window still unresponsive after 15 s; restarting the renderer')
+        watchdogRestart = true
+        window.webContents.forcefullyCrashRenderer()
+        window.webContents.reload()
+      }, 15_000)
+    })
+    window.on('responsive', () => {
+      if (hangTimer !== undefined) clearTimeout(hangTimer)
+      hangTimer = undefined
+    })
+    window.on('closed', () => { if (hangTimer !== undefined) clearTimeout(hangTimer) })
     window.webContents.on('render-process-gone', (_event, details) => {
       navigation = undefined
+      if (watchdogRestart) { watchdogRestart = false; return }
       if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
         reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
       }
