@@ -29,9 +29,11 @@ it('serves the Web entry and assets without starting or contacting a Host', asyn
 
 it('requires the Host authentication exchange and retains only its cookie value', async () => {
   const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 303, headers: { 'set-cookie': 'session=owned; HttpOnly; SameSite=Strict' } }))
+    .mockResolvedValueOnce(new Response('<html></html>', { status: 200, headers: { 'set-cookie': 'session=direct; HttpOnly' } }))
     .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
   vi.stubGlobal('fetch', fetch)
   expect(await authenticateWebHost('http://127.0.0.1:1234/?token=owned')).toBe('session=owned')
+  expect(await authenticateWebHost('http://127.0.0.1:1234/?token=owned')).toBe('session=direct')
   await expect(authenticateWebHost('http://127.0.0.1:1234/')).rejects.toThrow('authentication failed')
 })
 

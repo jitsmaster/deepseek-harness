@@ -44,7 +44,8 @@ export async function authenticateWebHost(url: string): Promise<string> {
   const response = await fetch(url, { redirect: 'manual' })
   const cookie = response.headers.get('set-cookie')
   await response.body?.cancel()
-  if (response.status !== 303 || cookie === null) throw new Error('Desktop Host authentication failed')
+  // The Host redirects (303) or, for a token URL, serves the index directly (200); either mints the cookie.
+  if ((response.status !== 303 && response.status !== 200) || cookie === null) throw new Error('Desktop Host authentication failed')
   const end = cookie.indexOf(';')
   return end < 0 ? cookie : cookie.slice(0, end)
 }
