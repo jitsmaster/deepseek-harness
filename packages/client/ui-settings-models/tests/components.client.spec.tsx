@@ -372,6 +372,7 @@ describe('ModelsSection', () => {
         controller={controller}
         useSnapshot={bindSnapshotSelector(controller.store)}
         operations={operationsWith(face)}
+        authOperations={authOperationsWith(face)}
         schema={settingsSchema}
         t={t}
         renderSlot={() => null}
