@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -58,6 +58,19 @@ describe('ensurePrimaryRuntime', () => {
     vi.stubEnv('DSH_DESKTOP_FORCE_RUNTIME', '1')
     await ensurePrimaryRuntime({ runtimeDirectory: runtime, fingerprint: () => 'a', prepare })
     expect(prepare).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports Building while it rebuilds and Starting when it skips', async () => {
+    const runtime = runtimeDirectory()
+    const status = join(runtime, 'status.txt')
+    vi.stubEnv('DSH_DESKTOP_STATUS_FILE', status)
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    let during = ''
+    const prepare = vi.fn(async () => { during = readFileSync(status, 'utf8'); populate(runtime) })
+    await ensurePrimaryRuntime({ runtimeDirectory: runtime, fingerprint: () => 'a', prepare })
+    expect(during).toBe('Building DSH...')
+    await ensurePrimaryRuntime({ runtimeDirectory: runtime, fingerprint: () => 'a', prepare })
+    expect(readFileSync(status, 'utf8')).toBe('Starting DSH...')
   })
 
   it('writes no stamp when preparation fails, so the next launch retries', async () => {

@@ -61,6 +61,17 @@ export function primaryRuntimeFingerprint(): string {
   })).digest('hex')
 }
 
+/** Tell a launcher splash which phase is running, through the file named by DSH_DESKTOP_STATUS_FILE when it sets one. */
+function reportStatus(text: string): void {
+  const path = process.env.DSH_DESKTOP_STATUS_FILE
+  if (path === undefined || path === '') return
+  try {
+    writeFileSync(path, text)
+  } catch {
+    // The splash is cosmetic; never fail a launch over it.
+  }
+}
+
 /**
  * Prepare and smoke-test the primary runtime unless the last successful build used identical inputs.
  * Set DSH_DESKTOP_FORCE_RUNTIME=1 to rebuild regardless.
@@ -76,9 +87,11 @@ export async function ensurePrimaryRuntime(options: EnsureOptions = {}): Promise
     const stamp = JSON.parse(readFileSync(stampPath, 'utf8')) as Stamp
     if (stamp.fingerprint === fingerprint) {
       console.log('desktop development: primary runtime is up to date, skipping rebuild')
+      reportStatus('Starting DSH...')
       return
     }
   }
+  reportStatus('Building DSH...')
   await prepare()
   writeFileSync(stampPath, `${JSON.stringify({ fingerprint } satisfies Stamp)}\n`)
 }
