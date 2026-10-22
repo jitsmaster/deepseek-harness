@@ -297,9 +297,26 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     window.on('restore', applyBackdrop)
     window.on('show', applyBackdrop)
   }
-  window.webContents.on('context-menu', (_event, { isEditable, selectionText, editFlags }) => {
+  window.webContents.on('context-menu', (_event, { isEditable, selectionText, editFlags, misspelledWord, dictionarySuggestions }) => {
     const items: MenuItemConstructorOptions[] = []
+    const spellingLabels = currentDesktopLocale().messages
     if (isEditable) {
+      // Spelling fixes for a word the spellchecker underlined: suggestions replace it, and the word can be added to the dictionary.
+      if (typeof misspelledWord === 'string' && misspelledWord.length > 0) {
+        const suggestions = Array.isArray(dictionarySuggestions) ? dictionarySuggestions.slice(0, 5) : []
+        if (suggestions.length > 0) {
+          for (const suggestion of suggestions) {
+            items.push({ label: suggestion, click: () => window.webContents.replaceMisspelling(suggestion) })
+          }
+        } else items.push({ label: spellingLabels.noSpellingSuggestions, enabled: false })
+        items.push(
+          {
+            label: spellingLabels.addToDictionary,
+            click: () => window.webContents.session.addWordToSpellCheckerDictionary(misspelledWord),
+          },
+          { type: 'separator' },
+        )
+      }
       items.push(
         { role: 'undo', enabled: editFlags.canUndo },
         { role: 'redo', enabled: editFlags.canRedo },

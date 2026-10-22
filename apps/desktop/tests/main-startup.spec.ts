@@ -1158,6 +1158,18 @@ describe('desktop main startup', () => {
     expect(harness.menu).not.toHaveBeenCalled()
   })
 
+  it('offers spelling suggestions and add-to-dictionary for a misspelled word in an editable field', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const window = harness.windows[0]!
+    const editFlags = { canUndo: true, canRedo: false, canCut: true, canCopy: true, canPaste: true, canSelectAll: true }
+    harness.menu.mockClear()
+    window.webContents.emit('context-menu', {}, { isEditable: true, selectionText: '', editFlags, misspelledWord: 'approvval', dictionarySuggestions: ['approval', 'approvals'] })
+    const template = harness.menu.mock.calls.at(-1)![0] as { label?: string; type?: string; role?: string }[]
+    expect(template.slice(0, 4).map(item => item.label ?? item.type)).toEqual(['approval', 'approvals', 'Add to dictionary', 'separator'])
+    expect(template[4]!.role).toBe('undo')
+  })
+
   it('opens message links externally while retaining same-origin application navigation', async () => {
     await readyForUpdate()
     const window = harness.windows[0]!
