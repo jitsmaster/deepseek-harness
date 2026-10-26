@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 import * as yaml from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import { Context } from '@deepseek-ai/cordis'
-import WebRuntime, { type WebRuntimeConfig } from '@deepseek-ai/dsh-web'
+import WebRuntime from '@deepseek-ai/dsh-web'
 
 interface PatchRow {
   readonly id?: string
@@ -36,10 +36,10 @@ function loadBaseRows(): PatchRow[] {
 }
 
 /** The `web` row's own `config`, as actually shipped. */
-function webRowConfig(): WebRuntimeConfig {
+function webRowConfig(): Record<string, unknown> {
   const row = loadBaseRows().find(candidate => candidate.id === 'web')
   if (row?.config === undefined) throw new Error('base patch must mount the web row')
-  return row.config as WebRuntimeConfig
+  return row.config
 }
 
 describe('the base bundle web row no longer pins a DeepSeek-specific search provider', () => {
@@ -53,7 +53,7 @@ describe('the base bundle web row no longer pins a DeepSeek-specific search prov
 describe('WebRuntime.search() over the shipped web row config', () => {
   it('yields the neutral WEB_PROVIDER_UNAVAILABLE, never a DeepSeek-specific code, when no search credential is configured', async () => {
     const ctx = new Context()
-    await ctx.plugin(WebRuntime, webRowConfig())
+    await ctx.plugin(WebRuntime, webRowConfig() as never)
     // Stands in for web-search-deepseek registered but unusable (no key
     // anywhere): auto-selection, not an explicit pin, must decide the outcome.
     ctx.web.registerSearchProvider({
@@ -68,7 +68,7 @@ describe('WebRuntime.search() over the shipped web row config', () => {
 
   it('keeps auto-selecting a usable DeepSeek search provider unchanged — zero regression when a DeepSeek key IS present', async () => {
     const ctx = new Context()
-    await ctx.plugin(WebRuntime, webRowConfig())
+    await ctx.plugin(WebRuntime, webRowConfig() as never)
     ctx.web.registerSearchProvider({
       id: 'deepseek-official',
       available: () => true,

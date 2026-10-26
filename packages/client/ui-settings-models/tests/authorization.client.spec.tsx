@@ -69,16 +69,14 @@ function deepseekNamespace(): SettingsNamespaceView {
  * rather than `operations.describeCredential`, which `unbound-method` flags
  * (`ModelsOperations` declares it via method shorthand).
  */
-function stubOperations(): { operations: ModelsOperations; describeCredential: ReturnType<typeof vi.fn> } {
-  const describeCredential = vi.fn(() => Promise.resolve(undefined))
+function stubOperations(): { operations: ModelsOperations } {
   const operations: ModelsOperations = {
-    describeCredential,
     storeCredential: vi.fn(() => Promise.resolve(undefined)),
     removeCredential: vi.fn(() => Promise.resolve(undefined)),
     writeSettings: vi.fn(),
     discoverModels: vi.fn(() => Promise.resolve({ kind: 'found' as const, models: [] })),
   }
-  return { operations, describeCredential }
+  return { operations }
 }
 
 /** One scripted authorization flow: `entry` is what `describeAuthorization` answers with. */
@@ -119,7 +117,7 @@ function stubAuthOperations(overrides: {
 
 describe('ProviderEditor authorization affordance', () => {
   it('renders no sign-in affordance for the deepseek layout', async () => {
-    const { operations, describeCredential } = stubOperations()
+    const { operations } = stubOperations()
     const { authOperations, begin } = stubAuthOperations()
     render(<ProviderEditor
       provider="deepseek-official"
@@ -133,7 +131,6 @@ describe('ProviderEditor authorization affordance', () => {
       readOnly={false}
       onClose={vi.fn()}
     />)
-    await waitFor(() => { expect(describeCredential).toHaveBeenCalled() })
     expect(begin).not.toHaveBeenCalled()
     expect(screen.queryByText('Sign in with Anthropic')).toBeNull()
   })
@@ -342,8 +339,8 @@ describe('ProviderEditor authorization affordance', () => {
     expect(screen.queryByText(en.authSigningIn)).toBeNull()
   })
 
-  it('on an authorized outcome, re-describes the credential and authorization state and drops the affordance\'s busy state', async () => {
-    const { operations, describeCredential } = stubOperations()
+  it('on an authorized outcome, re-describes the authorization state and drops the affordance\'s busy state', async () => {
+    const { operations } = stubOperations()
     let resolveBegin: ((outcome: AuthorizationOutcome) => void) | undefined
     const inFlightEntry: AuthorizationEntry = {
       key: credentialKey('llm-pi-ai', 'anthropic'),
@@ -372,8 +369,7 @@ describe('ProviderEditor authorization affordance', () => {
     resolveBegin?.({ status: 'authorized' })
     await waitFor(() => { expect(screen.queryByText(en.authSigningIn)).toBeNull() })
     // Re-described on the way back to "already configured": one extra call
-    // each, beyond the mount-time describe.
-    expect(describeCredential).toHaveBeenCalledTimes(2)
+    // beyond the mount-time describe.
     expect(describeAuthorization).toHaveBeenCalledTimes(2)
   })
 })

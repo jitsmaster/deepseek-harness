@@ -7,7 +7,7 @@ import type {
   WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from '../src/client/contract/slots.ts'
@@ -105,6 +105,7 @@ function mount(
       usePanelInfo={usePanelInfo} useResource={useResource}
       useWorkspaces={hook(workspaceState(nextItems))}
       useActiveSessionStats={useActiveSessionStats}
+      {...allowAllAccess}
       onPick={onPick}
       onClose={onClose}
       createWorkspace={createWorkspace}
@@ -127,11 +128,18 @@ function chooseAdd(): void {
 }
 
 describe('WorkspacePicker', () => {
-  it('lists same-title Workspaces separately and forwards the selected id', () => {
-    const b = mount([workspace('alpha', 'Shared'), workspace('beta', 'Shared')])
-    const entries = screen.getAllByRole('menuitem', { name: 'Shared' })
-    expect(entries).toHaveLength(2)
-    fireEvent.click(entries[1]!)
+  it('labels same-title Workspaces with distinguishing path suffixes and forwards the selected id', () => {
+    const b = mount([
+      { ...workspace('alpha', 'Shared'), path: '/one/a/Shared' },
+      { ...workspace('beta', 'Shared'), path: '/two/a/Shared' },
+      workspace('gamma', 'Alone'),
+    ])
+    expect(screen.getAllByRole('menuitem').map(entry => entry.textContent))
+      .toEqual(['Shared one/a/Shared', 'Shared two/a/Shared', 'Alone', '添加工作区…'])
+    // The full path stays reachable when a narrow menu truncates the row.
+    expect(screen.getByText('two/a/Shared').parentElement?.title).toBe('/two/a/Shared')
+    expect(screen.getByRole('menuitem', { name: 'Alone' }).querySelector('[title]')).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Shared two/a/Shared' }))
     expect(b.onPick).toHaveBeenCalledWith(wid('beta'))
   })
 
@@ -227,6 +235,7 @@ describe('WorkspacePicker', () => {
         useSessionStatus={hook(noPendingInteraction)}
         useSessionRetainInfo={() => undefined}
         usePanelInfo={usePanelInfo} useResource={useResource} useActiveSessionStats={useActiveSessionStats}
+        {...allowAllAccess}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
         useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
       />,
@@ -245,6 +254,7 @@ describe('WorkspacePicker', () => {
         useSessionStatus={hook(noPendingInteraction)}
         useSessionRetainInfo={() => undefined}
         usePanelInfo={usePanelInfo} useResource={useResource} useActiveSessionStats={useActiveSessionStats}
+        {...allowAllAccess}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
         useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
       />,

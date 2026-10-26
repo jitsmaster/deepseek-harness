@@ -2,7 +2,10 @@
  * Exercises scheduler ordering and cancellation with deterministic gated tools.
  * ACP expected outputs own transcript-facing coverage.
  */
+import type { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline'
 
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId, StreamChunk  } from '@deepseek-ai/dsh-llm'
@@ -10,7 +13,8 @@ import SessionStore, { SessionEvent, SessionId, TOOL_NOT_STARTED, TOOL_OUTCOME_U
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
-import ToolRuntime, { defineContentToolFixture, TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type PostToolDecision, type PreToolDecision, type ToolRuntimeScheduler } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH, type PostToolDecision, type PreToolDecision } from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -24,20 +28,29 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-async function harness(adapter: MockAdapter, maxParallelToolCalls?: number) {
+async function harness(adapter: MockAdapter, maxParallelToolCalls?: number, executorLimit?: number) {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(ToolRuntime)
+  let toolPipeline!: ToolExecutionPipeline
+  await ctx.plugin({
+    inject: ['tools'],
+    apply(owner: Context) {
+      const executor = new NativeToolExecutor.NativeToolExecutor(owner, () => executorLimit ?? 10)
+      toolPipeline = executor['pipeline']
+      owner.tools.setExecutor(executor)
+    },
+  })
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, {
     agents: [],
     ...maxParallelToolCalls === undefined ? {} : { maxParallelToolCalls },
   })
   ctx.llm.registerAdapter(['mock'], adapter)
-  return ctx
+  return Object.assign(ctx, { toolPipeline })
 }
 
 function waitForIdle(ctx: Context, agent: Agent): Promise<void> {
@@ -150,7 +163,7 @@ describe('tool-call scheduler: grouping and barriers', () => {
     expect(order).toEqual(['r-start-A1', 'r-end-A1', 'w-A2', 'r-start-A3', 'r-end-A3'])
   })
 
-  it('reclassifies pending calls after an exclusive barrier replaces their tool', async () => {
+  it('rejects pending calls whose original registration was replaced', async () => {
     const adapter = new MockAdapter([
       multiCall([
         { id: 'c1', name: 'replace', args: { id: '0' } },
@@ -181,17 +194,13 @@ describe('tool-call scheduler: grouping and barriers', () => {
     const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    await until(() => replacement.started.length === 1)
-    await new Promise(r => setTimeout(r, 5))
-    expect(replacement.started).toEqual(['1'])
-    replacement.release('1')
-    await until(() => replacement.started.length === 2)
-    expect(replacement.started).toEqual(['1', '2'])
-    replacement.release('2')
     await waitForIdle(ctx, agent)
+    expect(replacement.started).toEqual([])
+    expect(events(agent).filter(event => event.type === 'tool/result').slice(1).map(event => event.data.error?.code))
+      .toEqual(['UNKNOWN_TOOL', 'UNKNOWN_TOOL'])
   })
 
-  it('stops replenishing when a result observer makes the next call exclusive', async () => {
+  it('drains started calls and rejects unstarted calls after replacement', async () => {
     const adapter = new MockAdapter([
       multiCall([
         { id: 'c1', name: 'x', args: { id: '1' } },
@@ -219,10 +228,9 @@ describe('tool-call scheduler: grouping and barriers', () => {
     await new Promise(r => setTimeout(r, 5))
     expect(replacement.started).toEqual([])
     initial.release('2')
-    await until(() => replacement.started.length === 1)
-    expect(replacement.started).toEqual(['3'])
-    replacement.release('3')
     await waitForIdle(ctx, agent)
+    expect(replacement.started).toEqual([])
+    expect(events(agent).filter(event => event.type === 'tool/result').at(-1)?.data.error?.code).toBe('UNKNOWN_TOOL')
   })
 })
 
@@ -271,6 +279,46 @@ describe('tool-call scheduler: model-order results despite out-of-order settleme
 })
 
 describe('tool-call scheduler: rolling pool honors maxParallelToolCalls', () => {
+  it.each([
+    { executorLimit: 1, loopLimit: 2, expected: 2 },
+    { executorLimit: 3, loopLimit: 1, expected: 1 },
+    { executorLimit: 2, loopLimit: undefined, expected: 10 },
+  ])('uses $expected parallel calls with executor $executorLimit and loop limit $loopLimit', async ({ executorLimit, loopLimit, expected }) => {
+    const adapter = new MockAdapter([
+      multiCall(Array.from({ length: 12 }, (_, n) => ({ id: `c${n}`, name: 'overlap', args: {} }))),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter, loopLimit, executorLimit)
+    onTestFinished(() => ctx.fiber.dispose())
+    let active = 0
+    let peak = 0
+    ctx.tools.register(defineContentToolFixture({
+      name: 'overlap', description: 'Observe simultaneous tool bodies.', parameters: {},
+      isConcurrencySafe: () => true,
+      async execute() {
+        peak = Math.max(peak, ++active)
+        // Let the scheduler start every available sibling before any body settles.
+        await new Promise<void>(resolve => setImmediate(resolve))
+        active--
+        return [{ type: 'text', text: 'done' }]
+      },
+    }))
+    const agent = await ctx.agentLoop.create(SessionId('override'), { provider: 'mock', model: 'mock' })
+    const idle = waitForIdle(ctx, agent)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await idle
+    expect(peak).toBe(expected)
+    expect(active).toBe(0)
+    expect(events(agent).filter(event => event.type === 'tool/result')).toHaveLength(12)
+  })
+
+  it.each([0, 1.5])('rejects an invalid per-call concurrency override %s', async (maxParallelToolCalls) => {
+    const ctx = await harness(new MockAdapter([]))
+    onTestFinished(() => ctx.fiber.dispose())
+    await expect(ctx.tools.execute({ calls: [], signal: new AbortController().signal, maxParallelToolCalls }))
+      .rejects.toThrow('maxParallelToolCalls must be a positive integer')
+  })
+
   it('rejects invalid global maxParallelToolCalls config at plugin load', async () => {
     await expect(harness(new MockAdapter([]), 0)).rejects.toThrow()
     await expect(harness(new MockAdapter([]), 1.5)).rejects.toThrow()
@@ -338,6 +386,7 @@ describe('tool-call scheduler: rolling pool honors maxParallelToolCalls', () => 
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt, { personaPrefix: '' })
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -631,7 +680,7 @@ describe('tool-call scheduler: abort handling', () => {
 })
 
 describe('tool-call scheduler: failure quiescence', () => {
-  it.each(['execution-mode', 'prepare', 'finalize'] as const)('pairs outstanding requests after %s fails and preserves committed results', async (phase) => {
+  it.each(['execution-mode', 'prepare', 'complete'] as const)('pairs outstanding requests after %s fails and preserves committed results', async (phase) => {
     const adapter = new MockAdapter([
       multiCall([
         { id: 'c1', name: 'p', args: { id: '1' } },
@@ -645,18 +694,21 @@ describe('tool-call scheduler: failure quiescence', () => {
     const executed: string[] = []
     ctx.tools.register(defineContentToolFixture({
       name: 'p', description: 'exclusive', parameters: { id: { type: 'string', required: true } },
-      async execute(args) {
+      async execute(args, exec) {
         executed.push(args.id)
+        if (args.id === '1') {
+          exec.deferContext(createUserMessage({ content: [{ type: 'text', text: 'committed context' }], source: { kind: 'p' } }))
+        }
         return [{ type: 'text', text: `done-${args.id}` }]
       },
     }))
-    const scheduler = ctx.tools[TOOL_RUNTIME_SCHEDULER]
-    const executionMode = ctx.tools.executionMode.bind(ctx.tools)
+    const scheduler = ctx.toolPipeline
+    const executionMode = ctx.toolPipeline.executionMode.bind(ctx.toolPipeline)
     const prepare = scheduler.prepare.bind(scheduler)
-    const finalize = scheduler.finalize.bind(scheduler)
+    const complete = scheduler.complete.bind(scheduler)
     const failure = new Error(`${phase} failed`)
     if (phase === 'execution-mode') {
-      ctx.tools.executionMode = (exec) => {
+      ctx.toolPipeline.executionMode = (exec) => {
         if (exec.callId === ToolCallId('c2')) throw failure
         return executionMode(exec)
       }
@@ -666,9 +718,9 @@ describe('tool-call scheduler: failure quiescence', () => {
         return prepare(exec)
       }
     } else {
-      scheduler.finalize = (exec, result) => {
+      scheduler.complete = (exec, outcome) => {
         if (exec.callId === ToolCallId('c2')) throw failure
-        return finalize(exec, result)
+        return complete(exec, outcome)
       }
     }
     const agent = await ctx.agentLoop.create(SessionId(`failure-${phase}`), { provider: 'mock', model: 'mock' })
@@ -681,7 +733,7 @@ describe('tool-call scheduler: failure quiescence', () => {
     const failedEvents = events(agent)
     const calls = failedEvents.filter(event => event.type === 'tool/call')
     const results = failedEvents.filter(event => event.type === 'tool/result')
-    expect(executed).toEqual(phase === 'finalize' ? ['1', '2'] : ['1'])
+    expect(executed).toEqual(phase === 'complete' ? ['1', '2'] : ['1'])
     expect(results.map(event => [event.data.message.toolCallId, event.data.error?.code])).toEqual([
       [ToolCallId('c1'), undefined],
       [ToolCallId('c2'), phase === 'execution-mode' ? TOOL_NOT_STARTED : TOOL_OUTCOME_UNKNOWN],
@@ -702,9 +754,9 @@ describe('tool-call scheduler: failure quiescence', () => {
     })
     expect(listenerCount()).toBe(idleListenerCount)
 
-    ctx.tools.executionMode = executionMode
+    ctx.toolPipeline.executionMode = executionMode
     scheduler.prepare = prepare
-    scheduler.finalize = finalize
+    scheduler.complete = complete
     const nextTurn = waitForIdle(ctx, agent)
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'continue' }], source: { kind: 'user' } }))
     await nextTurn
@@ -716,7 +768,10 @@ describe('tool-call scheduler: failure quiescence', () => {
         if (message.role === 'user' && block.type === 'text') return [`user:${block.text}`]
         return []
       })
-    })).toEqual(['user:go', 'call:c1', 'call:c2', 'call:c3', 'result:c1', 'result:c2', 'result:c3', 'user:continue'])
+    })).toEqual([
+      'user:go', 'call:c1', 'call:c2', 'call:c3', 'result:c1', 'result:c2', 'result:c3',
+      'user:committed context', 'user:continue',
+    ])
     expect(events(agent).filter(event => event.type === 'tool/result')).toHaveLength(3)
     expect(events(agent).findLast(event => event.type === 'turn/end')?.data.reason.kind).toBe('completed')
     expect(listenerCount()).toBe(idleListenerCount)
@@ -728,7 +783,7 @@ describe('tool-call scheduler: failure quiescence', () => {
     onTestFinished(() => ctx.fiber.dispose())
     const failure = new Error('prepare failed')
     const recoveryFailure = new Error('recovery result rejected')
-    ctx.tools[TOOL_RUNTIME_SCHEDULER].prepare = () => { throw failure }
+    ctx.toolPipeline.prepare = () => { throw failure }
     ctx.on('internal/dispatch', (_mode, name, args) => {
       if (name === 'session/event' && (args[1] as SessionEvent).type === 'tool/result') throw recoveryFailure
     })
@@ -763,7 +818,7 @@ describe('tool-call scheduler: failure quiescence', () => {
       name: 'p', description: 'probe', parameters: {},
       async execute() { return [{ type: 'text', text: 'completed' }] },
     }))
-    const scheduler = ctx.tools[TOOL_RUNTIME_SCHEDULER]
+    const scheduler = ctx.toolPipeline
     const dispatch = scheduler.dispatch.bind(scheduler)
     scheduler.dispatch = async (exec) => {
       if (exec.agent?.id === SessionId('first-agent')) {
@@ -818,7 +873,7 @@ describe('tool-call scheduler: failure quiescence', () => {
     ctx.tools.register(gated.tool)
     // The registry contains expected failures as results; replace its internal
     // view only to inject the invariant violation this boundary must contain.
-    const scheduler = ctx.tools[TOOL_RUNTIME_SCHEDULER]
+    const scheduler = ctx.toolPipeline
     const prepare = scheduler.prepare.bind(scheduler)
     const dispatch = scheduler.dispatch.bind(scheduler)
     const prepareGate = Promise.withResolvers<undefined>()
@@ -879,184 +934,6 @@ describe('tool-call scheduler: failure quiescence', () => {
   })
 })
 
-describe('tool-call scheduler: tools-service disposal recovery', () => {
-  /**
-   * Shadow `ctx.tools` with an own property that reads as `undefined`,
-   * mimicking the reconcile-and-remount race where a live cordis binding for
-   * a required service goes stale mid-await. `ctx` is a Proxy over the raw
-   * Context instance (see `ReflectService.handler` in
-   * `vendor/cordis/src/reflect.ts`): its `get` trap checks
-   * `Reflect.has(target, prop)` before falling into service resolution, so
-   * `Object.defineProperty(ctx, 'tools', ...)` — which the proxy forwards to
-   * the underlying target because no `defineProperty` trap is installed —
-   * intercepts every `ctx.tools` read until the shadow is removed.
-   */
-  function disposeTools(ctx: Context): void {
-    Object.defineProperty(ctx, 'tools', { get: () => undefined, configurable: true })
-  }
-
-  /** Remove the shadow, letting normal service resolution find `tools` again. */
-  function remountTools(ctx: Context): void {
-    // oxlint-disable-next-line typescript/no-explicit-any typescript/no-unsafe-member-access -- deleting a test-only shadow property
-    delete (ctx as any).tools
-  }
-
-  it('recovers when the tools service is transiently disposed and remounted mid-call', async () => {
-    const adapter = new MockAdapter([
-      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
-      textResponse('done'),
-    ])
-    const ctx = await harness(adapter)
-    const gated = gatedParallelTool('p')
-    ctx.tools.register(gated.tool)
-    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    // Let prepare/dispatch run against the live scheduler — the call is
-    // in flight (its body is blocked on the gate) before we disturb `tools`.
-    await until(() => gated.started.length === 1)
-
-    // Simulate the reconcile-and-remount race landing while the call is
-    // in flight: `tools` goes undefined for a short window, then comes back
-    // once the remount completes — before the bounded retry/backoff for the
-    // pending `finish`/`finalize` call would give up.
-    disposeTools(ctx)
-    setTimeout(() => { remountTools(ctx) }, 20)
-    gated.release('1')
-    await waitForIdle(ctx, agent)
-
-    const results = events(agent).filter(e => e.type === 'tool/result')
-    expect(results).toHaveLength(1)
-    expect(results[0]!.data.message.isError).toBeFalsy()
-    expect(results[0]!.data.error).toBeUndefined()
-    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
-    expect(turnEnd?.data.reason.kind).not.toBe('error')
-  })
-
-  it('reuses the scheduler instance pinned at prepare across a mid-call remount', async () => {
-    // A real reconcile-and-remount does not clear the old `ToolRuntime`
-    // instance's own state — it only swaps which instance `ctx.tools`
-    // resolves to. `prepare`/`dispatch` already ran against the pinned
-    // instance, so `finish`/`finalize` must stay pinned to it too: querying
-    // `ctx.tools` fresh at commit could resolve the new instance instead,
-    // whose own `cancellationStates` WeakMap never saw this call's `exec`.
-    const adapter = new MockAdapter([
-      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
-      textResponse('done'),
-    ])
-    const ctx = await harness(adapter)
-    const gated = gatedParallelTool('p')
-    ctx.tools.register(gated.tool)
-    const originalTools = ctx.tools
-    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    // Let prepare/dispatch run against the original instance — the call is
-    // in flight (its body is blocked on the gate) before the swap lands.
-    await until(() => gated.started.length === 1)
-
-    // Swap `ctx.tools` to a stand-in "post-remount" instance whose scheduler
-    // has no record of this call: exactly what a genuinely different
-    // `ToolRuntime` instance's own per-instance WeakMaps would look like.
-    // `prepare`/`dispatch` never legitimately run again for an already-started
-    // call, so both throw if reached.
-    const foreignScheduler: ToolRuntimeScheduler = {
-      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
-      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
-      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
-      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
-    }
-    Object.defineProperty(ctx, 'tools', {
-      // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
-      get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
-      configurable: true,
-    })
-    gated.release('1')
-    await waitForIdle(ctx, agent)
-
-    const results = events(agent).filter(e => e.type === 'tool/result')
-    expect(results).toHaveLength(1)
-    expect(results[0]!.data.message.isError).toBeFalsy()
-    expect(results[0]!.data.error).toBeUndefined()
-    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
-    expect(turnEnd?.data.reason.kind).not.toBe('error')
-  })
-
-  it('reuses the scheduler instance pinned at prepare for the synchronous post-result branch', async () => {
-    // `prepare`'s synchronous 'post-result' branch (a pre-execute denial)
-    // pins its scheduler the same way the dispatch branch does. There is no
-    // later await to hook for the swap, so it happens inside the denying
-    // `tools/pre-execute` listener itself — the narrow window between
-    // `prepare`'s admission and `commitReady`'s call into `finalize`.
-    const adapter = new MockAdapter([
-      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
-      textResponse('done'),
-    ])
-    const ctx = await harness(adapter)
-    const gated = gatedParallelTool('p')
-    ctx.tools.register(gated.tool)
-    const originalTools = ctx.tools
-    const foreignScheduler: ToolRuntimeScheduler = {
-      prepare: () => { throw new Error('unexpected: prepare re-run on the post-remount instance') },
-      dispatch: () => { throw new Error('unexpected: dispatch re-run on the post-remount instance') },
-      finalize: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
-      finish: () => { throw new Error('tool registry scheduler invariant violated: missing cancellation state') },
-    }
-    ctx.on('tools/pre-execute', async (): Promise<PreToolDecision> => {
-      Object.defineProperty(ctx, 'tools', {
-        // oxlint-disable-next-line typescript/no-misused-spread -- only TOOL_RUNTIME_SCHEDULER is read; the lost prototype is unused.
-        get: () => ({ ...originalTools, [TOOL_RUNTIME_SCHEDULER]: foreignScheduler }),
-        configurable: true,
-      })
-      return { kind: 'deny', reason: 'blocked by policy' }
-    })
-    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    await waitForIdle(ctx, agent)
-
-    expect(gated.started).toEqual([])
-    const results = events(agent).filter(e => e.type === 'tool/result')
-    expect(results).toHaveLength(1)
-    expect(results[0]!.data.message.isError).toBe(true)
-    expect((results[0]!.data.message.content[0] as { text: string }).text).toContain('blocked by policy')
-    expect(results[0]!.data.error).not.toMatchObject({ message: expect.stringContaining('invariant violated') as unknown })
-    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
-    expect(turnEnd?.data.reason.kind).not.toBe('error')
-  })
-
-  it('still fails loudly when the tools service never comes back (permanent disposal)', async () => {
-    const adapter = new MockAdapter([
-      multiCall([{ id: 'c1', name: 'p', args: { id: '1' } }]),
-    ])
-    const ctx = await harness(adapter)
-    const gated = gatedParallelTool('p')
-    ctx.tools.register(gated.tool)
-    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    await until(() => gated.started.length === 1)
-
-    // The tools service is gone for good — no remount ever restores it.
-    disposeTools(ctx)
-    gated.release('1')
-    await waitForIdle(ctx, agent)
-
-    const turnEnd = events(agent).findLast(e => e.type === 'turn/end')
-    expect(turnEnd).toMatchObject({
-      data: {
-        reason: {
-          kind: 'error',
-          error: {
-            message: 'agent loop: the tool runtime was disposed while a tool call was in flight',
-            code: 'UNKNOWN',
-          },
-        },
-      },
-    })
-  })
-})
-
 describe('PTC mode native-tool denial through the agent loop', () => {
   /** A minimal in-process PTC runtime for test purposes — never actually runs. */
   class FakePtcRuntime extends PtcRuntime {
@@ -1075,7 +952,8 @@ describe('PTC mode native-tool denial through the agent loop', () => {
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SystemPrompt, { personaPrefix: '' })
-    await ctx.plugin(ToolRuntime, { mode: 'ptc' })
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(PtcToolExecutor)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- FakePtcRuntime is an internal test helper with an opaque type shape
     await ctx.plugin(FakePtcRuntime as any)
     await ctx.plugin(AgentRegistry)

@@ -281,12 +281,13 @@ const RESPONSES_COMPAT_GATE = {
   supportsMaxOutputTokens: 'offer',
   supportsStrictMode: 'offer',
   supportsLongCacheRetention: 'offer',
-  supportsMidConvoSystemMessages: 'withhold',
   sessionAffinityFormat: 'withhold',
   supportsOpenAIGrammarTools: 'withhold',
   supportsAdditionalTools: 'withhold',
   supportsToolSearch: 'withhold',
   supportsExplicitPromptCacheMode: 'withhold',
+  supportsMidConvoSystemMessages: 'withhold',
+  supportsMidConvoEffort: 'withhold',
 } as const satisfies Record<keyof OpenAIResponsesCompat, CompatDisposition>
 
 /** Disposition of every `AnthropicMessagesCompat` field; a drift gate like the one above. */
@@ -300,9 +301,9 @@ const ANTHROPIC_COMPAT_GATE = {
   supportsStrictTools: 'offer',
   sendSessionAffinityHeaders: 'withhold',
   sessionAffinityFormat: 'withhold',
-  supportsMidConvoEffort: 'withhold',
   supportsMidConvoSystemMessages: 'withhold',
   supportsMidConvoToolChanges: 'withhold',
+  supportsMidConvoEffort: 'withhold',
   allowedFallbackModels: 'withhold',
 } as const satisfies Record<keyof AnthropicMessagesCompat, CompatDisposition>
 
@@ -311,7 +312,7 @@ const BEDROCK_COMPAT_GATE = {
   supportsStrictMode: 'offer',
 } as const satisfies Record<keyof BedrockCompat, CompatDisposition>
 
-/** Disposition of every `MistralConversationsCompat` field; a drift gate like the one above. */
+/** Disposition of every `MistralConversationsCompat` field. */
 const MISTRAL_COMPAT_GATE = {
   supportsMidConvoSystemMessages: 'withhold',
 } as const satisfies Record<keyof MistralConversationsCompat, CompatDisposition>
