@@ -148,7 +148,7 @@ describe('ApiSessionAgentController.ensureSessionHandle', () => {
       list: () => Promise.resolve([meta]),
       inspect: () => Promise.resolve({
         meta,
-        events: [{ type: 'agent-preset/selected', seq: 0, time: 1, data: { agentPreset: 'minimal' } }],
+        events: [{ type: 'agent-preset/selected', seq: 0, time: 1, data: { agentPreset: 'minimal' } }] as never,
       }),
     }) as never)
     ctx.provide('agentPresets', {
