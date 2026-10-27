@@ -22,7 +22,18 @@ export interface FakeRun {
   maxOutputTokens?: string
   oauthToken?: string
   apiKey?: string
+  configDir?: string
   hanging?: number
+  /** Present on a `claude auth login` record: its arguments after `auth`. */
+  authLogin?: string[]
+  /** Present on a `claude auth status` record. */
+  authStatus?: string[]
+  /** The code a login child read from stdin. */
+  code?: string
+  pid?: number
+  anthropicApiKey?: string
+  /** The `BROWSER` command a login child was given. */
+  browser?: string
 }
 
 /** Local runtime that runs `node fake-claude.cjs <claude argv>` instead of the real binary. */
@@ -31,13 +42,15 @@ export class FakeClaudeSubprocess extends LocalSubprocessRuntime {
   static logPath = ''
   /** Specs seen by `spawn`, so tests can assert what reached the seam. */
   static spawned: SubprocessSpawnSpec[] = []
+  /** Scenario word the fake `claude auth` acts out (ok, self, fail, never, nourl, nocreds, loggedout, garbage). */
+  static authScenario = 'ok'
 
   override spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
     FakeClaudeSubprocess.spawned.push(spec)
     return super.spawn({
       ...spec,
       argv: [process.execPath, FAKE_CLAUDE, ...spec.argv.slice(1)],
-      env: { ...spec.env, FAKE_CLAUDE_LOG: FakeClaudeSubprocess.logPath },
+      env: { ...spec.env, FAKE_CLAUDE_LOG: FakeClaudeSubprocess.logPath, FAKE_CLAUDE_AUTH: FakeClaudeSubprocess.authScenario },
     })
   }
 }

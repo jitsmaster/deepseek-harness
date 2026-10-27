@@ -43,7 +43,11 @@ kind: "package-reference"
 | `nodeExecutable` | harness 自身的 Node | 运行工具 schema MCP 桩的 Node 可执行文件 |
 | `timeoutMs` | `1800000` | 单次调用的整体期限 |
 | `defaultContextWindow` | `200000` | 目录中未列出的模型 id 所假定的上下文窗口 |
-| `credential` | （未设置） | 凭据记录键（例如 `llm-pi-ai/anthropic`），其保存的访问令牌或 API 密钥用于认证 `claude` 子进程；未设置时 Claude Code 使用它自己的登录 |
+| `accountsDir` | `<DSH 主目录>/claude-code/accounts` | 保存从 DSH 登录的各账户的 Claude Code 配置目录的根，每个账户一个 `<id>` 目录；见下文“从 DSH 登录 Claude 账户” |
+| `accounts` | （无） | 登录时提供选择的 Claude 账户邮箱；实时生效：修改后无需重新挂载，下一次登录即采用 |
+| `activeAccount` | （未设置） | 每次调用所使用的已登录账户的邮箱；实时生效：修改后无需重新挂载，下一次调用即采用 |
+| `privateBrowser` | `true` | 在第一个已安装的 Chrome、Edge 或 Firefox 的隐私窗口中打开登录页面，否则使用默认浏览器 |
+| `credential` | （未设置） | 凭据记录键（例如 `llm-pi-ai/anthropic`），在没有可用的已登录账户时，其保存的访问令牌或 API 密钥用于认证 `claude` 子进程；未设置时 Claude Code 使用它自己的登录 |
 | `rateLimitFile` | （未设置） | 每次调用后接收最新套餐用量读数的 JSON 文件；见下文“共享套餐用量读数” |
 | `models` | （无） | 追加到内置目录或覆盖其条目的 `{ id, name, contextWindow?, description? }` |
 
@@ -61,11 +65,23 @@ kind: "package-reference"
 
 工具通过用 `node -e` 启动的 stdio MCP 桩提供给 Claude，该桩的 `tools/call` 永远不应答，因此 Claude 只能发出调用而无法执行。Claude 看到的每个工具名为 `mcp__dsh__<name>`；不符合 Claude 64 字符规则的名称会得到确定性的安全别名，并在返回时映射回来。一旦某条消息以 `tool_use` 结束，适配器立即发出 usage 和 `tool-calls` 结束事件并终止进程，不再等待 Claude 的下一轮。
 
+### 从 DSH 登录 Claude 账户
+
+插件会向可选的 `authorization` 接缝注册一个授权流程：记录 `llm-claude-code/claude-account`，标签为“Claude (Claude Code)”，只有一种方式“Sign in with Claude”。能渲染流程的界面因此可以在不依赖 `llm-pi-ai` 的情况下添加和切换 Claude 账户。没有该接缝的组合照常加载和运行，只是没有地方可以登录。
+
+登录哪个账户由流程内部选择。它先给出由 `accounts` 中的邮箱和已登录邮箱组成的列表，外加一个“其他邮箱地址”条目，然后以无头模式运行真实的 `claude auth login --claudeai --email=<email>`，并把 `CLAUDE_CONFIG_DIR` 设为紧邻该账户最终目录 `<accountsDir>/<id>` 的暂存目录。`<id>` 是小写邮箱的文件系统安全短名加一小段哈希（`name-at-example.com-1a2b3c4d`），因此两个地址不会共用目录，任何 id 也无法指向根目录之外。子进程打印出登录页面后，流程把该 URL 作为通知交给用户，并询问页面显示的代码，把它写入子进程的 stdin；浏览器自行完成的登录同样可行。启用 `privateBrowser` 时，子进程的 `BROWSER` 是写在暂存目录中的一个小型启动器，它在隐私窗口中打开页面，因此普通配置文件里已经打开的 claude.ai 会话不会让错误的账户登录。
+
+子进程以 0 退出后，流程在暂存目录中运行 `claude auth status --json`，读取实际登录的账户（其邮箱优先于所请求的邮箱），用暂存目录替换该账户原有的文件（有正在运行的 Claude Code 占用时短暂重试，仍失败则给出明确错误），并在流程键下提交唯一一条记录：`{ type: 'claude-code-accounts', accounts: [{ id, email, signedInAt }] }`，与已列出的账户合并，因此登录第二个账户不会丢失第一个。登录失败、被取消或超时（十分钟）时，会终止子进程，所有账户保持原样。暂存目录总会被删除，若其中含有链接则不予删除。
+
+该记录不含任何密钥，DSH 也不调用任何 Anthropic 端点：令牌保存在各账户自己的目录中，由 Claude Code 自己存储和刷新。每次调用前，适配器读取 `activeAccount`（每次调用都会重新读取）和该记录；当该邮箱已列出且其目录中有 `.credentials.json` 时，子进程以 `CLAUDE_CONFIG_DIR=<accountsDir>/<id>` 启动。它优先于 `credential`，而 `credential` 又优先于 Claude Code 自己的登录。当前账户无法使用（从未登录、文件缺失、没有凭据服务）时，每种不同原因记录一条警告并回退；没有当前账户则保持静默。仅支持基于文件的凭据存储，因此把 Claude Code 登录保存在钥匙串中的平台无法使用此路径。
+
+每次报告了套餐用量的调用，还会把它所用账户的读数保存在 `<accountsDir>/<id>/usage.json` 中（`fiveHour` 和 `sevenDay` 的 `{ utilization, resetsAt }` 以及 `updatedAt`，原子写入且不含密钥），与共享的 `rateLimitFile` 并存。`readAccountUsage(accountsDir, id)` 可读回某个账户的读数，供状态显示使用。
+
 ### 使用已保存的 DSH 凭据认证
 
 将 `credential` 设为凭据记录键（例如 `llm-pi-ai/anthropic`），即可让 Claude Code 使用 DSH 已保存的 Anthropic 凭据运行。每次启动子进程前，适配器通过可选的凭据服务读取该记录。剩余有效期超过 60 秒的 pi-ai OAuth 授权，只会把**访问令牌**以 `CLAUDE_CODE_OAUTH_TOKEN` 交给子进程；`api-key` 记录则以 `ANTHROPIC_API_KEY` 交出其密钥。刷新令牌从不共享，因为 Claude Code 刷新会轮换它，并使 DSH 保存的副本失效。
 
-此路由从不刷新授权。授权已过期、格式错误或缺失，未挂载凭据服务，或读取失败时，调用不会失败：子进程不带额外环境启动，使用 Claude Code 自己的登录，并且每种不同原因只记录一条警告（绝不含密钥）。`llm-pi-ai` 路由关闭期间没有任何一方刷新令牌，因此授权约 6 小时后会过期，此路由随即回退到 Claude Code 自己的登录。
+此路由从不刷新授权，且仅在没有可用的已登录账户时才会使用。授权已过期、格式错误或缺失，未挂载凭据服务，或读取失败时，调用不会失败：子进程不带额外环境启动，使用 Claude Code 自己的登录，并且每种不同原因只记录一条警告（绝不含密钥）。`llm-pi-ai` 路由关闭期间没有任何一方刷新令牌，因此授权约 6 小时后会过期，此路由随即回退到 Claude Code 自己的登录。
 
 ### 共享套餐用量读数
 
@@ -112,6 +128,9 @@ Claude Code 在每次运行的 `rate_limit_event` 行中报告订阅的套餐用
 | [`src/stub.ts`](src/stub.ts) | 永不应答的 MCP 桩的内联源码 |
 | [`src/models.ts`](src/models.ts) | 内置模型目录和强度 |
 | [`src/credential.ts`](src/credential.ts) | 已保存凭据记录到子进程环境的映射 |
+| [`src/account.ts`](src/account.ts) | 账户 id、账户记录、其子进程环境，以及登录 URL 和状态解析器 |
+| [`src/login.ts`](src/login.ts) | `claude auth login` 授权流程与受保护的账户替换 |
+| [`src/browser.ts`](src/browser.ts) | 隐私窗口浏览器的选择与生成的启动脚本 |
 | [`src/rate-limit.ts`](src/rate-limit.ts) | 共享套餐用量文件的串行原子写入器 |
 | [`src/executable.ts`](src/executable.ts) | 同步的可执行文件查找 |
 
@@ -144,7 +163,7 @@ Claude 收到的系统提示词由一段说明转录约定的简短文字加上 
 
 #### Token 影响
 
-每次调用都会在用户订阅上把完整转录作为输入重新发送，由 Claude 自己的分词器计数，另加转录说明、标签和工具定义的少量固定开销。usage 以互不重叠的输入、缓存读取、缓存写入和输出计数返回，思考 token 单独作为 `reasoningTokens` 报告。
+每次调用都会在本次运行所认证账户（从 DSH 登录的账户，其次是已保存凭据，再其次是 Claude Code 自己的登录）的订阅上把完整转录作为输入重新发送，由 Claude 自己的分词器计数，另加转录说明、标签和工具定义的少量固定开销。usage 以互不重叠的输入、缓存读取、缓存写入和输出计数返回，思考 token 单独作为 `reasoningTokens` 报告。
 
 #### KV 缓存影响
 
@@ -172,7 +191,8 @@ Claude 的文本、非空思考和 `tool_use` 块按首次发出的顺序变成 
 
 - **仅文本输入** — 该路由不声明图片输入；图片和文件以文本形式到达。
 - **没有 `temperature` 或 `stop`** — `claude -p` 两者都不提供，因此这些请求字段被忽略；`maxTokens` 仅通过 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` 生效。
-- **依赖用户的 `claude` 可执行文件和登录** — 登录缺失或过期时，调用以 `AUTH` 失败。子进程接缝会清除形似凭据的环境变量，因此只使用 Claude Code 保存在磁盘上的登录，或由 `credential` 选定的已保存凭据。
+- **依赖用户的 `claude` 可执行文件和登录** — 登录缺失或过期时，调用以 `AUTH` 失败。子进程接缝会清除形似凭据的环境变量，因此只使用从 DSH 登录的账户、Claude Code 保存在磁盘上的登录，或由 `credential` 选定的已保存凭据。
+- **登录会替换该账户，且需要文件存储** — 再次登录某个邮箱会替换该账户的目录，若有正在运行的 Claude Code 占用其中的文件则会失败；把登录保存在钥匙串中的平台不受支持，隐私窗口启动器则是仅针对 Chrome、Edge 或 Firefox 的批处理文件或 shell 脚本。
 - **受订阅速率限制** — 每次调用都是一条 Claude 消息，所以配额和速率限制失败会表现为 `QUOTA` 或 `RATE_LIMIT`。
 - **进程启动开销** — 每次调用都会启动一个 `claude` 进程（有工具时还有一个 Node MCP 桩），所以每次调用在首个 token 之前都有固定的启动延迟。
 - **stream-json 格式不是带版本的契约** — Claude Code 的某个版本若改变它，调用可能以 `PROVIDER_ERROR` 失败或返回空内容。

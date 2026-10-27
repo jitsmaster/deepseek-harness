@@ -515,7 +515,9 @@ flowchart TD
   pkg_subprocess --> pkg_http_proxy
   pkg_remote_mock --> pkg_typert_protocol
   pkg_typert_loader --> pkg_typert_registry
+  pkg_llm_claude_code --> pkg_authorization
   pkg_llm_claude_code --> pkg_credentials
+  pkg_llm_claude_code --> pkg_home_paths
   pkg_llm_claude_code --> pkg_llm
   pkg_llm_claude_code --> pkg_subprocess
   pkg_llm_claude_code --> pkg_timeout
@@ -1679,7 +1681,7 @@ flowchart TD
 | [`subprocess`](../packages/subprocess/subprocess) | `subprocess` | [`http-proxy`](../packages/util/http-proxy) |
 | [`remote-mock`](../packages/test-support/remote-mock) | `test-support` | [`typert-protocol`](../packages/typert/protocol) |
 | [`typert-loader`](../packages/typert/loader) | `typert` | [`typert-registry`](../packages/typert/registry) |
-| [`llm-claude-code`](../packages/llm/llm-claude-code) | `llm` | [`credentials`](../packages/credentials/credentials), [`llm`](../packages/llm/llm), [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout) |
+| [`llm-claude-code`](../packages/llm/llm-claude-code) | `llm` | [`authorization`](../packages/credentials/authorization), [`credentials`](../packages/credentials/credentials), [`home-paths`](../packages/util/home-paths), [`llm`](../packages/llm/llm), [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout) |
 | [`skill-office`](../packages/skill/skill-office) | `skill` | [`skill`](../packages/skill/skill) |
 | [`web-fetch-http`](../packages/web/web-fetch-http) | `web` | [`timeout`](../packages/util/timeout), [`web`](../packages/web/web) |
 | [`web-search-claude-code`](../packages/web/web-search-claude-code) | `web` | [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout), [`web`](../packages/web/web) |

@@ -3,16 +3,25 @@
  * provider route to the `ctx.llm` registry and serves each model call with one
  * headless `claude -p` process of the user's own executable under the shared
  * subprocess seam. By default the run uses the login the user's Claude Code
- * already has; the optional `credential` option instead hands the child the
- * access token (or API key) of a stored DSH credential record, and the optional
- * `rateLimitFile` option shares the latest plan-usage reading as a JSON file.
+ * already has. Claude accounts signed in from DSH (one flow this plugin
+ * registers with the authorization seam, run by the real `claude auth login`)
+ * each live in their own config directory under `accountsDir`, and the child of
+ * a call runs as the live-configurable `activeAccount`; that wins over the
+ * optional `credential` option, which hands the child the access token (or API
+ * key) of a stored DSH credential record. The optional `rateLimitFile` option
+ * shares the latest plan-usage reading as a JSON file, and each account keeps
+ * its own reading beside its files.
  *
  * @module @deepseek-ai/dsh-llm-claude-code
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import { access } from 'node:fs/promises'
+import { join, relative, sep } from 'node:path'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import type {} from '@deepseek-ai/dsh-authorization'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { clampTimeout, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -22,11 +31,21 @@ import {
   CLAUDE_CODE_LLM_PROVIDER_ID,
   ClaudeCodeLlmAdapter,
 } from './adapter.ts'
+import {
+  ACCOUNT_KEY,
+  accountEnv,
+  CONFIG_DIR_ENV,
+  CREDENTIALS_FILE,
+  defaultAccountsDir,
+  findAccount,
+  isAccountId,
+} from './account.ts'
 import { credentialEnv } from './credential.ts'
 import type { RateLimitReading } from './decoder.ts'
 import { defaultExecutable } from './executable.ts'
+import { claudeAccountFlow } from './login.ts'
 import type { ClaudeModelEntry } from './models.ts'
-import { RateLimitFile } from './rate-limit.ts'
+import { RateLimitFile, USAGE_FILE } from './rate-limit.ts'
 
 export {
   CLAUDE_CODE_DEFAULT_CONTEXT_WINDOW,
@@ -36,6 +55,20 @@ export {
   claudeArgv,
 } from './adapter.ts'
 export type { ClaudeCodeLlmAdapterOptions } from './adapter.ts'
+export {
+  ACCOUNT_KEY,
+  accountEnv,
+  accountId,
+  defaultAccountsDir,
+  extractAuthorizeUrl,
+  isPlausibleEmail,
+  normalizeEmail,
+  parseAccounts,
+  parseAuthStatus,
+} from './account.ts'
+export type { AccountEntry, AuthStatus } from './account.ts'
+export { readAccountUsage } from './rate-limit.ts'
+export type { AccountUsage } from './rate-limit.ts'
 export type { RateLimitReading, RateLimitWindow } from './decoder.ts'
 export { DEFAULT_CLAUDE_EXECUTABLE, defaultExecutable, locateExecutable } from './executable.ts'
 export { BUILTIN_MODELS, CLAUDE_EFFORTS } from './models.ts'
@@ -60,7 +93,18 @@ export interface Config {
   timeoutMs?: number
   /** Context window assumed for a model id the catalog does not list. Defaults to 200000. */
   defaultContextWindow?: number
-  /** Credential record key (e.g. `llm-pi-ai/anthropic`) whose token or key authenticates the child; unset uses Claude Code's own login. */
+  /** Root of the Claude Code config directories of the accounts signed in from DSH. Defaults to `<DSH home>/claude-code/accounts`. */
+  accountsDir?: string
+  /** Emails of the Claude accounts offered at sign-in; an edit applies to the next sign-in without a remount. */
+  accounts: Volatile<string[]>
+  /** Email of the account every call runs as, when it has signed in; an edit applies to the next call without a remount. */
+  activeAccount: Volatile<string | undefined>
+  /** Open the sign-in page in a private browser window (Chrome, Edge, or Firefox, when installed). Defaults to true. */
+  privateBrowser?: boolean
+  /**
+   * Credential record key (e.g. `llm-pi-ai/anthropic`) whose token or key authenticates the child
+   * when no signed-in account is active and usable; unset uses Claude Code's own login.
+   */
   credential?: string
   /** JSON file that receives the latest plan-usage reading (five-hour and seven-day windows) after each call; unset writes nothing. */
   rateLimitFile?: string
@@ -68,11 +112,18 @@ export interface Config {
   models?: ClaudeModelEntry[]
 }
 
-export const Config: z<Config> = z.object({
+/** Plain options accepted by the config schema; a live field takes its plain value. */
+export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? Exclude<T, undefined> : Exclude<Config[K], undefined> }
+
+export const Config = z.object({
   executable: z.string().min(1),
   nodeExecutable: z.string().min(1),
   timeoutMs: z.number().step(1).min(1),
   defaultContextWindow: z.number().step(1).min(1),
+  accountsDir: z.string().min(1),
+  accounts: z.array(z.string().min(1)).default([]).volatile(),
+  activeAccount: z.string().min(1).volatile(),
+  privateBrowser: z.boolean(),
   credential: z.string().min(1),
   rateLimitFile: z.string().min(1),
   models: z.array(z.object({
@@ -83,14 +134,19 @@ export const Config: z<Config> = z.object({
   })),
 })
 
-/** Build a per-call resolver that reads the record and warns once per distinct reason; it never throws. */
-function credentialResolver(ctx: Context, key: string): () => Promise<Record<string, string>> {
+/** Build a function that warns through the logger once per distinct reason. */
+function warnOnce(ctx: Context, subject: string): (reason: string) => void {
   const warned = new Set<string>()
-  const warn = (reason: string): void => {
+  return (reason) => {
     if (warned.has(reason)) return
     warned.add(reason)
-    ctx.logger.warn(`llm-claude-code: credential "${key}": ${reason}`)
+    ctx.logger.warn(`llm-claude-code: ${subject}: ${reason}`)
   }
+}
+
+/** Build a per-call resolver that reads the record and warns once per distinct reason; it never throws. */
+function credentialResolver(ctx: Context, key: string): () => Promise<Record<string, string>> {
+  const warn = warnOnce(ctx, `credential "${key}"`)
   return async () => {
     const credentials = ctx.get('credentials')
     if (credentials === undefined) {
@@ -108,28 +164,109 @@ function credentialResolver(ctx: Context, key: string): () => Promise<Record<str
   }
 }
 
+/**
+ * Build a per-call resolver for the active account. No active account is the
+ * ordinary case and stays silent; an active account that cannot be used (never
+ * signed in, files gone, no credentials service) warns once per distinct reason.
+ * The active email is read through its live reference on every call. It never throws.
+ */
+function accountResolver(
+  ctx: Context,
+  accountsDir: string,
+  active: Volatile<string | undefined>,
+): () => Promise<Record<string, string>> {
+  const warn = warnOnce(ctx, `accounts "${accountsDir}"`)
+  const fallBack = '; falling back to the credential option or Claude Code\'s own login'
+  return async () => {
+    const email = active.get()
+    if (email === undefined) return {}
+    const credentials = ctx.get('credentials')
+    if (credentials === undefined) {
+      warn(`active account ${email}: no credentials service is mounted${fallBack}`)
+      return {}
+    }
+    try {
+      const record = await credentials.readRecord(ACCOUNT_KEY)
+      const entry = findAccount(record, email)
+      const signedIn = entry !== undefined && await access(join(accountsDir, entry.id, CREDENTIALS_FILE)).then(() => true, () => false)
+      const result = accountEnv(record, accountsDir, email, signedIn)
+      if (result.warning !== undefined) warn(`${result.warning}${fallBack}`)
+      return result.env
+    } catch {
+      warn(`reading the account record failed${fallBack}`)
+      return {}
+    }
+  }
+}
+
 /** Build the observer that writes each run's plan-usage reading to `path`, warning once per distinct reason. */
 function rateLimitWriter(ctx: Context, path: string): (reading: RateLimitReading) => void {
-  const warned = new Set<string>()
-  const file = new RateLimitFile(path, (reason) => {
-    if (warned.has(reason)) return
-    warned.add(reason)
-    ctx.logger.warn(`llm-claude-code: rateLimitFile "${path}": ${reason}`)
-  })
+  const warn = warnOnce(ctx, `rateLimitFile "${path}"`)
+  const file = new RateLimitFile(path, warn)
   return (reading) => { void file.write(reading) }
+}
+
+/**
+ * Build the observer that keeps each account's own reading in `<account>/usage.json`. The account is the one the
+ * run started as, taken from the environment the run was given, so an account switch between calls cannot misfile it.
+ */
+function accountUsageWriter(
+  ctx: Context,
+  accountsDir: string,
+): (reading: RateLimitReading, env: Readonly<Record<string, string>>) => void {
+  const warn = warnOnce(ctx, `accounts "${accountsDir}"`)
+  const files = new Map<string, RateLimitFile>()
+  return (reading, env) => {
+    const directory = env[CONFIG_DIR_ENV]
+    if (directory === undefined) return
+    const id = relative(accountsDir, directory)
+    if (id.includes(sep) || !isAccountId(id)) return
+    const path = join(directory, USAGE_FILE)
+    let file = files.get(path)
+    if (file === undefined) {
+      file = new RateLimitFile(path, (reason) => { warn(`account ${id}: ${reason}`) })
+      files.set(path, file)
+    }
+    void file.write(reading)
+  }
 }
 
 /** Register the Claude Code adapter's provider route with `ctx.llm`. */
 export function apply(ctx: Context, config: Config): void {
+  const executable = config.executable ?? defaultExecutable()
+  const accountsDir = config.accountsDir ?? defaultAccountsDir(resolveDshHome())
+  const account = accountResolver(ctx, accountsDir, config.activeAccount)
+  const stored = config.credential === undefined ? undefined : credentialResolver(ctx, config.credential)
+  const global = config.rateLimitFile === undefined ? undefined : rateLimitWriter(ctx, config.rateLimitFile)
+  const perAccount = accountUsageWriter(ctx, accountsDir)
   const adapter = new ClaudeCodeLlmAdapter({
-    executable: config.executable ?? defaultExecutable(),
+    executable,
     ...config.nodeExecutable === undefined ? {} : { nodeExecutable: config.nodeExecutable },
     timeoutMs: clampTimeout(config.timeoutMs, CLAUDE_CODE_LLM_DEFAULT_TIMEOUT_MS, MAX_TIMER_DELAY_MS),
     defaultContextWindow: config.defaultContextWindow ?? CLAUDE_CODE_DEFAULT_CONTEXT_WINDOW,
     models: config.models ?? [],
-    ...config.credential === undefined ? {} : { resolveEnv: credentialResolver(ctx, config.credential) },
-    ...config.rateLimitFile === undefined ? {} : { onRateLimit: rateLimitWriter(ctx, config.rateLimitFile) },
+    // The active DSH-signed-in account wins; the stored credential is read only when it is not usable.
+    async resolveEnv() {
+      const env = await account()
+      return Object.keys(env).length > 0 || stored === undefined ? env : stored()
+    },
+    onRateLimit(reading, env) {
+      global?.(reading)
+      perAccount(reading, env)
+    },
     spawn: spec => ctx.subprocess.spawn(spec),
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_LLM_PROVIDER_ID], adapter)
+  // Scoped to the authorization seam: a composition without it has no surface to sign in from, and the rest of the plugin still works.
+  ctx.inject(['authorization'], (authorized) => {
+    authorized.authorization.registerFlow(claudeAccountFlow({
+      executable,
+      accountsDir,
+      knownAccounts: () => config.accounts.get(),
+      readRecord: async () => ctx.get('credentials')?.readRecord(ACCOUNT_KEY),
+      privateBrowser: config.privateBrowser ?? true,
+      spawn: spec => ctx.subprocess.spawn(spec),
+      warn: (message) => { ctx.logger.warn(`llm-claude-code: accounts "${accountsDir}": ${message}`) },
+    }))
+  })
 }

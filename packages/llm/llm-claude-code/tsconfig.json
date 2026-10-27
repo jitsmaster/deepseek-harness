@@ -18,7 +18,13 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../credentials/authorization"
+    },
+    {
       "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../util/home-paths"
     },
     {
       "path": "../../subprocess/subprocess"

@@ -7,7 +7,8 @@
  */
 
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
+import { isAccountId } from './account.ts'
 import type { RateLimitReading, RateLimitWindow } from './decoder.ts'
 
 function windowOf(value: unknown): RateLimitWindow | undefined {
@@ -29,6 +30,34 @@ async function readPrevious(path: string): Promise<RateLimitReading> {
     return { ...five === undefined ? {} : { fiveHour: five }, ...seven === undefined ? {} : { sevenDay: seven } }
   } catch {
     return {}
+  }
+}
+
+/** File name of the per-account reading inside an account's directory. */
+export const USAGE_FILE = 'usage.json'
+
+/** One account's latest plan-usage reading, as its `usage.json` holds it. */
+export interface AccountUsage extends RateLimitReading {
+  /** ISO timestamp of the write. */
+  updatedAt: string
+}
+
+/**
+ * Read the plan-usage reading kept for one account.
+ * @param accountsDir - the accounts root.
+ * @param id - an account id from the stored record.
+ * @returns the reading, or `undefined` for an unsafe id or an absent, unreadable, or malformed file.
+ */
+export async function readAccountUsage(accountsDir: string, id: string): Promise<AccountUsage | undefined> {
+  if (!isAccountId(id)) return undefined
+  const path = join(accountsDir, id, USAGE_FILE)
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path, 'utf8'))
+    if (typeof parsed !== 'object' || parsed === null) return undefined
+    const { updatedAt } = parsed as Record<string, unknown>
+    return typeof updatedAt === 'string' ? { updatedAt, ...await readPrevious(path) } : undefined
+  } catch {
+    return undefined
   }
 }
 

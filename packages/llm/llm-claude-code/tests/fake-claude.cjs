@@ -8,7 +8,8 @@
  */
 'use strict'
 
-const { appendFileSync, readdirSync, readFileSync } = require('node:fs')
+const { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } = require('node:fs')
+const { join } = require('node:path')
 
 const USAGE = { input_tokens: 3, cache_creation_input_tokens: 10, cache_read_input_tokens: 20, output_tokens: 7, output_tokens_details: { thinking_tokens: 2 } }
 
@@ -178,6 +179,86 @@ const scenarios = {
   },
 }
 
+/**
+ * `claude auth login|status`, selected by `$FAKE_CLAUDE_AUTH` (a scenario word):
+ * the login prints the page URL inside OSC 8 hyperlink sequences (so it appears
+ * twice, as the real binary prints it), asks for a code on stdin, and writes a
+ * fake credentials file into `$CLAUDE_CONFIG_DIR` before it exits.
+ */
+const AUTH_URL = 'https://claude.com/cai/oauth/authorize?code=true&client_id=fake&state=abc123'
+const FAKE_TOKEN = 'FAKE-SECRET-TOKEN-do-not-store'
+
+function authLog(entry) {
+  appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify(entry) + '\n')
+}
+
+function writeAccount(email) {
+  const dir = process.env.CLAUDE_CONFIG_DIR
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: FAKE_TOKEN } }))
+  writeFileSync(join(dir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: email } }))
+}
+
+function authLogin(scenario) {
+  const email = (process.argv.find(arg => arg.startsWith('--email=')) || '--email=user@example.com').slice('--email='.length)
+  const link = `\u001b]8;;${AUTH_URL}\u001b\\${AUTH_URL}\u001b]8;;\u001b\\`
+  if (scenario === 'nourl') {
+    process.stderr.write('Login failed: network unreachable\n')
+    process.exit(1)
+  }
+  process.stdout.write('Opening browser to sign in…\n')
+  // The URL arrives in two writes, split mid-URL, as a pipe may deliver it.
+  const half = Math.floor(link.length / 2)
+  process.stdout.write(`If the browser didn't open, visit: ${link.slice(0, half)}`)
+  setTimeout(() => {
+    process.stdout.write(`${link.slice(half)}\n`)
+    process.stdout.write('Paste code here if prompted > ')
+    authLog({ authLogin: process.argv.slice(3), configDir: process.env.CLAUDE_CONFIG_DIR, pid: process.pid, anthropicApiKey: process.env.ANTHROPIC_API_KEY, browser: process.env.BROWSER })
+    if (scenario === 'never') return setInterval(() => {}, 1000)
+    if (scenario === 'self') {
+      // The browser completed the login: no code is ever read.
+      return setTimeout(() => { writeAccount(email); process.exit(0) }, 150)
+    }
+    let pasted = ''
+    process.stdin.setEncoding('utf8')
+    process.stdin.on('data', (chunk) => {
+      pasted += chunk
+      if (!pasted.includes('\n')) return
+      authLog({ code: pasted.trim() })
+      if (scenario === 'fail') {
+        process.stderr.write(`Invalid code ${pasted.trim()}\n`)
+        process.exit(1)
+      }
+      if (scenario !== 'nocreds') writeAccount(email)
+      process.exit(0)
+    })
+  }, 30)
+}
+
+function authStatus(scenario) {
+  const dir = process.env.CLAUDE_CONFIG_DIR
+  authLog({ authStatus: process.argv.slice(3), configDir: dir })
+  const signedIn = scenario !== 'loggedout' && existsSync(join(dir, '.credentials.json'))
+  let email = 'user@example.com'
+  try { email = JSON.parse(readFileSync(join(dir, '.claude.json'), 'utf8')).oauthAccount.emailAddress } catch {}
+  if (scenario === 'otheremail') email = 'someone-else@example.com'
+  if (scenario === 'garbage') {
+    process.stdout.write('not json at all\n')
+    return
+  }
+  process.stdout.write(`${JSON.stringify(signedIn
+    ? { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', email, orgName: 'Example Org', subscriptionType: 'max' }
+    : { loggedIn: false, authMethod: 'none', apiProvider: 'firstParty' }, null, 2)}\n`)
+  process.exitCode = signedIn ? 0 : 1
+}
+
+if (process.argv[2] === 'auth') {
+  const scenario = process.env.FAKE_CLAUDE_AUTH || 'ok'
+  if (process.argv[3] === 'login') authLogin(scenario)
+  else authStatus(scenario)
+  return
+}
+
 let stdin = ''
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', (chunk) => { stdin += chunk })
@@ -192,6 +273,7 @@ process.stdin.on('end', () => {
     maxOutputTokens: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
     oauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
     apiKey: process.env.ANTHROPIC_API_KEY,
+    configDir: process.env.CLAUDE_CONFIG_DIR,
   }) + '\n')
   const word = /scenario:(\w+)/.exec(stdin)?.[1] ?? 'text'
   scenarios[word]()

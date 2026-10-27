@@ -90,8 +90,11 @@ export interface ClaudeCodeLlmAdapterOptions {
   models: readonly ClaudeModelEntry[]
   /** Extra child environment resolved per call (e.g. a stored credential); must not throw. */
   resolveEnv?(): Promise<Record<string, string>>
-  /** Receives the run's plan-usage reading (at most once per run, when Claude reported one); errors are swallowed. */
-  onRateLimit?(reading: RateLimitReading): void
+  /**
+   * Receives the run's plan-usage reading and the extra environment the run started with
+   * (at most once per run, when Claude reported one); errors are swallowed.
+   */
+  onRateLimit?(reading: RateLimitReading, env: Readonly<Record<string, string>>): void
   /** Subprocess seam spawn. */
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle
 }
@@ -291,7 +294,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       if (reported || decoder.rateLimit === undefined) return
       reported = true
       try {
-        this.options.onRateLimit?.(decoder.rateLimit)
+        this.options.onRateLimit?.(decoder.rateLimit, extraEnv)
       } catch {
         // A usage observer must never fail the call.
       }

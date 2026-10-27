@@ -1876,7 +1876,8 @@ export interface Config {
 ## `@deepseek-ai/dsh-llm-claude-code`
 
 - `inject`: `llm` · `subprocess`
-- `source`: [`packages/llm/llm-claude-code/src/index.ts:54`](../packages/llm/llm-claude-code/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/llm/llm-claude-code/src/index.ts:87`](../packages/llm/llm-claude-code/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config (all optional — `apply` fills the defaults). */
@@ -1889,7 +1890,18 @@ export interface Config {
   timeoutMs?: number
   /** Context window assumed for a model id the catalog does not list. Defaults to 200000. */
   defaultContextWindow?: number
-  /** Credential record key (e.g. `llm-pi-ai/anthropic`) whose token or key authenticates the child; unset uses Claude Code's own login. */
+  /** Root of the Claude Code config directories of the accounts signed in from DSH. Defaults to `<DSH home>/claude-code/accounts`. */
+  accountsDir?: string
+  /** Emails of the Claude accounts offered at sign-in; an edit applies to the next sign-in without a remount. */
+  accounts: Volatile<string[]>
+  /** Email of the account every call runs as, when it has signed in; an edit applies to the next call without a remount. */
+  activeAccount: Volatile<string | undefined>
+  /** Open the sign-in page in a private browser window (Chrome, Edge, or Firefox, when installed). Defaults to true. */
+  privateBrowser?: boolean
+  /**
+   * Credential record key (e.g. `llm-pi-ai/anthropic`) whose token or key authenticates the child
+   * when no signed-in account is active and usable; unset uses Claude Code's own login.
+   */
   credential?: string
   /** JSON file that receives the latest plan-usage reading (five-hour and seven-day windows) after each call; unset writes nothing. */
   rateLimitFile?: string

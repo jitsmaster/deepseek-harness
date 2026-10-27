@@ -5,12 +5,15 @@
  * `$env:DSH_CLAUDE_CODE_E2E='1'; npx vitest run --config <e2e config> packages/llm/llm-claude-code/tests/claude-code.e2e.ts`
  */
 import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createAssistantMessage, createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk, ToolSchema } from '@deepseek-ai/dsh-llm'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import { ClaudeCodeLlmAdapter, defaultExecutable, locateExecutable } from '../src/index.ts'
+import { ClaudeCodeLlmAdapter, defaultExecutable, locateExecutable, parseAuthStatus } from '../src/index.ts'
 
 const EXECUTABLE = process.env.DSH_CLAUDE_CODE_EXECUTABLE ?? defaultExecutable()
 const ENABLED = process.env.DSH_CLAUDE_CODE_E2E === '1' && locateExecutable(EXECUTABLE) !== undefined
@@ -110,4 +113,32 @@ describe.skipIf(!ENABLED)('real claude LLM adapter', () => {
       expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
     })
   }, 150_000)
+})
+
+describe.skipIf(!ENABLED)('real claude auth status', () => {
+  it('reports not signed in for an empty config directory, without using quota or a browser', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LocalSubprocessRuntime)
+    const directory = mkdtempSync(join(tmpdir(), 'dsh-claude-auth-e2e-'))
+    try {
+      // Only `auth status` runs here: the real `auth login` opens a browser and is never started by a test.
+      const child = ctx.subprocess.spawn({
+        argv: [locateExecutable(EXECUTABLE) as string, 'auth', 'status', '--json'],
+        cwd: directory,
+        stdio: { stdin: 'ignore', stdout: { maxBytes: 65_536 }, stderr: { maxBytes: 8_192 } },
+        graceMs: 2_000,
+        env: {
+          CLAUDE_CONFIG_DIR: directory,
+          ANTHROPIC_API_KEY: undefined,
+          ANTHROPIC_AUTH_TOKEN: undefined,
+          CLAUDE_CODE_OAUTH_TOKEN: undefined,
+        },
+      })
+      await child.done
+      expect(parseAuthStatus(child.collected.stdout?.readFrom(0).text ?? '')).toMatchObject({ loggedIn: false })
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }, 60_000)
 })

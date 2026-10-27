@@ -1,13 +1,17 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { updateVolatile } from '@deepseek-ai/cosmokit'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import type { AuthorizationFlow } from '@deepseek-ai/dsh-authorization'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as claudeCodePlugin from '../src/index.ts'
+import { readAccountUsage } from '../src/index.ts'
 import { CLAUDE_CODE_LLM_PROVIDER_ID, DEFAULT_CLAUDE_EXECUTABLE, defaultExecutable } from '../src/index.ts'
+import { ACCOUNT_KEY, accountId, accountsRecord } from '../src/account.ts'
 import { FakeClaudeSubprocess, readRuns } from './harness.ts'
 
 let ctx: Context | undefined
@@ -17,7 +21,16 @@ afterEach(async () => {
   ctx = undefined
 })
 
-async function mount(config: claudeCodePlugin.Config = { executable: process.execPath }): Promise<Context> {
+/** Stream one call whose prompt names the fake claude's scenario to completion. */
+async function runScenario(root: Context, scenario: string): Promise<void> {
+  for await (const chunk of root.llm.stream({
+    provider: 'claude-code',
+    model: 'sonnet',
+    messages: [createUserMessage({ content: [{ type: 'text', text: `hi scenario:${scenario}` }], source: { kind: 'user' } })],
+  })) void chunk
+}
+
+async function mount(config: claudeCodePlugin.Options = { executable: process.execPath }): Promise<Context> {
   const root = new Context()
   ctx = root
   await root.plugin(FakeClaudeSubprocess)
@@ -47,6 +60,11 @@ describe('llm-claude-code plugin shape', () => {
     expect(() => claudeCodePlugin.Config({ executable: 'claude', nodeExecutable: 'node', timeoutMs: 5000, defaultContextWindow: 100_000, models: [{ id: 'm', name: 'M', contextWindow: 1000, description: 'd' }] })).not.toThrow()
     expect(() => claudeCodePlugin.Config({ credential: 'llm-pi-ai/anthropic' })).not.toThrow()
     expect(() => claudeCodePlugin.Config({ credential: '' })).toThrow()
+    expect(() => claudeCodePlugin.Config({ accountsDir: 'C:\\claude-accounts', accounts: ['a@x.com'], activeAccount: 'a@x.com', privateBrowser: false })).not.toThrow()
+    expect(() => claudeCodePlugin.Config({ accountsDir: '' })).toThrow()
+    expect(() => claudeCodePlugin.Config({ accounts: [''] })).toThrow()
+    expect(() => claudeCodePlugin.Config({ activeAccount: '' })).toThrow()
+    expect(() => claudeCodePlugin.Config({ privateBrowser: 'no' } as never)).toThrow()
     expect(() => claudeCodePlugin.Config({ timeoutMs: 0 })).toThrow()
     expect(() => claudeCodePlugin.Config({ models: [{ id: '', name: 'x' }] })).toThrow()
   })
@@ -134,14 +152,6 @@ describe('llm-claude-code rateLimitFile', () => {
     scratch = undefined
   })
 
-  async function runScenario(root: Context, scenario: string): Promise<void> {
-    for await (const chunk of root.llm.stream({
-      provider: 'claude-code',
-      model: 'sonnet',
-      messages: [createUserMessage({ content: [{ type: 'text', text: `hi scenario:${scenario}` }], source: { kind: 'user' } })],
-    })) void chunk
-  }
-
   async function waitForFile(path: string): Promise<Record<string, unknown>> {
     const deadline = Date.now() + 10_000
     while (Date.now() < deadline) {
@@ -218,12 +228,13 @@ describe('llm-claude-code stored credential', () => {
     for await (const chunk of root.llm.stream(user())) void chunk
   }
 
+  // The account record is a different key: nobody has signed in from DSH here.
   function fakeCredentials(read: (key: string) => Promise<unknown>): void {
-    ctx?.provide('credentials', { readRecord: read } as never)
+    ctx?.provide('credentials', { readRecord: (key: string) => key === ACCOUNT_KEY ? Promise.resolve(undefined) : read(key) } as never)
   }
 
   async function mountWith(
-    config: claudeCodePlugin.Config,
+    config: claudeCodePlugin.Options,
     read?: (key: string) => Promise<unknown>,
   ): Promise<{ root: Context; warnings: string[] }> {
     FakeClaudeSubprocess.logPath = join(tmpdir(), `dsh-llm-claude-cred-${process.pid}-${Date.now()}.jsonl`)
@@ -281,4 +292,192 @@ describe('llm-claude-code stored credential', () => {
     expect(broken.warnings).toHaveLength(1)
     expect(broken.warnings[0]).not.toContain('sk-ant-oat-fake')
   }, 30_000)
+})
+
+describe('llm-claude-code signed-in accounts', () => {
+  const CREDENTIAL_KEY = 'llm-pi-ai/anthropic'
+  const grant = (): unknown => ({ kind: 'grant', payload: { type: 'oauth', access: 'sk-ant-oat-fake', expires: Date.now() + 3_600_000 } })
+  const entry = (email: string): { id: string; email: string; signedInAt: string } => ({ id: accountId(email), email, signedInAt: '2026-10-27T10:00:00.000Z' })
+  let scratch: string | undefined
+
+  afterEach(() => {
+    if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true })
+    scratch = undefined
+    rmSync(FakeClaudeSubprocess.logPath, { force: true })
+  })
+
+  /** An accounts root; each given email gets its directory, signed in (credentials file present) unless listed in `bare`. */
+  function accountsRoot(emails: string[], bare: string[] = []): string {
+    scratch = mkdtempSync(join(tmpdir(), 'dsh-llm-claude-accts-'))
+    const root = join(scratch, 'accounts')
+    for (const email of emails) {
+      mkdirSync(join(root, accountId(email)), { recursive: true })
+      if (!bare.includes(email)) writeFileSync(join(root, accountId(email), '.credentials.json'), 'FAKE')
+    }
+    return root
+  }
+
+  async function mountWith(
+    config: claudeCodePlugin.Options,
+    read: (key: string) => Promise<unknown>,
+  ): Promise<{ root: Context; warnings: string[] }> {
+    FakeClaudeSubprocess.logPath = join(tmpdir(), `dsh-llm-claude-accts-${process.pid}-${Date.now()}.jsonl`)
+    const root = new Context()
+    ctx = root
+    const warnings: string[] = []
+    root.logger.warn = ((...args: unknown[]) => { warnings.push(args.join(' ')) }) as never
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    root.provide('credentials', { readRecord: read } as never)
+    await root.plugin(claudeCodePlugin, config)
+    return { root, warnings }
+  }
+
+  const run = (root: Context, scenario = 'text'): Promise<void> => runScenario(root, scenario)
+
+  const twoAccounts = (key: string): Promise<unknown> => Promise.resolve(
+    key === ACCOUNT_KEY ? accountsRecord([entry('a@x.com'), entry('b@x.com')]) : grant(),
+  )
+
+  it('points every call at the active account directory, ahead of a usable stored credential', async () => {
+    const dir = accountsRoot(['a@x.com', 'b@x.com'])
+    const keys: string[] = []
+    const { root, warnings } = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'A@x.com', credential: CREDENTIAL_KEY }, (key) => {
+      keys.push(key)
+      return twoAccounts(key)
+    })
+    await run(root)
+    await run(root)
+    expect(readRuns().map(r => [r.configDir, r.oauthToken])).toEqual([[join(dir, accountId('a@x.com')), undefined], [join(dir, accountId('a@x.com')), undefined]])
+    expect(keys).not.toContain(CREDENTIAL_KEY)
+    expect(warnings).toEqual([])
+  }, 30_000)
+
+  it('switches account between calls when the live activeAccount changes, without a remount', async () => {
+    const dir = accountsRoot(['a@x.com', 'b@x.com'])
+    FakeClaudeSubprocess.logPath = join(tmpdir(), `dsh-llm-claude-accts-${process.pid}-live.jsonl`)
+    const root = new Context()
+    ctx = root
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    root.provide('credentials', { readRecord: twoAccounts } as never)
+    const config = claudeCodePlugin.Config({ executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com' }) as claudeCodePlugin.Config
+    claudeCodePlugin.apply(root, config)
+    await run(root)
+    // The Loader commits a settings edit by updating the live reference in place.
+    const edit = (options: claudeCodePlugin.Options): void => {
+      updateVolatile(config.activeAccount, (claudeCodePlugin.Config(options) as claudeCodePlugin.Config).activeAccount)
+    }
+    edit({ activeAccount: 'B@x.com' })
+    await run(root)
+    edit({})
+    await run(root)
+    expect(readRuns().map(r => r.configDir)).toEqual([join(dir, accountId('a@x.com')), join(dir, accountId('b@x.com')), undefined])
+  }, 30_000)
+
+  it('falls back to the stored credential, then to Claude Code\'s own login, with one warning per reason', async () => {
+    const dir = accountsRoot(['a@x.com'], ['a@x.com'])
+    const withCredential = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com', credential: CREDENTIAL_KEY }, twoAccounts)
+    await run(withCredential.root)
+    await run(withCredential.root)
+    expect(readRuns().map(r => [r.configDir, r.oauthToken])).toEqual([[undefined, 'sk-ant-oat-fake'], [undefined, 'sk-ant-oat-fake']])
+    expect(withCredential.warnings).toHaveLength(1)
+    expect(withCredential.warnings[0]).toContain('no Claude Code credentials')
+    await ctx?.fiber.dispose()
+    const alone = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com' }, twoAccounts)
+    await run(alone.root)
+    await run(alone.root)
+    expect(readRuns().map(r => [r.configDir, r.oauthToken])).toEqual([[undefined, undefined], [undefined, undefined]])
+    expect(alone.warnings).toHaveLength(1)
+  }, 30_000)
+
+  it('warns once when the active account never signed in, and never leaks another record shape', async () => {
+    const dir = accountsRoot(['a@x.com'])
+    const unknown = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'nobody@x.com' }, twoAccounts)
+    await run(unknown.root)
+    await run(unknown.root)
+    expect(readRuns().map(r => r.configDir)).toEqual([undefined, undefined])
+    expect(unknown.warnings).toHaveLength(1)
+    expect(unknown.warnings[0]).toContain('has not signed in')
+    await ctx?.fiber.dispose()
+    const wrong = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com' }, () => Promise.resolve({ kind: 'api-key', key: 'sk-ant-leak' }))
+    await run(wrong.root)
+    expect(wrong.warnings).toHaveLength(1)
+    expect(wrong.warnings[0]).not.toContain('sk-ant-leak')
+  }, 30_000)
+
+  it('stays silent with no active account, and survives a failing read or a missing credentials service', async () => {
+    const dir = accountsRoot(['a@x.com'])
+    const silent = await mountWith({ executable: process.execPath, accountsDir: dir }, twoAccounts)
+    await run(silent.root)
+    expect(readRuns()[0]?.configDir).toBeUndefined()
+    expect(silent.warnings).toEqual([])
+    await ctx?.fiber.dispose()
+    const broken = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com' }, () => Promise.reject(new Error('boom')))
+    await run(broken.root)
+    await run(broken.root)
+    expect(readRuns().map(r => r.configDir)).toEqual([undefined, undefined])
+    expect(broken.warnings).toHaveLength(1)
+    await ctx?.fiber.dispose()
+    const root = new Context()
+    ctx = root
+    const warnings: string[] = []
+    root.logger.warn = ((...args: unknown[]) => { warnings.push(args.join(' ')) }) as never
+    FakeClaudeSubprocess.logPath = join(tmpdir(), `dsh-llm-claude-accts-${process.pid}-nosvc.jsonl`)
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    await root.plugin(claudeCodePlugin, { executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com' })
+    await run(root)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('no credentials service')
+  }, 30_000)
+
+  it('keeps each account\'s own usage reading beside its files, and the shared file as before', async () => {
+    const dir = accountsRoot(['a@x.com', 'b@x.com'])
+    const shared = join(scratch as string, 'shared.json')
+    const { root } = await mountWith({ executable: process.execPath, accountsDir: dir, activeAccount: 'a@x.com', rateLimitFile: shared }, twoAccounts)
+    await run(root, 'ratelimited')
+    const usage = await waitForUsage(join(dir, accountId('a@x.com'), 'usage.json'))
+    expect(usage).toMatchObject({
+      fiveHour: { utilization: 0.25, resetsAt: 1793134800 },
+      sevenDay: { utilization: 0.5, resetsAt: 1793232000 },
+    })
+    expect(typeof usage.updatedAt).toBe('string')
+    expect(JSON.stringify(usage)).not.toContain('FAKE')
+    expect(existsSync(join(dir, accountId('b@x.com'), 'usage.json'))).toBe(false)
+    expect(await readAccountUsage(dir, accountId('a@x.com'))).toMatchObject({ fiveHour: { utilization: 0.25 }, sevenDay: { utilization: 0.5 } })
+    expect(await readAccountUsage(dir, accountId('b@x.com'))).toBeUndefined()
+    expect(await readAccountUsage(dir, '../escape')).toBeUndefined()
+    await waitForUsage(shared)
+  }, 30_000)
+
+  it('writes no per-account reading for a call that ran on Claude Code\'s own login', async () => {
+    const dir = accountsRoot(['a@x.com'])
+    const { root } = await mountWith({ executable: process.execPath, accountsDir: dir }, twoAccounts)
+    await run(root, 'ratelimited')
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(existsSync(join(dir, accountId('a@x.com'), 'usage.json'))).toBe(false)
+  }, 30_000)
+
+  it('registers the sign-in flow once the authorization seam appears, and loads without it', async () => {
+    const root = await mount()
+    const flows: AuthorizationFlow[] = []
+    expect(flows).toEqual([])
+    root.provide('authorization', { registerFlow: (flow: AuthorizationFlow) => { flows.push(flow); return () => undefined } } as never)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(flows).toHaveLength(1)
+    expect(flows[0]).toMatchObject({ key: ACCOUNT_KEY, label: 'Claude (Claude Code)', methods: [{ id: 'oauth', label: 'Sign in with Claude' }] })
+  })
+
+  async function waitForUsage(path: string): Promise<Record<string, unknown>> {
+    const limit = Date.now() + 10_000
+    while (Date.now() < limit) {
+      try {
+        return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    }
+    throw new Error(`${path} never appeared`)
+  }
 })
