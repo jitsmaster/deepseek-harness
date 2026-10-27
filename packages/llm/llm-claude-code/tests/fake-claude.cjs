@@ -152,6 +152,8 @@ process.stdin.on('end', () => {
     files: { system: read('system.txt'), tools: read('tools.json'), mcp: read('mcp.json') },
     stdin,
     maxOutputTokens: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+    oauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    apiKey: process.env.ANTHROPIC_API_KEY,
   }) + '\n')
   const word = /scenario:(\w+)/.exec(stdin)?.[1] ?? 'text'
   scenarios[word]()

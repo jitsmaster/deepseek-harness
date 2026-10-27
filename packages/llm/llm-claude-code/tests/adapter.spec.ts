@@ -145,6 +145,33 @@ describe('ClaudeCodeLlmAdapter text answer', () => {
     expect(readRuns().at(-1)?.maxOutputTokens).toBeUndefined()
   }, 30_000)
 
+  it('passes nothing extra when no env resolver is configured', async () => {
+    await collect(makeAdapter(), request('text'))
+    const run = firstRun()
+    expect(run.oauthToken).toBeUndefined()
+    expect(run.apiKey).toBeUndefined()
+    expect(FakeClaudeSubprocess.spawned[0]?.env).toBeUndefined()
+  }, 30_000)
+
+  it('merges the resolved env into the child env beside the output-token cap, resolving per call', async () => {
+    let calls = 0
+    const adapter = makeAdapter({
+      resolveEnv: () => Promise.resolve({ CLAUDE_CODE_OAUTH_TOKEN: `sk-ant-oat-fake-${++calls}` }),
+    })
+    await collect(adapter, request('text', { maxTokens: 512 }))
+    await collect(adapter, request('text'))
+    const [first, second] = readRuns()
+    expect(first).toMatchObject({ oauthToken: 'sk-ant-oat-fake-1', maxOutputTokens: '512' })
+    expect(second).toMatchObject({ oauthToken: 'sk-ant-oat-fake-2' })
+    expect(second?.maxOutputTokens).toBeUndefined()
+    expect(FakeClaudeSubprocess.spawned[0]?.env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat-fake-1', CLAUDE_CODE_MAX_OUTPUT_TOKENS: '512' })
+  }, 30_000)
+
+  it('passes an api key through ANTHROPIC_API_KEY', async () => {
+    await collect(makeAdapter({ resolveEnv: () => Promise.resolve({ ANTHROPIC_API_KEY: 'sk-ant-fake' }) }), request('text'))
+    expect(firstRun().apiKey).toBe('sk-ant-fake')
+  }, 30_000)
+
   it('uses the same tool-free path for compaction and title requests', async () => {
     await collect(makeAdapter(), request('text', { purpose: 'compaction' }))
     await collect(makeAdapter(), request('text', { purpose: 'session-title' }))

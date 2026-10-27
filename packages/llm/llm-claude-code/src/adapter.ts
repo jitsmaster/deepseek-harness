@@ -85,6 +85,8 @@ export interface ClaudeCodeLlmAdapterOptions {
   defaultContextWindow: number
   /** Configured models layered over the built-in catalog. */
   models: readonly ClaudeModelEntry[]
+  /** Extra child environment resolved per call (e.g. a stored credential); must not throw. */
+  resolveEnv?(): Promise<Record<string, string>>
   /** Subprocess seam spawn. */
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle
 }
@@ -258,6 +260,8 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       }))
     }
 
+    const extraEnv = await this.options.resolveEnv?.() ?? {}
+    const env = { ...extraEnv, ...options.maxTokens === undefined ? {} : { [MAX_OUTPUT_TOKENS_ENV]: String(options.maxTokens) } }
     let child: SubprocessHandle
     try {
       child = this.options.spawn({
@@ -266,7 +270,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
         stdio: { stdin: { data: renderTranscript(options.messages) }, stdout: 'pipe', stderr: { maxBytes: STDERR_TAIL_BYTES } },
         graceMs: TERMINATION_GRACE_MS,
         signal,
-        ...options.maxTokens === undefined ? {} : { env: { [MAX_OUTPUT_TOKENS_ENV]: String(options.maxTokens) } },
+        ...Object.keys(env).length === 0 ? {} : { env },
       })
     } catch (error: unknown) {
       throw new LlmError(`Claude Code could not start: ${errorText(error)}`, PROVIDER_UNAVAILABLE_CODE, { cause: error })

@@ -8,7 +8,7 @@ import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as claudeCodePlugin from '../src/index.ts'
 import { CLAUDE_CODE_LLM_PROVIDER_ID, DEFAULT_CLAUDE_EXECUTABLE, defaultExecutable } from '../src/index.ts'
-import { FakeClaudeSubprocess } from './harness.ts'
+import { FakeClaudeSubprocess, readRuns } from './harness.ts'
 
 let ctx: Context | undefined
 
@@ -45,6 +45,8 @@ describe('llm-claude-code plugin shape', () => {
   it('accepts an empty config and validates the optional fields', () => {
     expect(() => claudeCodePlugin.Config({})).not.toThrow()
     expect(() => claudeCodePlugin.Config({ executable: 'claude', nodeExecutable: 'node', timeoutMs: 5000, defaultContextWindow: 100_000, models: [{ id: 'm', name: 'M', contextWindow: 1000, description: 'd' }] })).not.toThrow()
+    expect(() => claudeCodePlugin.Config({ credential: 'llm-pi-ai/anthropic' })).not.toThrow()
+    expect(() => claudeCodePlugin.Config({ credential: '' })).toThrow()
     expect(() => claudeCodePlugin.Config({ timeoutMs: 0 })).toThrow()
     expect(() => claudeCodePlugin.Config({ models: [{ id: '', name: 'x' }] })).toThrow()
   })
@@ -121,5 +123,82 @@ describe('llm-claude-code registration', () => {
     expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
     expect(chunks.some(chunk => chunk.type === 'text-delta')).toBe(true)
     rmSync(FakeClaudeSubprocess.logPath, { force: true })
+  }, 30_000)
+})
+
+describe('llm-claude-code stored credential', () => {
+  const KEY = 'llm-pi-ai/anthropic'
+  const user = (): Parameters<Context['llm']['stream']>[0] => ({
+    provider: 'claude-code',
+    model: 'sonnet',
+    messages: [createUserMessage({ content: [{ type: 'text', text: 'hi scenario:text' }], source: { kind: 'user' } })],
+  })
+
+  async function run(root: Context): Promise<void> {
+    for await (const chunk of root.llm.stream(user())) void chunk
+  }
+
+  function fakeCredentials(read: (key: string) => Promise<unknown>): void {
+    ctx?.provide('credentials', { readRecord: read } as never)
+  }
+
+  async function mountWith(
+    config: claudeCodePlugin.Config,
+    read?: (key: string) => Promise<unknown>,
+  ): Promise<{ root: Context; warnings: string[] }> {
+    FakeClaudeSubprocess.logPath = join(tmpdir(), `dsh-llm-claude-cred-${process.pid}-${Date.now()}.jsonl`)
+    const root = new Context()
+    ctx = root
+    const warnings: string[] = []
+    root.logger.warn = ((...args: unknown[]) => { warnings.push(args.join(' ')) }) as never
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    if (read !== undefined) fakeCredentials(read)
+    await root.plugin(claudeCodePlugin, config)
+    return { root, warnings }
+  }
+
+  afterEach(() => { rmSync(FakeClaudeSubprocess.logPath, { force: true }) })
+
+  it('loads and runs with no credentials service while credential is unset', async () => {
+    const { root, warnings } = await mountWith({ executable: process.execPath })
+    await run(root)
+    expect(readRuns()[0]?.oauthToken).toBeUndefined()
+    expect(warnings).toEqual([])
+  }, 30_000)
+
+  it('hands the access token of a fresh grant to the child, read per call', async () => {
+    let n = 0
+    const { root, warnings } = await mountWith({ executable: process.execPath, credential: KEY }, (key) => {
+      expect(key).toBe(KEY)
+      return Promise.resolve({ kind: 'grant', payload: { type: 'oauth', access: `sk-ant-oat-fake-${++n}`, refresh: 'refresh-fake', expires: Date.now() + 3_600_000 } })
+    })
+    await run(root)
+    await run(root)
+    expect(readRuns().map(r => r.oauthToken)).toEqual(['sk-ant-oat-fake-1', 'sk-ant-oat-fake-2'])
+    expect(warnings).toEqual([])
+  }, 30_000)
+
+  it('falls back with one secret-free warning per reason when the grant is expired', async () => {
+    const { root, warnings } = await mountWith({ executable: process.execPath, credential: KEY }, () => Promise.resolve({ kind: 'grant', payload: { type: 'oauth', access: 'sk-ant-oat-fake', expires: Date.now() - 1 } }))
+    await run(root)
+    await run(root)
+    expect(readRuns().map(r => r.oauthToken)).toEqual([undefined, undefined])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('stored grant expired')
+    expect(warnings[0]).not.toContain('sk-ant-oat-fake')
+  }, 30_000)
+
+  it('falls back when no credentials service is mounted or the read throws', async () => {
+    const missing = await mountWith({ executable: process.execPath, credential: KEY })
+    await run(missing.root)
+    expect(missing.warnings).toHaveLength(1)
+    await ctx?.fiber.dispose()
+    const broken = await mountWith({ executable: process.execPath, credential: KEY }, () => Promise.reject(new Error('boom sk-ant-oat-fake')))
+    await run(broken.root)
+    await run(broken.root)
+    expect(readRuns().map(r => r.oauthToken)).toEqual([undefined, undefined])
+    expect(broken.warnings).toHaveLength(1)
+    expect(broken.warnings[0]).not.toContain('sk-ant-oat-fake')
   }, 30_000)
 })

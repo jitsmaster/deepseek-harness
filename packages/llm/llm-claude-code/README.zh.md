@@ -43,6 +43,7 @@ kind: "package-reference"
 | `nodeExecutable` | harness 自身的 Node | 运行工具 schema MCP 桩的 Node 可执行文件 |
 | `timeoutMs` | `1800000` | 单次调用的整体期限 |
 | `defaultContextWindow` | `200000` | 目录中未列出的模型 id 所假定的上下文窗口 |
+| `credential` | （未设置） | 凭据记录键（例如 `llm-pi-ai/anthropic`），其保存的访问令牌或 API 密钥用于认证 `claude` 子进程；未设置时 Claude Code 使用它自己的登录 |
 | `models` | （无） | 追加到内置目录或覆盖其条目的 `{ id, name, contextWindow?, description? }` |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-llm-claude-code)是所有可接受字段及其 JSDoc 的完整来源。
@@ -58,6 +59,12 @@ kind: "package-reference"
 对话由 DSH 持有，所以运行是无状态的：历史被写成 `<conversation>` 转录（`<user>`、含 `<tool_call>` 元素的 `<assistant>`、`<tool_result>`、`<developer>`），DSH 系统提示词前面加一段说明该约定的简短文字，作为 `system.txt`。消息文本会被转义，内容无法伪造转录元素；更早轮次的推理内容会被省略。
 
 工具通过用 `node -e` 启动的 stdio MCP 桩提供给 Claude，该桩的 `tools/call` 永远不应答，因此 Claude 只能发出调用而无法执行。Claude 看到的每个工具名为 `mcp__dsh__<name>`；不符合 Claude 64 字符规则的名称会得到确定性的安全别名，并在返回时映射回来。一旦某条消息以 `tool_use` 结束，适配器立即发出 usage 和 `tool-calls` 结束事件并终止进程，不再等待 Claude 的下一轮。
+
+### 使用已保存的 DSH 凭据认证
+
+将 `credential` 设为凭据记录键（例如 `llm-pi-ai/anthropic`），即可让 Claude Code 使用 DSH 已保存的 Anthropic 凭据运行。每次启动子进程前，适配器通过可选的凭据服务读取该记录。剩余有效期超过 60 秒的 pi-ai OAuth 授权，只会把**访问令牌**以 `CLAUDE_CODE_OAUTH_TOKEN` 交给子进程；`api-key` 记录则以 `ANTHROPIC_API_KEY` 交出其密钥。刷新令牌从不共享，因为 Claude Code 刷新会轮换它，并使 DSH 保存的副本失效。
+
+此路由从不刷新授权。授权已过期、格式错误或缺失，未挂载凭据服务，或读取失败时，调用不会失败：子进程不带额外环境启动，使用 Claude Code 自己的登录，并且每种不同原因只记录一条警告（绝不含密钥）。`llm-pi-ai` 路由关闭期间没有任何一方刷新令牌，因此授权约 6 小时后会过期，此路由随即回退到 Claude Code 自己的登录。
 
 ### 失败与恢复
 
@@ -89,6 +96,7 @@ kind: "package-reference"
 | [`src/names.ts`](src/names.ts) | `mcp__dsh__` 前缀和安全的工具名别名 |
 | [`src/stub.ts`](src/stub.ts) | 永不应答的 MCP 桩的内联源码 |
 | [`src/models.ts`](src/models.ts) | 内置模型目录和强度 |
+| [`src/credential.ts`](src/credential.ts) | 已保存凭据记录到子进程环境的映射 |
 | [`src/executable.ts`](src/executable.ts) | 同步的可执行文件查找 |
 
 ### 运行流程
@@ -148,7 +156,7 @@ Claude 的文本、非空思考和 `tool_use` 块按首次发出的顺序变成 
 
 - **仅文本输入** — 该路由不声明图片输入；图片和文件以文本形式到达。
 - **没有 `temperature` 或 `stop`** — `claude -p` 两者都不提供，因此这些请求字段被忽略；`maxTokens` 仅通过 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` 生效。
-- **依赖用户的 `claude` 可执行文件和登录** — 登录缺失或过期时，调用以 `AUTH` 失败。子进程接缝会清除形似凭据的环境变量，因此只使用 Claude Code 保存在磁盘上的登录。
+- **依赖用户的 `claude` 可执行文件和登录** — 登录缺失或过期时，调用以 `AUTH` 失败。子进程接缝会清除形似凭据的环境变量，因此只使用 Claude Code 保存在磁盘上的登录，或由 `credential` 选定的已保存凭据。
 - **受订阅速率限制** — 每次调用都是一条 Claude 消息，所以配额和速率限制失败会表现为 `QUOTA` 或 `RATE_LIMIT`。
 - **进程启动开销** — 每次调用都会启动一个 `claude` 进程（有工具时还有一个 Node MCP 桩），所以每次调用在首个 token 之前都有固定的启动延迟。
 - **stream-json 格式不是带版本的契约** — Claude Code 的某个版本若改变它，调用可能以 `PROVIDER_ERROR` 失败或返回空内容。

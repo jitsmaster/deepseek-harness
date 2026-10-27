@@ -21,14 +21,17 @@
   en: 919c8bc000146ede
   zh: 8dd2ad2dcc839b67
 /deepseek-ai-dsh-llm-claude-code/use-this-package/minimal-configuration:
-  en: aee009e4ae49d1cb
-  zh: a51a01d8cb662232
+  en: 167b297edebc8e09
+  zh: d0e55bad326e46e1
 /deepseek-ai-dsh-llm-claude-code/use-this-package/models-and-request-controls:
   en: 4adccd528fa6b298
   zh: 600fc379335efd6b
 /deepseek-ai-dsh-llm-claude-code/use-this-package/what-a-call-does:
   en: 3ca294d75f87ee85
   zh: 8b8a896bc1e450dc
+/deepseek-ai-dsh-llm-claude-code/use-this-package/authenticating-with-a-stored-dsh-credential:
+  en: 67762cd1faa7b63c
+  zh: bb3fe3184907eb6c
 /deepseek-ai-dsh-llm-claude-code/use-this-package/failures-and-recovery:
   en: 90ad661cacc7fe08
   zh: 7d1199334958c39a
@@ -39,8 +42,8 @@
   en: 3998fcab835eca99
   zh: 042315fa6692afeb
 /deepseek-ai-dsh-llm-claude-code/understand-the-implementation/source-map:
-  en: 50500679fcb9573f
-  zh: 44e8c4112b8c46f2
+  en: 44e38f5b2800a9af
+  zh: 69966845532af038
 /deepseek-ai-dsh-llm-claude-code/understand-the-implementation/run-flow:
   en: 9065db1af46d4a63
   zh: 13327616d8578681
@@ -75,5 +78,5 @@
   en: 0d592fc6123b6e16
   zh: 19ffdc53c058b1bd
 /deepseek-ai-dsh-llm-claude-code/known-limitations-and-deferred-work:
-  en: cc7956e1646337b1
-  zh: b764f11f473ea684
+  en: 289898094f2e2ef8
+  zh: bf43a298a598b366

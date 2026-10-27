@@ -43,6 +43,7 @@ Choose this backend when the machine has the official `claude` executable signed
 | `nodeExecutable` | the harness's own Node | Node binary that runs the tool-schema MCP stub |
 | `timeoutMs` | `1800000` | Whole-call deadline |
 | `defaultContextWindow` | `200000` | Context window assumed for a model id the catalog does not list |
+| `credential` | (unset) | Credential record key (for example `llm-pi-ai/anthropic`) whose stored access token or API key authenticates the `claude` child; unset leaves Claude Code on its own login |
 | `models` | (none) | `{ id, name, contextWindow?, description? }` entries added to, or overriding, the built-in catalog |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-llm-claude-code) is the exhaustive source for every accepted field and its JSDoc.
@@ -58,6 +59,12 @@ Each call creates a fresh temporary directory (the process working directory, re
 DSH owns the conversation, so the run is stateless: the history is written as a `<conversation>` transcript (`<user>`, `<assistant>` with `<tool_call>` elements, `<tool_result>`, `<developer>`) and the DSH system prompt, behind a short note explaining that convention, becomes `system.txt`. Message text is escaped so content cannot forge transcript elements, and reasoning of earlier turns is omitted.
 
 Tools reach Claude through a stdio MCP stub started with `node -e` whose `tools/call` is never answered, so Claude can emit a call but never run one. Claude sees each tool as `mcp__dsh__<name>`; a name that does not fit Claude's 64-character rule gets a deterministic safe alias that is mapped back. The moment a message ends with `tool_use`, the adapter emits usage and a `tool-calls` finish and terminates the process instead of waiting for Claude's next turn.
+
+### Authenticating with a stored DSH credential
+
+Set `credential` to a credential record key, such as `llm-pi-ai/anthropic`, to run Claude Code under the Anthropic credential DSH already stores. Before each spawn the adapter reads that record through the optional credentials service. A pi-ai OAuth grant with more than 60 seconds left hands only its **access token** to the child as `CLAUDE_CODE_OAUTH_TOKEN`; an `api-key` record hands its key as `ANTHROPIC_API_KEY`. The refresh token is never shared, because a refresh by Claude Code would rotate it and break DSH's stored copy.
+
+This route never refreshes a grant. When the grant is expired, malformed, or missing, when no credentials service is mounted, or when the read fails, the call does not fail: the child starts with no extra environment, uses Claude Code's own login, and one warning per distinct reason is logged (never the secret). While the `llm-pi-ai` route is off nobody refreshes the token, so the grant goes stale after about 6 hours and the route falls back to Claude Code's own login.
 
 ### Failures and recovery
 
@@ -89,6 +96,7 @@ Failures are thrown as `LlmError`, which the runtime normalizes into a terminal 
 | [`src/names.ts`](src/names.ts) | `mcp__dsh__` prefix and safe tool-name aliases |
 | [`src/stub.ts`](src/stub.ts) | Inline source of the never-answering MCP stub |
 | [`src/models.ts`](src/models.ts) | Built-in model catalog and efforts |
+| [`src/credential.ts`](src/credential.ts) | Stored credential record to child environment mapping |
 | [`src/executable.ts`](src/executable.ts) | Synchronous executable lookup |
 
 ### Run flow
@@ -148,7 +156,7 @@ These limits define when the adapter is a poor fit. They are current package con
 
 - **Text input only** — the route declares no image input; images and files arrive as text.
 - **No `temperature` or `stop`** — `claude -p` offers neither, so the request fields are ignored; `maxTokens` is honored only through `CLAUDE_CODE_MAX_OUTPUT_TOKENS`.
-- **Depends on the user's `claude` executable and login** — a call fails with `AUTH` when the login is missing or expired. The subprocess seam scrubs credential-shaped environment variables, so only a login Claude Code keeps on disk is used.
+- **Depends on the user's `claude` executable and login** — a call fails with `AUTH` when the login is missing or expired. The subprocess seam scrubs credential-shaped environment variables, so only a login Claude Code keeps on disk, or the stored credential selected by `credential`, is used.
 - **Subscription rate limits apply** — every call is one Claude message, so quota and rate-limit failures surface as `QUOTA` or `RATE_LIMIT`.
 - **Process start cost** — every call starts a `claude` process (and a Node MCP stub when tools are present), so every call pays a fixed start-up delay before the first token.
 - **The stream-json format is not a versioned contract** — a Claude Code release that changes it can make a call fail with `PROVIDER_ERROR` or return no content.

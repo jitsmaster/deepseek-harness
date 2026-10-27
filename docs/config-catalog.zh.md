@@ -1878,7 +1878,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-llm-claude-code`
 
 - `inject`: `llm` · `subprocess`
-- `source`: [`packages/llm/llm-claude-code/src/index.ts:44`](../packages/llm/llm-claude-code/src/index.ts)
+- `source`: [`packages/llm/llm-claude-code/src/index.ts:49`](../packages/llm/llm-claude-code/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config (all optional — `apply` fills the defaults). */
@@ -1891,6 +1891,8 @@ export interface Config {
   timeoutMs?: number
   /** Context window assumed for a model id the catalog does not list. Defaults to 200000. */
   defaultContextWindow?: number
+  /** Credential record key (e.g. `llm-pi-ai/anthropic`) whose token or key authenticates the child; unset uses Claude Code's own login. */
+  credential?: string
   /** Models added to (or overriding entries of) the built-in Claude catalog. */
   models?: ClaudeModelEntry[]
 }

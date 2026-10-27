@@ -20,6 +20,8 @@ export interface FakeRun {
   files: { system?: string; tools?: string; mcp?: string }
   stdin: string
   maxOutputTokens?: string
+  oauthToken?: string
+  apiKey?: string
   hanging?: number
 }
 
