@@ -60,26 +60,26 @@ const SUPPORTED_UNATTENDED_DIALOG_KINDS = [
   'refusal_fallback_prompt',
 ] satisfies NonNullable<Options['supportedDialogKinds']>
 
-type ClaudeCodeFailureStage =
+export type ClaudeCodeFailureStage =
   | 'query-start'
   | 'query-run'
   | 'process'
   | 'teardown'
 
-type ClaudeCodeFailureCategory =
+export type ClaudeCodeFailureCategory =
   | 'limit'
   | 'product-error'
   | 'invalid-result'
   | 'process'
   | 'unknown'
 
-interface ClaudeCodeFailureFacts {
+export interface ClaudeCodeFailureFacts {
   readonly stage: ClaudeCodeFailureStage
   readonly category: ClaudeCodeFailureCategory
   readonly outcome?: SubprocessOutcome | undefined
 }
 
-function failureDiagnostic(facts: ClaudeCodeFailureFacts): string {
+export function failureDiagnostic(facts: ClaudeCodeFailureFacts): string {
   const fields = [
     'product: Claude Code',
     `stage: ${facts.stage}`,
@@ -96,7 +96,7 @@ function failureDiagnostic(facts: ClaudeCodeFailureFacts): string {
   return `Product subagent failure (${fields.join('; ')})`
 }
 
-class ClaudeCodeFailure extends Error {
+export class ClaudeCodeFailure extends Error {
   constructor(
     readonly facts: ClaudeCodeFailureFacts,
     cause?: unknown,
@@ -109,7 +109,7 @@ class ClaudeCodeFailure extends Error {
   }
 }
 
-function sdkFailureCategory(
+export function sdkFailureCategory(
   subtype: string,
 ): ClaudeCodeFailureCategory {
   switch (subtype) {
@@ -136,7 +136,7 @@ export function claudeCodeStartupFailure(cause: unknown): Error {
   }, cause)
 }
 
-function unattendedDiagnostic(
+export function unattendedDiagnostic(
   mode: ClaudeCodePermissionMode,
   request: 'tool permission' | 'MCP elicitation' | 'user dialog',
   decision: 'denied' | 'declined' | 'cancelled',
@@ -174,7 +174,7 @@ export interface ClaudeCodeRunSpec {
   readonly resolveFilePath?: (ref: FileAttachmentRef) => string | undefined
 }
 
-function thrown(value: unknown): Error {
+export function thrown(value: unknown): Error {
   /* v8 ignore next -- typed SDK and subprocess failures reject with Error. */
   return value instanceof Error ? value : new Error(String(value))
 }

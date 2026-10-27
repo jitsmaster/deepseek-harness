@@ -41,6 +41,7 @@ The layer inserts Host rows only, so any profile can select it, including the sh
 |---|---|---|
 | `providerName` | `claude-code` | Non-empty registry name on `ctx.subagents`; each mounted instance needs a unique value |
 | `model` | native Claude settings | Optional non-empty model name fixed for every run from this provider instance; omission sends no SDK override |
+| `executable` | unset | Path of the user's own `claude` executable. When set, each run is a headless `claude -p --output-format stream-json` child on the native login with the task on stdin, and no Agent SDK is used; when unset, the SDK drives the platform-pinned runtime |
 | `env` | `{}` | Explicit SDK/CLI environment layered over the credential-scrubbed parent environment |
 | `permissionMode` | `dontAsk` | Native non-interactive permission policy fixed for every run from this provider instance |
 | `disposeGraceMs` | `3000` | Grace between the shared managed-range owner's termination tiers |
