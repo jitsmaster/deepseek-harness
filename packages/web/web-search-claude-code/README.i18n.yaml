@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/web/web-search-claude-code/README.md
+/:
+  en: a0c7df9e90635912
+  zh: 320487a50ee42d4e
+/deepseek-ai-dsh-web-search-claude-code:
+  en: 91e4a9fd24cba106
+  zh: c01facd141586fcc
+/deepseek-ai-dsh-web-search-claude-code/summary:
+  en: c113e585f6182a01
+  zh: 3ad93dd0ca8e795e
+/deepseek-ai-dsh-web-search-claude-code/table-of-contents:
+  en: b563e4ec4727d0de
+  zh: 44ebe7ceeda3dff6
+/deepseek-ai-dsh-web-search-claude-code/use-this-package:
+  en: c92de700e460cda0
+  zh: a7cdc3659fdfebec
+/deepseek-ai-dsh-web-search-claude-code/use-this-package/when-to-choose-it:
+  en: 5c8baabd620c5681
+  zh: 6dbe35d6e2a27c34
+/deepseek-ai-dsh-web-search-claude-code/use-this-package/minimal-configuration:
+  en: 97e0beaf3281b9b7
+  zh: 54fdb50bf20bd3d2
+/deepseek-ai-dsh-web-search-claude-code/use-this-package/what-a-search-returns:
+  en: d470fb5748b37e94
+  zh: b20c0b67088a9fa9
+/deepseek-ai-dsh-web-search-claude-code/use-this-package/failures-and-recovery:
+  en: 1075b211eca13248
+  zh: 596b530e728a548a
+/deepseek-ai-dsh-web-search-claude-code/understand-the-implementation:
+  en: 42b15ac6321706aa
+  zh: 4ed0861911abaf5d
+/deepseek-ai-dsh-web-search-claude-code/understand-the-implementation/design-philosophy:
+  en: 86503a9c04fa254b
+  zh: d4fec4d730a18549
+/deepseek-ai-dsh-web-search-claude-code/understand-the-implementation/source-map:
+  en: b721313bdf049494
+  zh: 7397279d33a3fd96
+/deepseek-ai-dsh-web-search-claude-code/understand-the-implementation/run-flow:
+  en: ecd0630b1d5b8d12
+  zh: 57e23e50a647dbb3
+/deepseek-ai-dsh-web-search-claude-code/further-exploration:
+  en: 61aec5de644022b8
+  zh: 868eca3b44159f62
+/deepseek-ai-dsh-web-search-claude-code/model-experience:
+  en: 861a4f08894a4fed
+  zh: 7cafa0f94b4ead63
+/deepseek-ai-dsh-web-search-claude-code/model-experience/kv-cache-effect:
+  en: 40294c1c31b74824
+  zh: d75d48f485447a74
+/deepseek-ai-dsh-web-search-claude-code/known-limitations-and-deferred-work:
+  en: 890d74bd0e124353
+  zh: d897e93d2e146a15

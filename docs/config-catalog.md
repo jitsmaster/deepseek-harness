@@ -3597,7 +3597,7 @@ export type PermissionPolicy = 'allow' | 'reject'
 ## `@deepseek-ai/dsh-subagent-claude-code`
 
 - `inject`: `subagents` · `subprocess`
-- `source`: [`packages/subagent/subagent-claude-code/src/index.ts:44`](../packages/subagent/subagent-claude-code/src/index.ts)
+- `source`: [`packages/subagent/subagent-claude-code/src/index.ts:45`](../packages/subagent/subagent-claude-code/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-owned model, permission, environment, and process-release settings. */
@@ -3606,6 +3606,12 @@ export interface Config {
   providerName?: string
   /** Native Claude model fixed for this instance; omitted to inherit Claude settings. */
   model?: string
+  /**
+   * Path or PATH-resolvable name of the user's own `claude` executable. When set, each run
+   * is a headless `claude -p` (stream-json) child on the user's native login and no Agent SDK
+   * is used; when omitted, the Agent SDK drives the platform-pinned runtime.
+   */
+  executable?: string
   /**
    * Explicit environment entries layered over the subprocess seam's
    * credential-scrubbed parent environment.
@@ -4640,6 +4646,27 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-web-search-anthropic -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-web-search-claude-code -->
+<a id="deepseek-aidsh-web-search-claude-code"></a>
+
+## `@deepseek-ai/dsh-web-search-claude-code`
+
+- `inject`: `web` · `subprocess`
+- `source`: [`packages/web/web-search-claude-code/src/index.ts:32`](../packages/web/web-search-claude-code/src/index.ts)
+
+```ts config-catalog
+/** Plugin config (all optional — `apply` fills the defaults). */
+export interface Config {
+  /** Path or PATH-resolvable name of the user's own `claude` executable. Defaults to `claude` on PATH, else `~/.local/bin/claude`. */
+  executable?: string
+  /** Model passed as `--model`. Omitted = the Claude Code default. */
+  model?: string
+  /** Whole-run deadline in milliseconds. Defaults to 120000. */
+  timeoutMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-web-search-claude-code -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-web-search-deepseek -->
 <a id="deepseek-aidsh-web-search-deepseek"></a>
