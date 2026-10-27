@@ -358,6 +358,20 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Projects the authorization-flow seam onto the generated Remote namespace: start, interaction, and settlement of one credential flow, with the notice and prompt events declared beside it.',
   },
   {
+    key: 'claudeAccountsController',
+    pkg: 'api-settings-controller',
+    title: 'Host Claude-accounts Remote controller',
+    mode: 'core',
+    note: 'Projects the Claude Code accounts service onto the generated Remote namespace: field-by-field status views, an email-validated make-default call, and an empty status while the plugin is absent.',
+  },
+  {
+    key: 'claudeAccounts',
+    pkg: 'llm-claude-code',
+    title: 'Claude Code accounts',
+    mode: 'service',
+    note: 'Lists the Claude accounts DSH can run Claude Code as with their plan usage, and swaps one account\'s login into the default Claude Code configuration; provided only while the Claude Code LLM plugin is mounted.',
+  },
+  {
     key: 'claudeSessionImportController',
     pkg: 'claude-session-import',
     title: 'Claude Code session import Remote controller',

@@ -29,6 +29,8 @@ Mount this package as a Loader entry in a profile that serves browser configurat
 
 `settings.describe()` returns deployment facts and every namespace under `redactSecrets: true`. `settings.update`, `settings.replace`, and `settings.mutate` expose the settings service's three write operations and return the namespace's new redacted view; stale writes use `settings-conflict` and other provider refusals use `settings-rejected`.
 
+`claudeAccounts.status()` and `claudeAccounts.makeDefault(email)` project the `ctx.claudeAccounts` service that `@deepseek-ai/dsh-llm-claude-code` provides while it is mounted. `status()` copies each account field by field (email, id, sign-in state, active flag, plan usage) plus the account of the default Claude Code configuration, and answers an empty list when the plugin is not mounted; `makeDefault` rejects a value that is not an email as `bad-request`, fails with the usual internal error when the plugin is absent, and otherwise answers `{ ok, backupDir, unchanged }` or `{ ok: false, reason }`. No token crosses either method.
+
 `settings.openSettingsDocument()` prepares the provider-owned document and opens it with the native text editor; it accepts no browser-supplied filesystem target.
 
 -----

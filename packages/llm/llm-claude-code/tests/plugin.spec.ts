@@ -10,7 +10,7 @@ import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as claudeCodePlugin from '../src/index.ts'
 import { readAccountUsage } from '../src/index.ts'
-import { CLAUDE_CODE_LLM_PROVIDER_ID, DEFAULT_CLAUDE_EXECUTABLE, defaultExecutable } from '../src/index.ts'
+import { CLAUDE_CODE_LLM_PROVIDER_ID, ClaudeCodeLlmAdapter, DEFAULT_CLAUDE_EXECUTABLE, defaultExecutable } from '../src/index.ts'
 import { ACCOUNT_KEY, accountId, accountsRecord } from '../src/account.ts'
 import { FakeClaudeSubprocess, readRuns } from './harness.ts'
 
@@ -480,4 +480,81 @@ describe('llm-claude-code signed-in accounts', () => {
     }
     throw new Error(`${path} never appeared`)
   }
+})
+
+describe('llm-claude-code providerAliases', () => {
+  const log = (): void => {
+    FakeClaudeSubprocess.logPath = join(tmpdir(), `dsh-llm-claude-alias-${process.pid}-${Date.now()}.jsonl`)
+  }
+  afterEach(() => { rmSync(FakeClaudeSubprocess.logPath, { force: true }) })
+
+  async function callAs(root: Context, provider: string, model: string): Promise<StreamChunk[]> {
+    const chunks: StreamChunk[] = []
+    for await (const chunk of root.llm.stream({
+      provider,
+      model,
+      messages: [createUserMessage({ content: [{ type: 'text', text: 'hi scenario:text' }], source: { kind: 'user' } })],
+    })) chunks.push(chunk)
+    return chunks
+  }
+
+  it('serves the extra provider ids with the same adapter, passing the model id through', async () => {
+    log()
+    const root = await mount({ executable: process.execPath, providerAliases: ['anthropic'] })
+    expect(root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['anthropic', 'claude-code'])
+    await callAs(root, 'anthropic', 'claude-sonnet-5-5')
+    const [run] = readRuns()
+    expect(run!.argv).toContain('--model')
+    expect(run!.argv[run!.argv.indexOf('--model') + 1]).toBe('claude-sonnet-5-5')
+    // The route lists the same catalog under its own id, so a model picker sees the models once per route.
+    const aliased = (await root.llm.listModels('anthropic')).map(model => model.id)
+    expect(aliased).toEqual((await root.llm.listModels('claude-code')).map(model => model.id))
+    expect((await root.llm.listModels('anthropic')).every(model => model.provider === 'anthropic')).toBe(true)
+  }, 30_000)
+
+  it('leaves an unlisted provider unregistered, failing a call with NO_ADAPTER', async () => {
+    log()
+    const root = await mount({ executable: process.execPath })
+    expect(root.llm.listProviders().map(provider => provider.id)).toEqual(['claude-code'])
+    // The runtime reports a missing route as an error finish (or a throw), never as a served call.
+    const chunks = await callAs(root, 'anthropic', 'claude-sonnet-5-5')
+    expect(JSON.stringify(chunks)).toContain('NO_ADAPTER')
+    expect(readRuns()).toEqual([])
+  })
+
+  it('drops only an alias another plugin already serves, with a warning', async () => {
+    const root = new Context()
+    ctx = root
+    const warnings: string[] = []
+    root.logger.warn = ((...args: unknown[]) => { warnings.push(args.join(' ')) }) as never
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    root.llm.registerAdapter(['anthropic'], new ClaudeCodeLlmAdapter({ executable: process.execPath, timeoutMs: 1000, defaultContextWindow: 1000, models: [], spawn: () => { throw new Error('unused') } }))
+    await root.plugin(claudeCodePlugin, { executable: process.execPath, providerAliases: ['anthropic', 'claude'] })
+    expect(root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['anthropic', 'claude', 'claude-code'])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('provider alias "anthropic" was not registered')
+  })
+
+  it('withdraws the aliases with the plugin', async () => {
+    const root = new Context()
+    ctx = root
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    const fiber = await root.plugin(claudeCodePlugin, { executable: process.execPath, providerAliases: ['anthropic'] })
+    expect(root.llm.listProviders()).toHaveLength(2)
+    await fiber.dispose()
+    expect(root.llm.listProviders()).toEqual([])
+  })
+
+  it('validates the alias ids', () => {
+    expect(claudeCodePlugin.checkProviderAliases(['anthropic', 'openai'])).toEqual(['anthropic', 'openai'])
+    expect(claudeCodePlugin.checkProviderAliases([])).toEqual([])
+    expect(() => claudeCodePlugin.checkProviderAliases(['claude-code'])).toThrow('primary route')
+    expect(() => claudeCodePlugin.checkProviderAliases(['a', 'a'])).toThrow('twice')
+    expect(() => claudeCodePlugin.checkProviderAliases([' a'])).toThrow('without surrounding spaces')
+    expect(() => claudeCodePlugin.checkProviderAliases([''])).toThrow()
+    expect(() => claudeCodePlugin.Config({ providerAliases: ['anthropic'] })).not.toThrow()
+    expect(() => claudeCodePlugin.Config({ providerAliases: [''] })).toThrow()
+  })
 })

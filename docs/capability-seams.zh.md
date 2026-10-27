@@ -104,6 +104,9 @@ flowchart LR
   pkg_api_settings_controller["api-settings-controller"]
   svc_credentialsController["ctx.credentialsController<br/>Host credential-surface Remote controller"]
   svc_authorizationController["ctx.authorizationController<br/>Host authorization-flow Remote controller"]
+  svc_claudeAccountsController["ctx.claudeAccountsController<br/>Host Claude-accounts Remote controller"]
+  pkg_llm_claude_code["llm-claude-code"]
+  svc_claudeAccounts["ctx.claudeAccounts<br/>Claude Code accounts"]
   pkg_claude_session_import["claude-session-import"]
   svc_claudeSessionImportController["ctx.claudeSessionImportController<br/>Claude Code session import Remote controller"]
   svc_settingsController["ctx.settingsController<br/>Host settings-surface Remote controller"]
@@ -323,6 +326,7 @@ flowchart LR
   pkg_api_session_controller --> svc_sessionFileReferences
   pkg_api_session_controller --> svc_sessionSkillCatalog
   pkg_api_settings_controller --> svc_authorizationController
+  pkg_api_settings_controller --> svc_claudeAccountsController
   pkg_api_settings_controller --> svc_credentialsController
   pkg_api_settings_controller --> svc_settingsController
   pkg_api_terminal_controller --> svc_terminalController
@@ -389,6 +393,7 @@ flowchart LR
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
+  pkg_llm_claude_code --> svc_claudeAccounts
   pkg_llm_deepseek --> svc_llm
   pkg_llm_pi_ai --> svc_llm
   pkg_llm_replay --> svc_llm
@@ -672,6 +677,8 @@ flowchart LR
 | `ctx.jobController` | `core` | [`api-job-controller`](../packages/api/job-controller) | - | - | - | 经生成的 Remote namespace 流式发送一个后台任务的观测 record；名册仍在会话控制流上。 |
 | `ctx.credentialsController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | 把凭据引用 seam 投影到生成的 Remote namespace：批量扇出、视图投影与拒绝映射都在这里，而不在 seam Definition 上。 |
 | `ctx.authorizationController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | 把授权流程 seam 投影到生成的 Remote namespace：一次凭据流程的启动、交互与结算，并在其旁声明通知与提示事件。 |
+| `ctx.claudeAccountsController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | 把 Claude Code 账号服务投影到生成的 Remote namespace：逐字段复制的状态视图、校验邮箱的设为默认调用，以及插件缺席时返回空状态。 |
+| `ctx.claudeAccounts` | `service` | [`llm-claude-code`](../packages/llm/llm-claude-code) | - | - | - | 列出 DSH 可用来运行 Claude Code 的 Claude 账号及其套餐用量，并把某个账号的登录换入默认的 Claude Code 配置；仅在 Claude Code LLM 插件挂载期间提供。 |
 | `ctx.claudeSessionImportController` | `core` | [`claude-session-import`](../packages/session/claude-session-import) | - | - | - | 发现 Claude Code CLI 会话，并将其中一个导入到全新的原生 Session；它报告两个稳定的失败码，且从不修改源 transcript。 |
 | `ctx.settingsController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | 把用户设置 seam 投影到生成的 Remote namespace：读取一律脱敏，所有拒绝在这里分类，而不在 seam Definition 上。 |
 | `ctx.workspaceFiles` | `core` | [`api-workspace-files`](../packages/api/workspace-files) | - | - | - | 为会话工作区根内的文件提供 stat、分页文本、字节窗口、目录列举与变更流，经 lstat、包含关系与 stat 重检限定。 |

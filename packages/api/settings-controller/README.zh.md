@@ -29,6 +29,8 @@ kind: "package-reference"
 
 `settings.describe()` 返回部署信息，以及在 `redactSecrets: true` 下读取的所有 namespace。`settings.update`、`settings.replace` 与 `settings.mutate` 暴露 settings 服务的三种写入操作，并返回该 namespace 的新脱敏视图；陈旧写入使用 `settings-conflict`，其他提供方拒绝使用 `settings-rejected`。
 
+`claudeAccounts.status()` 与 `claudeAccounts.makeDefault(email)` 投影 `@deepseek-ai/dsh-llm-claude-code` 在挂载期间提供的 `ctx.claudeAccounts` 服务。`status()` 逐字段复制每个账户（邮箱、id、登录状态、是否在用、套餐用量）以及默认 Claude Code 配置所对应的账户，插件未挂载时返回空列表；`makeDefault` 把不是邮箱的值拒绝为 `bad-request`，插件缺失时以常规内部错误失败，否则返回 `{ ok, backupDir, unchanged }` 或 `{ ok: false, reason }`。两个方法都不会让任何令牌越过线路。
+
 `settings.openSettingsDocument()` 准备提供方持有的文档，并用原生文本编辑器打开；该方法不接受浏览器提供的文件系统目标。
 
 -----

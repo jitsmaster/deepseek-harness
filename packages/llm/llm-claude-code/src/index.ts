@@ -16,6 +16,7 @@
  */
 
 import { access } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -41,11 +42,14 @@ import {
   isAccountId,
 } from './account.ts'
 import { credentialEnv } from './credential.ts'
+import { defaultConfigPaths } from './default-login.ts'
 import type { RateLimitReading } from './decoder.ts'
 import { defaultExecutable } from './executable.ts'
 import { claudeAccountFlow } from './login.ts'
 import type { ClaudeModelEntry } from './models.ts'
 import { RateLimitFile, USAGE_FILE } from './rate-limit.ts'
+import { createClaudeAccountsService } from './service.ts'
+import './types.ts'
 
 export {
   CLAUDE_CODE_DEFAULT_CONTEXT_WINDOW,
@@ -67,6 +71,12 @@ export {
   parseAuthStatus,
 } from './account.ts'
 export type { AccountEntry, AuthStatus } from './account.ts'
+export { defaultConfigPaths, makeDefaultLogin, readDefaultEmail } from './default-login.ts'
+export type { DefaultConfigPaths, KnownAccount, MakeDefaultOutcome } from './default-login.ts'
+export { createClaudeAccountsService } from './service.ts'
+export type {
+  ClaudeAccountInfo, ClaudeAccountsService, ClaudeAccountsStatus, ClaudeAccountUsage, ClaudeAccountWindow, ClaudeMakeDefaultResult,
+} from './types.ts'
 export { readAccountUsage } from './rate-limit.ts'
 export type { AccountUsage } from './rate-limit.ts'
 export type { RateLimitReading, RateLimitWindow } from './decoder.ts'
@@ -99,6 +109,18 @@ export interface Config {
   accounts: Volatile<string[]>
   /** Email of the account every call runs as, when it has signed in; an edit applies to the next call without a remount. */
   activeAccount: Volatile<string | undefined>
+  /**
+   * Directory of the default Claude Code configuration that `claudeAccounts.makeDefault` swaps a login into
+   * (its `.credentials.json` and `.claude.json`). Defaults to `CLAUDE_CONFIG_DIR` when set, else `~/.claude`
+   * for the login and `~/.claude.json` for the settings.
+   */
+  defaultConfigDir?: string
+  /**
+   * Extra provider ids this plugin also serves with the same adapter (for example `anthropic`), so a session whose
+   * saved route names a provider that is no longer registered keeps working through headless Claude Code. An id
+   * another plugin already registered is skipped with a warning. Defaults to none.
+   */
+  providerAliases?: string[]
   /** Open the sign-in page in a private browser window (Chrome, Edge, or Firefox, when installed). Defaults to true. */
   privateBrowser?: boolean
   /**
@@ -123,6 +145,8 @@ export const Config = z.object({
   accountsDir: z.string().min(1),
   accounts: z.array(z.string().min(1)).default([]).volatile(),
   activeAccount: z.string().min(1).volatile(),
+  defaultConfigDir: z.string().min(1),
+  providerAliases: z.array(z.string().min(1)),
   privateBrowser: z.boolean(),
   credential: z.string().min(1),
   rateLimitFile: z.string().min(1),
@@ -231,8 +255,26 @@ function accountUsageWriter(
   }
 }
 
+/**
+ * Check the extra provider ids of the config.
+ * @param aliases - the configured `providerAliases`.
+ * @returns the ids, in order.
+ * @throws Error naming the offending id when one is blank or padded, repeated, or the primary route id.
+ */
+export function checkProviderAliases(aliases: readonly string[]): string[] {
+  const seen = new Set<string>([CLAUDE_CODE_LLM_PROVIDER_ID])
+  for (const alias of aliases) {
+    if (alias.length === 0 || alias.trim() !== alias) throw new Error(`llm-claude-code: providerAliases entry "${alias}" must be a non-empty id without surrounding spaces`)
+    if (alias === CLAUDE_CODE_LLM_PROVIDER_ID) throw new Error(`llm-claude-code: providerAliases must not repeat the primary route "${alias}"`)
+    if (seen.has(alias)) throw new Error(`llm-claude-code: providerAliases lists "${alias}" twice`)
+    seen.add(alias)
+  }
+  return [...aliases]
+}
+
 /** Register the Claude Code adapter's provider route with `ctx.llm`. */
 export function apply(ctx: Context, config: Config): void {
+  const aliases = checkProviderAliases(config.providerAliases ?? [])
   const executable = config.executable ?? defaultExecutable()
   const accountsDir = config.accountsDir ?? defaultAccountsDir(resolveDshHome())
   const account = accountResolver(ctx, accountsDir, config.activeAccount)
@@ -257,6 +299,23 @@ export function apply(ctx: Context, config: Config): void {
     spawn: spec => ctx.subprocess.spawn(spec),
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_LLM_PROVIDER_ID], adapter)
+  // One registration each: an id another plugin already serves must cost only that alias, never the primary route.
+  for (const alias of aliases) {
+    try {
+      ctx.llm.registerAdapter([alias], adapter)
+    } catch (error: unknown) {
+      ctx.logger.warn(`llm-claude-code: provider alias "${alias}" was not registered (${error instanceof Error ? error.message : String(error)})`)
+    }
+  }
+  // Provided only while this plugin is mounted, so a surface that finds no `claudeAccounts` knows Claude Code is not the model route.
+  ctx.provide('claudeAccounts', createClaudeAccountsService({
+    accountsDir,
+    accounts: () => config.accounts.get(),
+    activeAccount: () => config.activeAccount.get(),
+    readRecord: async () => ctx.get('credentials')?.readRecord(ACCOUNT_KEY),
+    defaultPaths: () => defaultConfigPaths({ dir: config.defaultConfigDir, env: process.env, home: homedir() }),
+    log: (message) => { ctx.logger.info(`llm-claude-code: ${message}`) },
+  }))
   // Scoped to the authorization seam: a composition without it has no surface to sign in from, and the rest of the plugin still works.
   ctx.inject(['authorization'], (authorized) => {
     authorized.authorization.registerFlow(claudeAccountFlow({

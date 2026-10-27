@@ -97,6 +97,44 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
 }
 
+/** One plan-usage window of a Claude account. */
+export interface ClaudeAccountWindowView {
+  /** Fraction of the window used, 0 to 1. */
+  readonly utilization: number
+  /** Reset time in epoch seconds. */
+  readonly resetsAt: number
+}
+
+/** The latest plan-usage reading of a Claude account. */
+export interface ClaudeAccountUsageView {
+  readonly fiveHour?: ClaudeAccountWindowView
+  readonly sevenDay?: ClaudeAccountWindowView
+  /** When the reading was written, in epoch milliseconds. */
+  readonly updatedAt: number
+}
+
+/** One Claude Code account a person can pick. */
+export interface ClaudeAccountView {
+  readonly email: string
+  readonly id: string
+  readonly signedIn: boolean
+  readonly active: boolean
+  readonly signedInAt?: number
+  readonly usage?: ClaudeAccountUsageView
+}
+
+/** Everything the Claude account card shows. */
+export interface ClaudeAccountsStatusView {
+  readonly accounts: readonly ClaudeAccountView[]
+  readonly defaultAccount: { readonly email?: string }
+  readonly activeAccount?: string
+}
+
+/** How a make-default request ended; a failure names its reason and carries no secret. */
+export type ClaudeMakeDefaultView =
+  | { readonly ok: true; readonly backupDir: string; readonly unchanged: boolean }
+  | { readonly ok: false; readonly reason: string }
+
 /** Confirmation that the settings document was handed to the native editor. */
 export interface SettingsDocumentOpenValue {
   readonly opened: true

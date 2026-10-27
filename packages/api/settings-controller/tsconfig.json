@@ -24,6 +24,9 @@
       "path": "../../credentials/authorization"
     },
     {
+      "path": "../../llm/llm-claude-code"
+    },
+    {
       "path": "../../core/session"
     },
     {

@@ -19,10 +19,12 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { AuthorizationController } from './authorization.ts'
+import { ClaudeAccountsController } from './claude-accounts.ts'
 import { CredentialsController } from './credentials.ts'
 import type { SettingsDocumentOpenValue } from './types.ts'
 
 export { AuthorizationController } from './authorization.ts'
+export { ClaudeAccountsController } from './claude-accounts.ts'
 export { CredentialsController } from './credentials.ts'
 export type * from './types.ts'
 
@@ -93,6 +95,7 @@ export class SettingsController extends TypertRemoteService {
     this.openTextFile = internals.openTextFile ?? openNativeTextFile
     ctx.plugin(CredentialsController)
     ctx.plugin(AuthorizationController)
+    ctx.plugin(ClaudeAccountsController)
   }
 
   /**

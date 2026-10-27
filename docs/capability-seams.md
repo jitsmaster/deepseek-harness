@@ -102,6 +102,9 @@ flowchart LR
   pkg_api_settings_controller["api-settings-controller"]
   svc_credentialsController["ctx.credentialsController<br/>Host credential-surface Remote controller"]
   svc_authorizationController["ctx.authorizationController<br/>Host authorization-flow Remote controller"]
+  svc_claudeAccountsController["ctx.claudeAccountsController<br/>Host Claude-accounts Remote controller"]
+  pkg_llm_claude_code["llm-claude-code"]
+  svc_claudeAccounts["ctx.claudeAccounts<br/>Claude Code accounts"]
   pkg_claude_session_import["claude-session-import"]
   svc_claudeSessionImportController["ctx.claudeSessionImportController<br/>Claude Code session import Remote controller"]
   svc_settingsController["ctx.settingsController<br/>Host settings-surface Remote controller"]
@@ -321,6 +324,7 @@ flowchart LR
   pkg_api_session_controller --> svc_sessionFileReferences
   pkg_api_session_controller --> svc_sessionSkillCatalog
   pkg_api_settings_controller --> svc_authorizationController
+  pkg_api_settings_controller --> svc_claudeAccountsController
   pkg_api_settings_controller --> svc_credentialsController
   pkg_api_settings_controller --> svc_settingsController
   pkg_api_terminal_controller --> svc_terminalController
@@ -387,6 +391,7 @@ flowchart LR
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
+  pkg_llm_claude_code --> svc_claudeAccounts
   pkg_llm_deepseek --> svc_llm
   pkg_llm_pi_ai --> svc_llm
   pkg_llm_replay --> svc_llm
@@ -670,6 +675,8 @@ flowchart LR
 | `ctx.jobController` | `core` | [`api-job-controller`](../packages/api/job-controller) | - | - | - | Streams one background job's observation record over the generated Remote namespace; the roster stays on the session control stream. |
 | `ctx.credentialsController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | Projects the credential-reference seam onto the generated Remote namespace: batch fan-out, view projection, and refusal mapping live here, not on the seam Definition. |
 | `ctx.authorizationController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | Projects the authorization-flow seam onto the generated Remote namespace: start, interaction, and settlement of one credential flow, with the notice and prompt events declared beside it. |
+| `ctx.claudeAccountsController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | Projects the Claude Code accounts service onto the generated Remote namespace: field-by-field status views, an email-validated make-default call, and an empty status while the plugin is absent. |
+| `ctx.claudeAccounts` | `service` | [`llm-claude-code`](../packages/llm/llm-claude-code) | - | - | - | Lists the Claude accounts DSH can run Claude Code as with their plan usage, and swaps one account's login into the default Claude Code configuration; provided only while the Claude Code LLM plugin is mounted. |
 | `ctx.claudeSessionImportController` | `core` | [`claude-session-import`](../packages/session/claude-session-import) | - | - | - | Discovers Claude Code CLI sessions and imports one into a brand-new native Session; it reports two stable failure codes and never mutates the source transcript. |
 | `ctx.settingsController` | `core` | [`api-settings-controller`](../packages/api/settings-controller) | - | - | - | Projects the user-settings seam onto the generated Remote namespace: the read is always redacted and every refusal is classified here, not on the seam Definition. |
 | `ctx.workspaceFiles` | `core` | [`api-workspace-files`](../packages/api/workspace-files) | - | - | - | Serves stat, paged text, byte windows, directory listings, and the change feed for files inside a Session's workspace root, confined by lstat, containment, and a stat re-check. |

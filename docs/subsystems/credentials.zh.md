@@ -198,6 +198,55 @@ Single-trusted-principal assumption: `authorization/notice` and `authorization/p
 
 Source: [`packages/api/settings-controller/src/authorization.ts`](../../packages/api/settings-controller/src/authorization.ts)
 
+<a id="ctxclaudeaccounts--claudeaccountsservice"></a>
+
+### `ctx.claudeAccounts` — `ClaudeAccountsService`
+
+The service surface (`ctx.claudeAccounts`).
+
+```ts cordis-catalog
+/**
+ * Read the accounts, their usage, and the default config's account.
+ * @returns each account with its sign-in state and latest usage, the default config's account, and the active account; never rejects.
+ */
+status(): Promise<ClaudeAccountsStatus>
+
+/**
+ * Swap one signed-in account's login into the default Claude Code configuration.
+ * @param email - the account's email, in any case.
+ * @returns the backup folder of the replaced login, or the reason nothing changed; never rejects.
+ */
+makeDefault(email: string): Promise<ClaudeMakeDefaultResult>
+```
+
+Source: [`packages/llm/llm-claude-code/src/types.ts`](../../packages/llm/llm-claude-code/src/types.ts)
+
+<a id="ctxclaudeaccountscontroller--claudeaccountscontroller"></a>
+
+### `ctx.claudeAccountsController` — `ClaudeAccountsController`
+
+Host service backing the generated `ctx.remote.claudeAccounts` namespace. Every answer is copied field by field, so whatever else the service object carries cannot reach the wire; no method here returns a token.
+
+```ts cordis-catalog
+/**
+ * The Claude Code accounts a person can pick from.
+ * @returns each account with its sign-in state and latest plan usage, the account the default Claude Code
+ *   config is signed in as, and the active account; an empty list while the Claude Code plugin is not mounted.
+ */
+@Remote async status(): Promise<ClaudeAccountsStatusView>
+
+/**
+ * Make one signed-in account the login of every new Claude Code process on this machine.
+ * @param email - the account's email.
+ * @returns the backup folder of the replaced login, or the reason nothing changed.
+ * @throws RemoteError `gateway/bad-request` when `email` is not an address, or `gateway/internal` while
+ *   the Claude Code plugin is not mounted.
+ */
+@Remote async makeDefault(email: string): Promise<ClaudeMakeDefaultView>
+```
+
+Source: [`packages/api/settings-controller/src/claude-accounts.ts`](../../packages/api/settings-controller/src/claude-accounts.ts)
+
 <a id="ctxcredentials--credentialprovider-abstract-seam"></a>
 
 ### `ctx.credentials` — `CredentialProvider` (abstract seam)

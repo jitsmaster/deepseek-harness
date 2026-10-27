@@ -46,6 +46,8 @@ kind: "package-reference"
 | `accountsDir` | `<DSH 主目录>/claude-code/accounts` | 保存从 DSH 登录的各账户的 Claude Code 配置目录的根，每个账户一个 `<id>` 目录；见下文“从 DSH 登录 Claude 账户” |
 | `accounts` | （无） | 登录时提供选择的 Claude 账户邮箱；实时生效：修改后无需重新挂载，下一次登录即采用 |
 | `activeAccount` | （未设置） | 每次调用所使用的已登录账户的邮箱；实时生效：修改后无需重新挂载，下一次调用即采用 |
+| `defaultConfigDir` | 已设置时为 `CLAUDE_CONFIG_DIR`，否则登录为 `~/.claude`、设置为 `~/.claude.json` | `claudeAccounts.makeDefault` 把登录换入的默认 Claude Code 配置目录；见下文“从界面选择账户” |
+| `providerAliases` | （无） | 由同一适配器额外服务的提供方 id，例如 `anthropic`；见下文“服务其他提供方 id” |
 | `privateBrowser` | `true` | 在第一个已安装的 Chrome、Edge 或 Firefox 的隐私窗口中打开登录页面，否则使用默认浏览器 |
 | `credential` | （未设置） | 凭据记录键（例如 `llm-pi-ai/anthropic`），在没有可用的已登录账户时，其保存的访问令牌或 API 密钥用于认证 `claude` 子进程；未设置时 Claude Code 使用它自己的登录 |
 | `rateLimitFile` | （未设置） | 每次调用后接收最新套餐用量读数的 JSON 文件；见下文“共享套餐用量读数” |
@@ -76,6 +78,16 @@ kind: "package-reference"
 该记录不含任何密钥，DSH 也不调用任何 Anthropic 端点：令牌保存在各账户自己的目录中，由 Claude Code 自己存储和刷新。每次调用前，适配器读取 `activeAccount`（每次调用都会重新读取）和该记录；当该邮箱已列出且其目录中有 `.credentials.json` 时，子进程以 `CLAUDE_CONFIG_DIR=<accountsDir>/<id>` 启动。它优先于 `credential`，而 `credential` 又优先于 Claude Code 自己的登录。当前账户无法使用（从未登录、文件缺失、没有凭据服务）时，每种不同原因记录一条警告并回退；没有当前账户则保持静默。仅支持基于文件的凭据存储，因此把 Claude Code 登录保存在钥匙串中的平台无法使用此路径。
 
 每次报告了套餐用量的调用，还会把它所用账户的读数保存在 `<accountsDir>/<id>/usage.json` 中（`fiveHour` 和 `sevenDay` 的 `{ utilization, resetsAt }` 以及 `updatedAt`，原子写入且不含密钥），与共享的 `rateLimitFile` 并存。`readAccountUsage(accountsDir, id)` 可读回某个账户的读数，供状态显示使用。
+
+### 从界面选择账户
+
+插件挂载期间会提供 `ctx.claudeAccounts` 服务，模型设置页的卡片通过 `api-settings-controller` 的 `claudeAccounts` Remote 命名空间读取它。`status()` 为每个邮箱返回一项（先是 `accounts` 列表，再是其他已登录账户），包含 `email`、`id`、`signedIn`（记录中列出且其目录内有 `.credentials.json`）、`active`、`signedInAt` 和 `usage`（该账户的 `usage.json`，`updatedAt` 为毫秒时间戳，账户尚未完成过调用时不存在），另有 `defaultAccount.email`（默认 Claude Code 设置文件中可读到的 `oauthAccount.emailAddress`）和 `activeAccount`。其中不含任何令牌。
+
+`makeDefault(email)` 把一个已登录账户设为默认 Claude Code 配置的登录，此后新启动的每个 Claude Code 进程都以它运行；正在运行的会话可能保留旧账户，或在刷新时把它写回，因此请重启它们。默认配置取 `defaultConfigDir`，否则取 `CLAUDE_CONFIG_DIR`，再否则是 `~/.claude/.credentials.json` 与 `~/.claude.json`。它依次：拒绝未登录或没有已保存资料的账户；把两个默认文件备份到 `<默认目录>/dsh-backups/<时间戳>/`（保留最新五份）；把默认登录存回拥有它的账户目录（按邮箱匹配），确保 Claude Code 刷新过的令牌不会丢失；然后通过临时文件加重命名替换 `.credentials.json`，并且只把该账户 `.claude.json` 中的 `oauthAccount` 对象合并进默认文件，其余键保持不变（默认设置文件不是有效 JSON 时拒绝且不改动）。若第二次重命名失败，则恢复原登录。它返回 `{ ok: true, backupDir, unchanged }` 或 `{ ok: false, reason }`，从不返回令牌，且每次只执行一个切换。
+
+### 服务其他提供方 id
+
+`providerAliases` 用同一个适配器注册额外的提供方 id。若会话保存的路由指向一个已不再注册的提供方（例如关闭 `llm-pi-ai` 路由后的 `anthropic`），每一轮都会以 `NO_ADAPTER` 失败；设置 `providerAliases: ['anthropic']` 后，它就能通过无头 Claude Code 继续工作，会话保存的模型 id 原样传给 `--model`。id 必须非空、首尾无空格、不重复且不是 `claude-code`，否则插件拒绝挂载。已被其他插件服务的 id 会被跳过并记录一条警告，绝不会连累 `claude-code` 路由。每个别名在注册表中都是独立的路由，因此列出所有提供方及其模型的界面（模型选择器）会把同样的 Claude 模型在 `claude-code` 下和每个别名下各显示一次。
 
 ### 使用已保存的 DSH 凭据认证
 
@@ -132,6 +144,9 @@ Claude Code 在每次运行的 `rate_limit_event` 行中报告订阅的套餐用
 | [`src/login.ts`](src/login.ts) | `claude auth login` 授权流程与受保护的账户替换 |
 | [`src/browser.ts`](src/browser.ts) | 隐私窗口浏览器的选择与生成的启动脚本 |
 | [`src/rate-limit.ts`](src/rate-limit.ts) | 共享套餐用量文件的串行原子写入器 |
+| [`src/service.ts`](src/service.ts) | `claudeAccounts` 服务：带用量的账户状态，以及串行执行的默认登录切换 |
+| [`src/default-login.ts`](src/default-login.ts) | 默认配置的路径，以及带备份的原子登录切换 |
+| [`src/types.ts`](src/types.ts) | `claudeAccounts` 服务的浏览器安全词汇 |
 | [`src/executable.ts`](src/executable.ts) | 同步的可执行文件查找 |
 
 ### 运行流程
@@ -193,6 +208,7 @@ Claude 的文本、非空思考和 `tool_use` 块按首次发出的顺序变成 
 - **没有 `temperature` 或 `stop`** — `claude -p` 两者都不提供，因此这些请求字段被忽略；`maxTokens` 仅通过 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` 生效。
 - **依赖用户的 `claude` 可执行文件和登录** — 登录缺失或过期时，调用以 `AUTH` 失败。子进程接缝会清除形似凭据的环境变量，因此只使用从 DSH 登录的账户、Claude Code 保存在磁盘上的登录，或由 `credential` 选定的已保存凭据。
 - **登录会替换该账户，且需要文件存储** — 再次登录某个邮箱会替换该账户的目录，若有正在运行的 Claude Code 占用其中的文件则会失败；把登录保存在钥匙串中的平台不受支持，隐私窗口启动器则是仅针对 Chrome、Edge 或 Firefox 的批处理文件或 shell 脚本。
+- **设为默认只影响新进程，且需要文件存储** — 正在运行的 Claude Code 可能保留旧登录，或在刷新时把它写回；切换要求登录保存在 `.credentials.json` 文件中（而非钥匙串），并会拒绝不是有效 JSON 的默认设置文件。
 - **受订阅速率限制** — 每次调用都是一条 Claude 消息，所以配额和速率限制失败会表现为 `QUOTA` 或 `RATE_LIMIT`。
 - **进程启动开销** — 每次调用都会启动一个 `claude` 进程（有工具时还有一个 Node MCP 桩），所以每次调用在首个 token 之前都有固定的启动延迟。
 - **stream-json 格式不是带版本的契约** — Claude Code 的某个版本若改变它，调用可能以 `PROVIDER_ERROR` 失败或返回空内容。

@@ -263,7 +263,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-api-settings-controller`
 
-- `source`: [`packages/api/settings-controller/src/index.ts:37`](../packages/api/settings-controller/src/index.ts)
+- `source`: [`packages/api/settings-controller/src/index.ts:39`](../packages/api/settings-controller/src/index.ts)
 
 ```ts config-catalog
 /** Host integrations replaceable by direct unit tests. */
@@ -1879,7 +1879,7 @@ export interface Config {
 
 - `inject`: `llm` · `subprocess`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/llm/llm-claude-code/src/index.ts:87`](../packages/llm/llm-claude-code/src/index.ts)
+- `source`: [`packages/llm/llm-claude-code/src/index.ts:97`](../packages/llm/llm-claude-code/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config (all optional — `apply` fills the defaults). */
@@ -1898,6 +1898,18 @@ export interface Config {
   accounts: Volatile<string[]>
   /** Email of the account every call runs as, when it has signed in; an edit applies to the next call without a remount. */
   activeAccount: Volatile<string | undefined>
+  /**
+   * Directory of the default Claude Code configuration that `claudeAccounts.makeDefault` swaps a login into
+   * (its `.credentials.json` and `.claude.json`). Defaults to `CLAUDE_CONFIG_DIR` when set, else `~/.claude`
+   * for the login and `~/.claude.json` for the settings.
+   */
+  defaultConfigDir?: string
+  /**
+   * Extra provider ids this plugin also serves with the same adapter (for example `anthropic`), so a session whose
+   * saved route names a provider that is no longer registered keeps working through headless Claude Code. An id
+   * another plugin already registered is skipped with a warning. Defaults to none.
+   */
+  providerAliases?: string[]
   /** Open the sign-in page in a private browser window (Chrome, Edge, or Firefox, when installed). Defaults to true. */
   privateBrowser?: boolean
   /**
@@ -4950,6 +4962,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-session-import` | — | [`packages/client/ui-session-import/src/index.ts`](../packages/client/ui-session-import/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings` | — | [`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-agent-loop` | — | [`packages/client/ui-settings-agent-loop/src/index.ts`](../packages/client/ui-settings-agent-loop/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-settings-claude-accounts` | — | [`packages/client/ui-settings-claude-accounts/src/index.ts`](../packages/client/ui-settings-claude-accounts/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-general` | — | [`packages/client/ui-settings-general/src/index.ts`](../packages/client/ui-settings-general/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-plugin-inventory` | — | [`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-plugins` | — | [`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts) |

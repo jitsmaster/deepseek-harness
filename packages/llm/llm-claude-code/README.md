@@ -46,6 +46,8 @@ Choose this backend when the machine has the official `claude` executable signed
 | `accountsDir` | `<DSH home>/claude-code/accounts` | Root of the Claude Code config directories of the accounts signed in from DSH, one `<id>` directory per account; see "Signing in Claude accounts from DSH" below |
 | `accounts` | (none) | Emails of the Claude accounts offered at sign-in; live: an edit applies to the next sign-in without a remount |
 | `activeAccount` | (unset) | Email of the signed-in account every call runs as; live: an edit applies to the next call without a remount |
+| `defaultConfigDir` | `CLAUDE_CONFIG_DIR` when set, else `~/.claude` (login) and `~/.claude.json` (settings) | Default Claude Code configuration directory that `claudeAccounts.makeDefault` swaps a login into; see "Choosing accounts from a surface" below |
+| `providerAliases` | (none) | Extra provider ids served by the same adapter, for example `anthropic`; see "Serving other provider ids" below |
 | `privateBrowser` | `true` | Open the sign-in page in a private window of the first installed Chrome, Edge, or Firefox, else in the default browser |
 | `credential` | (unset) | Credential record key (for example `llm-pi-ai/anthropic`) whose stored access token or API key authenticates the `claude` child when no signed-in account is usable; unset leaves Claude Code on its own login |
 | `rateLimitFile` | (unset) | JSON file that receives the latest plan-usage reading after each call; see "Sharing the plan-usage reading" below |
@@ -76,6 +78,16 @@ After the child exits 0 the flow runs `claude auth status --json` in the staging
 The record holds no secret and DSH calls no Anthropic endpoint: the tokens stay in each account's directory, where Claude Code stores and refreshes them itself. Before each call the adapter reads `activeAccount` (re-read on every call) and the record; when that email is listed and its directory holds `.credentials.json`, the child starts with `CLAUDE_CONFIG_DIR=<accountsDir>/<id>`. This takes precedence over `credential`, which takes precedence over Claude Code's own login. An active account that cannot be used (never signed in, files missing, no credentials service) logs one warning per distinct reason and falls back; no active account is silent. Only file-based credential storage is supported, so a platform that keeps Claude Code's login in a keychain cannot use this route.
 
 Each call that reports plan usage also keeps the reading of the account it ran as in `<accountsDir>/<id>/usage.json` (`fiveHour` and `sevenDay` `{ utilization, resetsAt }` plus `updatedAt`, written atomically and holding no secret), next to the shared `rateLimitFile`. `readAccountUsage(accountsDir, id)` reads one back for a status display.
+
+### Choosing accounts from a surface
+
+While the plugin is mounted it provides the `ctx.claudeAccounts` service, which the Models page card reads through the `claudeAccounts` Remote namespace of `api-settings-controller`. `status()` answers one entry per email (the `accounts` list first, then any other signed-in account) with `email`, `id`, `signedIn` (the record lists it and its directory holds `.credentials.json`), `active`, `signedInAt`, and `usage` (the account's `usage.json` with `updatedAt` as epoch milliseconds, absent until the account has served a call), plus `defaultAccount.email` (the `oauthAccount.emailAddress` of the default Claude Code settings file, when readable) and `activeAccount`. It carries no token.
+
+`makeDefault(email)` makes a signed-in account the login of the default Claude Code configuration, so every NEW Claude Code process runs as it; a running session may keep the old account or write it back when it refreshes, so restart those. The default configuration is `defaultConfigDir`, else `CLAUDE_CONFIG_DIR`, else `~/.claude/.credentials.json` with `~/.claude.json`. In order it: refuses an account that has not signed in or has no saved profile; backs the two default files up into `<default dir>/dsh-backups/<timestamp>/` (the newest five are kept); copies the default login back into the account folder that owns it (matched by email) so tokens Claude Code refreshed are never lost; then replaces `.credentials.json` through a temp file and rename and merges ONLY the `oauthAccount` object of the account's `.claude.json` into the default one, leaving every other key alone (a default settings file that is not valid JSON is refused untouched). If the second rename fails the original login is restored. It answers `{ ok: true, backupDir, unchanged }` or `{ ok: false, reason }`, never a token, and swaps run one at a time.
+
+### Serving other provider ids
+
+`providerAliases` registers the same adapter under extra provider ids. A session whose saved route names a provider that is no longer registered (for example `anthropic` after the `llm-pi-ai` route was turned off) otherwise fails every turn with `NO_ADAPTER`; with `providerAliases: ['anthropic']` it keeps working through headless Claude Code, and the model id the session saved is passed to `--model` as it is. An id must be non-empty with no surrounding spaces, not repeated, and not `claude-code`, or the plugin refuses to mount. An id another plugin already serves is skipped with one warning and never costs the `claude-code` route. Each alias is its own route in the registry, so a surface that lists every provider and its models (the model picker) shows the same Claude models once under `claude-code` and once under each alias.
 
 ### Authenticating with a stored DSH credential
 
@@ -132,6 +144,9 @@ Failures are thrown as `LlmError`, which the runtime normalizes into a terminal 
 | [`src/login.ts`](src/login.ts) | The `claude auth login` authorization flow and the guarded account swap |
 | [`src/browser.ts`](src/browser.ts) | Private-window browser selection and the generated launcher script |
 | [`src/rate-limit.ts`](src/rate-limit.ts) | Serialized atomic writer of the shared plan-usage file |
+| [`src/service.ts`](src/service.ts) | The `claudeAccounts` service: account status with usage, and the serialized default-login swap |
+| [`src/default-login.ts`](src/default-login.ts) | The default-config paths and the backed-up, atomic swap of a login into them |
+| [`src/types.ts`](src/types.ts) | Browser-safe vocabulary of the `claudeAccounts` service |
 | [`src/executable.ts`](src/executable.ts) | Synchronous executable lookup |
 
 ### Run flow
@@ -193,6 +208,7 @@ These limits define when the adapter is a poor fit. They are current package con
 - **No `temperature` or `stop`** — `claude -p` offers neither, so the request fields are ignored; `maxTokens` is honored only through `CLAUDE_CODE_MAX_OUTPUT_TOKENS`.
 - **Depends on the user's `claude` executable and login** — a call fails with `AUTH` when the login is missing or expired. The subprocess seam scrubs credential-shaped environment variables, so only an account signed in from DSH, a login Claude Code keeps on disk, or the stored credential selected by `credential`, is used.
 - **Signing in replaces that account, and needs files** — a new sign-in of an email swaps that account's directory, which fails while a running Claude Code holds files in it; a platform that stores the login in a keychain is not supported, and the private-window launcher is a batch file or shell script for Chrome, Edge, or Firefox only.
+- **Making an account the default affects new processes only, and needs files** — a running Claude Code may keep the old login or write it back when it refreshes; the swap needs the login in `.credentials.json` files (not a keychain) and refuses a default settings file that is not valid JSON.
 - **Subscription rate limits apply** — every call is one Claude message, so quota and rate-limit failures surface as `QUOTA` or `RATE_LIMIT`.
 - **Process start cost** — every call starts a `claude` process (and a Node MCP stub when tools are present), so every call pays a fixed start-up delay before the first token.
 - **The stream-json format is not a versioned contract** — a Claude Code release that changes it can make a call fail with `PROVIDER_ERROR` or return no content.

@@ -651,6 +651,45 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'claudeAccounts',
+    summary: 'The service surface (`ctx.claudeAccounts`).',
+    description: 'The service surface (`ctx.claudeAccounts`).',
+    methods: [
+      {
+        signature: 'status(): Promise<ClaudeAccountsStatus>',
+        description: 'Read the accounts, their usage, and the default config\'s account.',
+        parameters: [],
+        returns: 'each account with its sign-in state and latest usage, the default config\'s account, and the active account; never rejects.',
+      },
+      {
+        signature: 'makeDefault(email: string): Promise<ClaudeMakeDefaultResult>',
+        description: 'Swap one signed-in account\'s login into the default Claude Code configuration.',
+        parameters: [{ name: 'email', description: 'the account\'s email, in any case.' }],
+        returns: 'the backup folder of the replaced login, or the reason nothing changed; never rejects.',
+      },
+    ],
+  },
+  {
+    key: 'claudeAccountsController',
+    summary: 'Host service backing the generated `ctx.remote.claudeAccounts` namespace.',
+    description: 'Host service backing the generated `ctx.remote.claudeAccounts` namespace. Every answer is copied field by field, so whatever else the service object carries cannot reach the wire; no method here returns a token.',
+    methods: [
+      {
+        signature: '@Remote async status(): Promise<ClaudeAccountsStatusView>',
+        description: 'The Claude Code accounts a person can pick from.',
+        parameters: [],
+        returns: 'each account with its sign-in state and latest plan usage, the account the default Claude Code config is signed in as, and the active account; an empty list while the Claude Code plugin is not mounted.',
+      },
+      {
+        signature: '@Remote async makeDefault(email: string): Promise<ClaudeMakeDefaultView>',
+        description: 'Make one signed-in account the login of every new Claude Code process on this machine.',
+        parameters: [{ name: 'email', description: 'the account\'s email.' }],
+        returns: 'the backup folder of the replaced login, or the reason nothing changed.',
+        throws: ['RemoteError `gateway/bad-request` when `email` is not an address, or `gateway/internal` while the Claude Code plugin is not mounted.'],
+      },
+    ],
+  },
+  {
     key: 'claudeCodeMods',
     summary: 'The bridge service: loaded mods, their hooks, and the harness listeners that raise their events.',
     description: 'The bridge service: loaded mods, their hooks, and the harness listeners that raise their events. Mods join through ClaudeCodeMods.add, which defineMod calls when a mod plugin mounts. The Remote methods let a Client draw each session\'s band above the prompt and press its buttons.',
@@ -5356,6 +5395,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ChangeResult',
     declaration: 'export interface ChangeResult {\n    changed: boolean;\n    application: \'applied\' | \'restart-required\' | \'overridden\' | \'failed\' | \'cancelled\';\n    restartReason?: RestartReason;\n    stage: \'install\' | \'enable\' | \'remove\';\n    target: string;\n    enabled?: boolean;\n    error?: ManagementError;\n    warnings?: string[];\n    packageResult?: PackageResult;\n    bundle?: string;\n    version?: string;\n    pendingBuilds?: string[];\n    approvedBuilds?: string[];\n    registries?: Registry[];\n    failedAt?: \'registry\' | \'spec-host\';\n}',
+  },
+  {
+    name: 'ClaudeAccountInfo',
+    declaration: 'export interface ClaudeAccountInfo {\n    readonly email: string;\n    readonly id: string;\n    readonly signedIn: boolean;\n    readonly active: boolean;\n    readonly signedInAt?: number;\n    readonly usage?: ClaudeAccountUsage;\n}',
+  },
+  {
+    name: 'ClaudeAccountsStatus',
+    declaration: 'export interface ClaudeAccountsStatus {\n    readonly accounts: readonly ClaudeAccountInfo[];\n    readonly defaultAccount: {\n        readonly email?: string;\n    };\n    readonly activeAccount?: string;\n}',
+  },
+  {
+    name: 'ClaudeAccountsStatusView',
+    declaration: 'export interface ClaudeAccountsStatusView {\n    readonly accounts: readonly ClaudeAccountView[];\n    readonly defaultAccount: {\n        readonly email?: string;\n    };\n    readonly activeAccount?: string;\n}',
+  },
+  {
+    name: 'ClaudeAccountUsage',
+    declaration: 'export interface ClaudeAccountUsage {\n    readonly fiveHour?: ClaudeAccountWindow;\n    readonly sevenDay?: ClaudeAccountWindow;\n    readonly updatedAt: number;\n}',
+  },
+  {
+    name: 'ClaudeAccountUsageView',
+    declaration: 'export interface ClaudeAccountUsageView {\n    readonly fiveHour?: ClaudeAccountWindowView;\n    readonly sevenDay?: ClaudeAccountWindowView;\n    readonly updatedAt: number;\n}',
+  },
+  {
+    name: 'ClaudeAccountView',
+    declaration: 'export interface ClaudeAccountView {\n    readonly email: string;\n    readonly id: string;\n    readonly signedIn: boolean;\n    readonly active: boolean;\n    readonly signedInAt?: number;\n    readonly usage?: ClaudeAccountUsageView;\n}',
+  },
+  {
+    name: 'ClaudeAccountWindow',
+    declaration: 'export interface ClaudeAccountWindow {\n    readonly utilization: number;\n    readonly resetsAt: number;\n}',
+  },
+  {
+    name: 'ClaudeAccountWindowView',
+    declaration: 'export interface ClaudeAccountWindowView {\n    readonly utilization: number;\n    readonly resetsAt: number;\n}',
+  },
+  {
+    name: 'ClaudeMakeDefaultResult',
+    declaration: 'export type ClaudeMakeDefaultResult = {\n    readonly ok: true;\n    readonly backupDir: string;\n    readonly unchanged: boolean;\n} | {\n    readonly ok: false;\n    readonly reason: string;\n};',
+  },
+  {
+    name: 'ClaudeMakeDefaultView',
+    declaration: 'export type ClaudeMakeDefaultView = {\n    readonly ok: true;\n    readonly backupDir: string;\n    readonly unchanged: boolean;\n} | {\n    readonly ok: false;\n    readonly reason: string;\n};',
   },
   {
     name: 'ClaudeSessionImportCreateValue',
