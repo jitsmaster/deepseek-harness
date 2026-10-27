@@ -1,0 +1,79 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/llm/llm-claude-code/README.md
+/:
+  en: e0e4f9f25c07a3ee
+  zh: 16be49316235a0d0
+/deepseek-ai-dsh-llm-claude-code:
+  en: 61d4bf476e0fb131
+  zh: 34a864286ff6478a
+/deepseek-ai-dsh-llm-claude-code/summary:
+  en: f0b799622e00a0e5
+  zh: 860cc185f04a6c69
+/deepseek-ai-dsh-llm-claude-code/table-of-contents:
+  en: b563e4ec4727d0de
+  zh: 9d2511d866b583f2
+/deepseek-ai-dsh-llm-claude-code/use-this-package:
+  en: 41e812d03882207a
+  zh: 8e42b0b0bd6f26b4
+/deepseek-ai-dsh-llm-claude-code/use-this-package/when-to-choose-it:
+  en: 919c8bc000146ede
+  zh: 8dd2ad2dcc839b67
+/deepseek-ai-dsh-llm-claude-code/use-this-package/minimal-configuration:
+  en: aee009e4ae49d1cb
+  zh: a51a01d8cb662232
+/deepseek-ai-dsh-llm-claude-code/use-this-package/models-and-request-controls:
+  en: 4adccd528fa6b298
+  zh: 600fc379335efd6b
+/deepseek-ai-dsh-llm-claude-code/use-this-package/what-a-call-does:
+  en: 3ca294d75f87ee85
+  zh: 8b8a896bc1e450dc
+/deepseek-ai-dsh-llm-claude-code/use-this-package/failures-and-recovery:
+  en: 90ad661cacc7fe08
+  zh: 7d1199334958c39a
+/deepseek-ai-dsh-llm-claude-code/understand-the-implementation:
+  en: 42b15ac6321706aa
+  zh: 7ae097f3abcc5d9c
+/deepseek-ai-dsh-llm-claude-code/understand-the-implementation/design-philosophy:
+  en: 3998fcab835eca99
+  zh: 042315fa6692afeb
+/deepseek-ai-dsh-llm-claude-code/understand-the-implementation/source-map:
+  en: 50500679fcb9573f
+  zh: 44e8c4112b8c46f2
+/deepseek-ai-dsh-llm-claude-code/understand-the-implementation/run-flow:
+  en: 9065db1af46d4a63
+  zh: 13327616d8578681
+/deepseek-ai-dsh-llm-claude-code/further-exploration:
+  en: d3c7f18b89d85116
+  zh: 2be44991e546c82b
+/deepseek-ai-dsh-llm-claude-code/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-request-through-claude-code:
+  en: a6c99df68448f750
+  zh: e76d4407ebbc1677
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-request-through-claude-code/what-the-model-sees:
+  en: e773742978c42af3
+  zh: 8b452b93b956e5da
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-request-through-claude-code/token-effect:
+  en: f5fbcc58448ab920
+  zh: f76c5e293ff89ccb
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-request-through-claude-code/kv-cache-effect:
+  en: d32080133d335fb5
+  zh: 999524d62c7e8ae5
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-response:
+  en: 802d7ff60a1d03ff
+  zh: c41c56e28f3e8680
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-response/what-the-model-sees:
+  en: 74653297dbc698f9
+  zh: 3d5c15f263d13313
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-response/token-effect:
+  en: 5734a8c010df1f3e
+  zh: af104ef8daefe676
+/deepseek-ai-dsh-llm-claude-code/model-experience/provider-response/kv-cache-effect:
+  en: 0d592fc6123b6e16
+  zh: 19ffdc53c058b1bd
+/deepseek-ai-dsh-llm-claude-code/known-limitations-and-deferred-work:
+  en: cc7956e1646337b1
+  zh: b764f11f473ea684

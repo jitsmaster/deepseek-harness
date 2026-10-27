@@ -1872,6 +1872,43 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jobs-local -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-llm-claude-code -->
+<a id="deepseek-aidsh-llm-claude-code"></a>
+
+## `@deepseek-ai/dsh-llm-claude-code`
+
+- `inject`: `llm` · `subprocess`
+- `source`: [`packages/llm/llm-claude-code/src/index.ts:44`](../packages/llm/llm-claude-code/src/index.ts)
+
+```ts config-catalog
+/** Plugin config (all optional — `apply` fills the defaults). */
+export interface Config {
+  /** Path or PATH-resolvable name of the user's own `claude` executable. Defaults to `claude` on PATH, else `~/.local/bin/claude`. */
+  executable?: string
+  /** Node binary that runs the tool-schema MCP stub. Defaults to the harness's own Node. */
+  nodeExecutable?: string
+  /** Whole-call deadline in milliseconds. Defaults to 1800000. */
+  timeoutMs?: number
+  /** Context window assumed for a model id the catalog does not list. Defaults to 200000. */
+  defaultContextWindow?: number
+  /** Models added to (or overriding entries of) the built-in Claude catalog. */
+  models?: ClaudeModelEntry[]
+}
+
+/** One selectable model, from the built-in catalog or the plugin config. */
+export interface ClaudeModelEntry {
+  /** Value passed to `--model` (a full id or an alias such as `sonnet`). */
+  id: string
+  /** Display name for selectors. */
+  name: string
+  /** Context window in tokens; the configured default applies when absent. */
+  contextWindow?: number
+  /** Optional user-facing distinction from similar entries. */
+  description?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-claude-code -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-llm-deepseek-account -->
 <a id="deepseek-aidsh-llm-deepseek-account"></a>
 
