@@ -84,8 +84,14 @@ type ResolvedConfig = Omit<Required<Config>, 'model' | 'executable'> & Pick<Conf
 
 /* jscpd:ignore-start -- Cordis registration and shared-seam plumbing mirror
  * the Codex sibling; each product's lifecycle remains package-private. */
+/**
+ * Headless runs ask the `claude` CLI itself to collect and validate one structured result
+ * (`--json-schema`), so `outputSchema` is the one start option they honor; every other
+ * start option stays unsupported, like the SDK path.
+ */
+const HEADLESS_CAPABILITIES: SubagentCapabilities = Object.freeze({ ...NO_START_CAPABILITIES, outputSchema: true })
+
 class ClaudeCodeProvider implements SubagentProvider {
-  readonly capabilities: SubagentCapabilities = NO_START_CAPABILITIES
   readonly inheritsParentContext = false
 
   constructor(
@@ -93,6 +99,10 @@ class ClaudeCodeProvider implements SubagentProvider {
     private readonly ctx: Context,
     private readonly config: ResolvedConfig,
   ) {}
+
+  get capabilities(): SubagentCapabilities {
+    return this.config.executable === undefined ? NO_START_CAPABILITIES : HEADLESS_CAPABILITIES
+  }
 
   async start(request: ResolvedSubagentStartRequest) {
     let cwd: string

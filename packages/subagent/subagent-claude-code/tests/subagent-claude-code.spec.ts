@@ -506,6 +506,21 @@ describe('task admission and package contracts', () => {
     } finally { await ctx.fiber.dispose() }
   })
 
+  it('advertises only outputSchema when a headless executable is configured', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LocalSubprocessRuntime)
+    try {
+      await ctx.plugin(claudeCode, { executable: 'claude' })
+      expect(ctx.subagents.getProvider('claude-code')).toMatchObject({
+        capabilities: { agentOptions: false, agentPreset: false, outputSchema: true, depthLimit: false },
+        inheritsParentContext: false,
+      })
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('registers the default descriptor, validates config, and unregisters on HMR', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)

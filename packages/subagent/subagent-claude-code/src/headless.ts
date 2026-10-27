@@ -40,9 +40,11 @@ export interface HeadlessRunSpec extends ClaudeCodeRunSpec {
  * Build the fixed `claude -p` argument vector. The task itself travels on
  * stdin, so it is never subject to command-line length limits or quoting.
  * @param spec - executable, model, and permission mode.
+ * @param outputSchema - object JSON Schema the run must satisfy; passed as `--json-schema`,
+ *   which makes the Claude Code CLI collect and validate one structured result itself.
  * @returns argv including the executable as element zero.
  */
-export function headlessArgv(spec: HeadlessRunSpec): string[] {
+export function headlessArgv(spec: HeadlessRunSpec, outputSchema?: SubagentStartRequest['outputSchema']): string[] {
   return [
     spec.executable,
     '-p',
@@ -55,6 +57,7 @@ export function headlessArgv(spec: HeadlessRunSpec): string[] {
     '--disallowedTools',
     spec.permissionMode === 'plan' ? 'AskUserQuestion,ExitPlanMode' : 'AskUserQuestion',
     ...spec.model === undefined ? [] : ['--model', spec.model],
+    ...outputSchema === undefined ? [] : ['--json-schema', JSON.stringify(outputSchema)],
   ]
 }
 
@@ -64,6 +67,7 @@ interface ResultLine {
   readonly subtype?: string
   readonly is_error?: boolean
   readonly result?: string
+  readonly structured_output?: unknown
   readonly errors?: readonly string[]
 }
 
@@ -98,26 +102,50 @@ export function successfulHeadlessResult(message: ResultLine): string {
 }
 
 /**
+ * Read the structured value of a successful result when a schema was requested.
+ * The CLI validates it against `--json-schema` (and fails the run with
+ * `error_max_structured_output_retries` otherwise), so only the object shape is
+ * re-checked here: anything but a plain JSON object is an invalid result.
+ * @param message - the decoded successful `result` event.
+ * @returns the plain-object structured value.
+ */
+export function structuredHeadlessResult(message: ResultLine): Record<string, unknown> {
+  const value = message.structured_output
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ClaudeCodeFailure({ stage: 'query-run', category: 'invalid-result' })
+  }
+  return value as Record<string, unknown>
+}
+
+/**
  * Consume the complete stdout stream and require one strict success result.
  * @param lines - stdout lines of the child.
  * @param onResult - records that a terminal result line was seen.
+ * @param structured - whether an `outputSchema` was requested, so the result must carry a structured object.
  * @returns the completed shared result.
  */
 export async function consumeHeadlessLines(
   lines: AsyncIterable<string>,
   onResult?: () => void,
+  structured = false,
 ): Promise<SubagentResult> {
   let answer: string | undefined
+  let value: Record<string, unknown> | undefined
   for await (const line of lines) {
     const message = parseResultLine(line)
     if (message === undefined) continue
     onResult?.()
     answer = successfulHeadlessResult(message)
+    value = structured ? structuredHeadlessResult(message) : undefined
   }
   if (answer === undefined) {
     throw new ClaudeCodeFailure({ stage: 'query-run', category: 'invalid-result' })
   }
-  return { output: [{ type: 'text', text: answer }], stopReason: 'completed' }
+  return {
+    output: [{ type: 'text', text: answer }],
+    ...value === undefined ? {} : { structured: value },
+    stopReason: 'completed',
+  }
 }
 
 /**
@@ -150,7 +178,7 @@ export function startHeadlessRun(
   let child: SubprocessHandle
   try {
     child = spec.spawn({
-      argv: headlessArgv(spec),
+      argv: headlessArgv(spec, request.outputSchema),
       cwd: spec.cwd,
       stdio: { stdin: { data: prompt }, stdout: 'pipe', stderr: 'inherit' },
       graceMs: spec.disposeGraceMs,
@@ -188,7 +216,7 @@ export function startHeadlessRun(
           throw new ClaudeCodeFailure({ stage: 'query-start', category: 'unknown' })
         }
         const completed = await Promise.race([
-          consumeHeadlessLines(lines, () => { receivedResult = true }),
+          consumeHeadlessLines(lines, () => { receivedResult = true }, request.outputSchema !== undefined),
           processFailure,
         ])
         await child.done.catch(() => undefined)

@@ -42,6 +42,46 @@ describe('headless claude -p', () => {
     await expect(consumeHeadlessLines(lines('{"type":"system"}'))).rejects.toThrow(/invalid-result/)
   })
 
+  it('passes a requested output schema to the CLI as one compact argument', () => {
+    const schema = { type: 'object', properties: { status: { type: 'string' } }, required: ['status'] } as const
+    const argv = headlessArgv(spec({ model: 'opus' }), schema)
+    expect(argv.slice(-2)).toEqual(['--json-schema', JSON.stringify(schema)])
+    expect(argv).toContain('opus')
+    expect(headlessArgv(spec())).not.toContain('--json-schema')
+  })
+
+  it('returns the structured object of a schema-bound success', async () => {
+    const result = await consumeHeadlessLines(lines(
+      '{"type":"result","subtype":"success","is_error":false,"result":"{\\"status\\":\\"complete\\"}","structured_output":{"status":"complete"}}',
+    ), undefined, true)
+    expect(result).toEqual({
+      output: [{ type: 'text', text: '{"status":"complete"}' }],
+      structured: { status: 'complete' },
+      stopReason: 'completed',
+    })
+  })
+
+  it('rejects a schema-bound success without a structured object', async () => {
+    for (const extra of ['', ',"structured_output":null', ',"structured_output":[1]', ',"structured_output":"x"']) {
+      await expect(consumeHeadlessLines(lines(
+        `{"type":"result","subtype":"success","is_error":false,"result":"text"${extra}}`,
+      ), undefined, true)).rejects.toThrow(/invalid-result/)
+    }
+  })
+
+  it('maps the CLI structured-output retry exhaustion to a failure', async () => {
+    await expect(consumeHeadlessLines(lines(
+      '{"type":"result","subtype":"error_max_structured_output_retries","is_error":true,"errors":["no valid output"]}',
+    ), undefined, true)).rejects.toThrow()
+  })
+
+  it('ignores a structured value when no schema was requested', async () => {
+    const result = await consumeHeadlessLines(lines(
+      '{"type":"result","subtype":"success","is_error":false,"result":"done","structured_output":{"a":1}}',
+    ))
+    expect(result).toEqual({ output: [{ type: 'text', text: 'done' }], stopReason: 'completed' })
+  })
+
   it('rejects error and empty results', () => {
     expect(() => successfulHeadlessResult({ type: 'result', subtype: 'error_max_turns', errors: ['x'] })).toThrow(/limit/)
     expect(() => successfulHeadlessResult({ type: 'result', subtype: 'success', is_error: true, result: 'x' })).toThrow(/invalid-result/)
