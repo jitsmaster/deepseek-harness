@@ -458,6 +458,11 @@
     - id: ui-settings-web-search
       name: '@deepseek-ai/dsh-client-ui-settings-web-search'
 
+    # Claude Code accounts card in the Models page footer; it renders only
+    # while the Host serves the llm-claude-code plugin's settings entry.
+    - id: ui-settings-claude-accounts
+      name: '@deepseek-ai/dsh-client-ui-settings-claude-accounts'
+
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan
       name: '@deepseek-ai/dsh-client-ui-plan'
