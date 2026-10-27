@@ -44,6 +44,7 @@ Choose this backend when the machine has the official `claude` executable signed
 | `timeoutMs` | `1800000` | Whole-call deadline |
 | `defaultContextWindow` | `200000` | Context window assumed for a model id the catalog does not list |
 | `credential` | (unset) | Credential record key (for example `llm-pi-ai/anthropic`) whose stored access token or API key authenticates the `claude` child; unset leaves Claude Code on its own login |
+| `rateLimitFile` | (unset) | JSON file that receives the latest plan-usage reading after each call; see "Sharing the plan-usage reading" below |
 | `models` | (none) | `{ id, name, contextWindow?, description? }` entries added to, or overriding, the built-in catalog |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-llm-claude-code) is the exhaustive source for every accepted field and its JSDoc.
@@ -65,6 +66,20 @@ Tools reach Claude through a stdio MCP stub started with `node -e` whose `tools/
 Set `credential` to a credential record key, such as `llm-pi-ai/anthropic`, to run Claude Code under the Anthropic credential DSH already stores. Before each spawn the adapter reads that record through the optional credentials service. A pi-ai OAuth grant with more than 60 seconds left hands only its **access token** to the child as `CLAUDE_CODE_OAUTH_TOKEN`; an `api-key` record hands its key as `ANTHROPIC_API_KEY`. The refresh token is never shared, because a refresh by Claude Code would rotate it and break DSH's stored copy.
 
 This route never refreshes a grant. When the grant is expired, malformed, or missing, when no credentials service is mounted, or when the read fails, the call does not fail: the child starts with no extra environment, uses Claude Code's own login, and one warning per distinct reason is logged (never the secret). While the `llm-pi-ai` route is off nobody refreshes the token, so the grant goes stale after about 6 hours and the route falls back to Claude Code's own login.
+
+### Sharing the plan-usage reading
+
+Claude Code reports the subscription's plan usage on a `rate_limit_event` line of every run. Set `rateLimitFile` to a path and the adapter keeps the latest reading there, so a status display can show it without calling Anthropic's usage endpoint itself. The file is JSON:
+
+```json
+{
+  "updatedAt": "2026-10-27T17:42:00.000Z",
+  "fiveHour": { "utilization": 0.02, "resetsAt": 1793134800 },
+  "sevenDay": { "utilization": 0.53, "resetsAt": 1793232000 }
+}
+```
+
+`utilization` is a fraction from 0 to 1 and `resetsAt` is epoch **seconds**. Only the `five_hour` and `seven_day` windows are kept, nothing else from the event. A window the latest run did not report keeps its previous value. The file is updated only when a call completes (a call that ends in a failure or in a tool call counts when the line had already arrived), so it is as old as the last call. Writes go through a temp file in the same directory and a rename, are serialized inside the plugin, and create the parent directory. They are best effort: a failure never fails the call and logs one warning per distinct reason.
 
 ### Failures and recovery
 
@@ -97,6 +112,7 @@ Failures are thrown as `LlmError`, which the runtime normalizes into a terminal 
 | [`src/stub.ts`](src/stub.ts) | Inline source of the never-answering MCP stub |
 | [`src/models.ts`](src/models.ts) | Built-in model catalog and efforts |
 | [`src/credential.ts`](src/credential.ts) | Stored credential record to child environment mapping |
+| [`src/rate-limit.ts`](src/rate-limit.ts) | Serialized atomic writer of the shared plan-usage file |
 | [`src/executable.ts`](src/executable.ts) | Synchronous executable lookup |
 
 ### Run flow

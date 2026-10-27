@@ -197,6 +197,51 @@ describe('ClaudeCodeLlmAdapter text answer', () => {
   }, 30_000)
 })
 
+describe('ClaudeCodeLlmAdapter plan-usage reading', () => {
+  const READING = {
+    fiveHour: { utilization: 0.25, resetsAt: 1793134800 },
+    sevenDay: { utilization: 0.5, resetsAt: 1793232000 },
+  }
+
+  it('reports the reading once when a run finishes', async () => {
+    const readings: unknown[] = []
+    const chunks = await collect(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('ratelimited'))
+    expect(readings).toEqual([READING])
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
+  }, 30_000)
+
+  it('reports nothing when the stream carried no rate_limit_event', async () => {
+    const readings: unknown[] = []
+    await collect(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('text'))
+    expect(readings).toEqual([])
+  }, 30_000)
+
+  it('reports a reading already seen on the tool-call early-termination path', async () => {
+    const readings: unknown[] = []
+    const chunks = await collect(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('ratelimitedtool', { tools: [READ] }))
+    expect(readings).toEqual([READING])
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'tool-calls' } })
+  }, 30_000)
+
+  it('does not wait for a reading that has not arrived on the tool-call path', async () => {
+    const readings: unknown[] = []
+    await collect(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('tool', { tools: [READ] }))
+    expect(readings).toEqual([])
+  }, 30_000)
+
+  it('reports the reading of a failed run too, and still throws the run failure', async () => {
+    const readings: unknown[] = []
+    const error = await failure(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('ratelimitedfail'))
+    expect(error.code).toBe('SERVER')
+    expect(readings).toEqual([READING])
+  }, 30_000)
+
+  it('swallows an observer that throws', async () => {
+    const chunks = await collect(makeAdapter({ onRateLimit: () => { throw new Error('observer broke') } }), request('ratelimited'))
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
+  }, 30_000)
+})
+
 describe('ClaudeCodeLlmAdapter tools', () => {
   it('exposes the tools through a never-answering MCP stub', async () => {
     await collect(makeAdapter(), request('text', { tools: [READ, BASH, { ...READ, name: 'edit', deferLoading: true, parameters: { properties: {} } }] }))

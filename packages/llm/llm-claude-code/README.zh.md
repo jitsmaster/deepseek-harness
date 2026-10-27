@@ -44,6 +44,7 @@ kind: "package-reference"
 | `timeoutMs` | `1800000` | 单次调用的整体期限 |
 | `defaultContextWindow` | `200000` | 目录中未列出的模型 id 所假定的上下文窗口 |
 | `credential` | （未设置） | 凭据记录键（例如 `llm-pi-ai/anthropic`），其保存的访问令牌或 API 密钥用于认证 `claude` 子进程；未设置时 Claude Code 使用它自己的登录 |
+| `rateLimitFile` | （未设置） | 每次调用后接收最新套餐用量读数的 JSON 文件；见下文“共享套餐用量读数” |
 | `models` | （无） | 追加到内置目录或覆盖其条目的 `{ id, name, contextWindow?, description? }` |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-llm-claude-code)是所有可接受字段及其 JSDoc 的完整来源。
@@ -65,6 +66,20 @@ kind: "package-reference"
 将 `credential` 设为凭据记录键（例如 `llm-pi-ai/anthropic`），即可让 Claude Code 使用 DSH 已保存的 Anthropic 凭据运行。每次启动子进程前，适配器通过可选的凭据服务读取该记录。剩余有效期超过 60 秒的 pi-ai OAuth 授权，只会把**访问令牌**以 `CLAUDE_CODE_OAUTH_TOKEN` 交给子进程；`api-key` 记录则以 `ANTHROPIC_API_KEY` 交出其密钥。刷新令牌从不共享，因为 Claude Code 刷新会轮换它，并使 DSH 保存的副本失效。
 
 此路由从不刷新授权。授权已过期、格式错误或缺失，未挂载凭据服务，或读取失败时，调用不会失败：子进程不带额外环境启动，使用 Claude Code 自己的登录，并且每种不同原因只记录一条警告（绝不含密钥）。`llm-pi-ai` 路由关闭期间没有任何一方刷新令牌，因此授权约 6 小时后会过期，此路由随即回退到 Claude Code 自己的登录。
+
+### 共享套餐用量读数
+
+Claude Code 在每次运行的 `rate_limit_event` 行中报告订阅的套餐用量。将 `rateLimitFile` 设为一个路径，适配器会把最新读数保存在那里，状态显示无需自己调用 Anthropic 的用量端点。该文件为 JSON：
+
+```json
+{
+  "updatedAt": "2026-10-27T17:42:00.000Z",
+  "fiveHour": { "utilization": 0.02, "resetsAt": 1793134800 },
+  "sevenDay": { "utilization": 0.53, "resetsAt": 1793232000 }
+}
+```
+
+`utilization` 是 0 到 1 的小数，`resetsAt` 是 epoch **秒**。只保留 `five_hour` 和 `seven_day` 两个窗口，事件中的其他内容一概不留。最近一次运行未报告的窗口保持其先前的值。文件只在调用结束时更新（以失败或工具调用结束的调用，只要该行已经到达也算），所以它与最近一次调用一样旧。写入先写同目录下的临时文件再重命名，在插件内串行执行，并会创建父目录。写入是尽力而为：失败从不使调用失败，且每种不同原因只记录一条警告。
 
 ### 失败与恢复
 
@@ -97,6 +112,7 @@ kind: "package-reference"
 | [`src/stub.ts`](src/stub.ts) | 永不应答的 MCP 桩的内联源码 |
 | [`src/models.ts`](src/models.ts) | 内置模型目录和强度 |
 | [`src/credential.ts`](src/credential.ts) | 已保存凭据记录到子进程环境的映射 |
+| [`src/rate-limit.ts`](src/rate-limit.ts) | 共享套餐用量文件的串行原子写入器 |
 | [`src/executable.ts`](src/executable.ts) | 同步的可执行文件查找 |
 
 ### 运行流程

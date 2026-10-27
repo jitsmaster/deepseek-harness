@@ -50,6 +50,17 @@ function hang() {
   setInterval(() => {}, 1000)
 }
 
+function rateLimit() {
+  emit({
+    type: 'rate_limit_event',
+    rate_limit_info: {
+      status: 'allowed',
+      unifiedWindows: { five_hour: { utilization: 0.25, resetsAt: 1793134800 }, seven_day: { utilization: 0.5, resetsAt: 1793232000 } },
+    },
+    session_id: 's',
+  })
+}
+
 /** Scenarios that end the process by themselves return normally; `hang` ones keep it alive. */
 const scenarios = {
   text() {
@@ -58,6 +69,25 @@ const scenarios = {
     textBlock(0, ['Hello ', 'world'])
     messageEnd('end_turn')
     success('Hello world')
+  },
+  ratelimited() {
+    messageStart()
+    textBlock(0, ['Hello ', 'world'])
+    messageEnd('end_turn')
+    rateLimit()
+    success('Hello world')
+  },
+  ratelimitedfail() {
+    rateLimit()
+    emit({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 529 overloaded' })
+    process.exitCode = 1
+  },
+  ratelimitedtool() {
+    messageStart()
+    rateLimit()
+    toolBlock(0, 'toolu_1', 'mcp__dsh__read', ['{"path":"a.txt"}'])
+    messageEnd('tool_use')
+    hang()
   },
   tool() {
     messageStart()
@@ -157,7 +187,7 @@ process.stdin.on('end', () => {
   }) + '\n')
   const word = /scenario:(\w+)/.exec(stdin)?.[1] ?? 'text'
   scenarios[word]()
-  if (word === 'tool' || word === 'multitool' || word === 'firsttool' || word === 'hang' || word === 'slowhang') return
+  if (word === 'tool' || word === 'multitool' || word === 'firsttool' || word === 'ratelimitedtool' || word === 'hang' || word === 'slowhang') return
   // Let buffered stdout flush, then end with the scenario's exit code.
   process.stdout.write('', () => process.exit(process.exitCode ?? 0))
 })

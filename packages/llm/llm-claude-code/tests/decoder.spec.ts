@@ -163,4 +163,47 @@ describe('stream decoder over recorded claude output', () => {
     ])
     expect(decoder.terminalChunks()[0]).toMatchObject({ usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 } })
   })
+
+  describe('plan-usage rate_limit_event', () => {
+    const event = (windows: unknown): string => JSON.stringify({
+      type: 'rate_limit_event',
+      rate_limit_info: { status: 'allowed', overageDisabledReason: 'secret-ish', unifiedWindows: windows },
+      session_id: 'sid',
+    })
+
+    it('captures only the two windows from the recorded fixture, with no other fields', () => {
+      const { decoder, chunks } = decode(fixture('native-tool-call.jsonl'))
+      expect(decoder.rateLimit).toEqual({
+        fiveHour: { utilization: 0.02, resetsAt: 1793134800 },
+        sevenDay: { utilization: 0.53, resetsAt: 1793232000 },
+      })
+      expect(JSON.stringify(decoder.rateLimit)).not.toMatch(/session|status|overage/u)
+      expect(chunks.at(-1)).toMatchObject({ type: 'block-end' })
+    })
+
+    it('is undefined when no rate_limit_event arrived', () => {
+      const lines = fixture('thinking-then-text.jsonl').filter(line => !line.includes('rate_limit_event'))
+      expect(decode(lines).decoder.rateLimit).toBeUndefined()
+    })
+
+    it('keeps the latest reading and a single well-formed window', () => {
+      const { decoder } = decode([
+        event({ five_hour: { utilization: 0.1, resetsAt: 1 } }),
+        event({ five_hour: { utilization: 'x', resetsAt: 2 }, seven_day: { utilization: 0.4, resetsAt: 3, extra: 'dropped' }, other: { utilization: 1, resetsAt: 9 } }),
+      ])
+      expect(decoder.rateLimit).toEqual({ sevenDay: { utilization: 0.4, resetsAt: 3 } })
+    })
+
+    it('ignores malformed events and keeps the previous reading', () => {
+      const good = event({ five_hour: { utilization: 0.1, resetsAt: 1 } })
+      const { decoder } = decode([
+        good,
+        event({ five_hour: { utilization: 0.1 } }),
+        event('nope'),
+        '{"type":"rate_limit_event"}',
+        '{"type":"rate_limit_event","rate_limit_info":[]}',
+      ])
+      expect(decoder.rateLimit).toEqual({ fiveHour: { utilization: 0.1, resetsAt: 1 } })
+    })
+  })
 })

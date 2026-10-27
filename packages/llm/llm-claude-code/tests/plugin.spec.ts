@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -123,6 +123,86 @@ describe('llm-claude-code registration', () => {
     expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
     expect(chunks.some(chunk => chunk.type === 'text-delta')).toBe(true)
     rmSync(FakeClaudeSubprocess.logPath, { force: true })
+  }, 30_000)
+})
+
+describe('llm-claude-code rateLimitFile', () => {
+  let scratch: string | undefined
+
+  afterEach(() => {
+    if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true })
+    scratch = undefined
+  })
+
+  async function runScenario(root: Context, scenario: string): Promise<void> {
+    for await (const chunk of root.llm.stream({
+      provider: 'claude-code',
+      model: 'sonnet',
+      messages: [createUserMessage({ content: [{ type: 'text', text: `hi scenario:${scenario}` }], source: { kind: 'user' } })],
+    })) void chunk
+  }
+
+  async function waitForFile(path: string): Promise<Record<string, unknown>> {
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
+      try {
+        return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    }
+    throw new Error('the rate-limit file never appeared')
+  }
+
+  function setup(): string {
+    scratch = mkdtempSync(join(tmpdir(), 'dsh-llm-claude-rl-'))
+    FakeClaudeSubprocess.logPath = join(scratch, 'runs.jsonl')
+    return join(scratch, 'nested', 'usage.json')
+  }
+
+  it('validates the option', () => {
+    expect(() => claudeCodePlugin.Config({ rateLimitFile: 'usage.json' })).not.toThrow()
+    expect(() => claudeCodePlugin.Config({ rateLimitFile: '' })).toThrow()
+  })
+
+  it('writes the plan-usage reading after a call', async () => {
+    const path = setup()
+    const root = await mount({ executable: process.execPath, rateLimitFile: path })
+    await runScenario(root, 'ratelimited')
+    const body = await waitForFile(path)
+    expect(body).toMatchObject({
+      fiveHour: { utilization: 0.25, resetsAt: 1793134800 },
+      sevenDay: { utilization: 0.5, resetsAt: 1793232000 },
+    })
+    expect(typeof body.updatedAt).toBe('string')
+  }, 30_000)
+
+  it('writes nothing when the option is unset or the stream has no reading', async () => {
+    const path = setup()
+    const unset = await mount()
+    await runScenario(unset, 'ratelimited')
+    await ctx?.fiber.dispose()
+    const set = await mount({ executable: process.execPath, rateLimitFile: path })
+    await runScenario(set, 'text')
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(existsSync(path)).toBe(false)
+  }, 30_000)
+
+  it('warns once per reason for an unwritable path and still serves the call', async () => {
+    const path = setup()
+    writeFileSync(join(scratch as string, 'nested'), 'a file, not a directory')
+    const root = new Context()
+    ctx = root
+    const warnings: string[] = []
+    root.logger.warn = ((...args: unknown[]) => { warnings.push(args.join(' ')) }) as never
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    await root.plugin(claudeCodePlugin, { executable: process.execPath, rateLimitFile: path })
+    await runScenario(root, 'ratelimited')
+    await runScenario(root, 'ratelimited')
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('could not write the plan-usage file')
   }, 30_000)
 })
 

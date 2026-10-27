@@ -32,7 +32,7 @@ import type {
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { ClaudeStreamDecoder } from './decoder.ts'
-import type { ResultLine } from './decoder.ts'
+import type { RateLimitReading, ResultLine } from './decoder.ts'
 import { locateExecutable } from './executable.ts'
 import { CLAUDE_EFFORTS, mergeModels } from './models.ts'
 import type { ClaudeModelEntry } from './models.ts'
@@ -87,6 +87,8 @@ export interface ClaudeCodeLlmAdapterOptions {
   models: readonly ClaudeModelEntry[]
   /** Extra child environment resolved per call (e.g. a stored credential); must not throw. */
   resolveEnv?(): Promise<Record<string, string>>
+  /** Receives the run's plan-usage reading (at most once per run, when Claude reported one); errors are swallowed. */
+  onRateLimit?(reading: RateLimitReading): void
   /** Subprocess seam spawn. */
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle
 }
@@ -281,6 +283,16 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
     const stopped = new Promise<'stopped'>((resolve) => {
       signal.addEventListener('abort', () => { resolve('stopped') }, { once: true })
     })
+    let reported = false
+    const report = (): void => {
+      if (reported || decoder.rateLimit === undefined) return
+      reported = true
+      try {
+        this.options.onRateLimit?.(decoder.rateLimit)
+      } catch {
+        // A usage observer must never fail the call.
+      }
+    }
     try {
       const iterator = lines?.[Symbol.asyncIterator]()
       let toolCalls = false
@@ -296,6 +308,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
         }
         if (decoder.result !== undefined) break
       }
+      report()
       if (toolCalls) {
         child.terminate()
         yield * decoder.terminalChunks()
@@ -303,6 +316,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       }
       yield * await this.finish(child, decoder, signal)
     } finally {
+      report()
       lines?.close()
       child.terminate()
       // The directory is removed next: wait until the whole managed range is gone.

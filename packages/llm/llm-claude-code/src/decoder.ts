@@ -31,6 +31,18 @@ export interface ResultLine {
   readonly usage?: ClaudeUsage
 }
 
+/** One plan-usage window: `utilization` is a 0..1 fraction, `resetsAt` epoch seconds. */
+export interface RateLimitWindow {
+  readonly utilization: number
+  readonly resetsAt: number
+}
+
+/** The latest plan-usage reading of a run (only the windows Claude reported well-formed). */
+export interface RateLimitReading {
+  readonly fiveHour?: RateLimitWindow
+  readonly sevenDay?: RateLimitWindow
+}
+
 /** Claude-side state of one open content block. */
 interface OpenBlock {
   kind: 'text' | 'thinking' | 'tool' | 'ignored'
@@ -48,6 +60,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function numberOf(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function windowOf(value: unknown): RateLimitWindow | undefined {
+  if (!isRecord(value)) return undefined
+  const utilization = numberOf(value.utilization)
+  const resetsAt = numberOf(value.resetsAt)
+  return utilization === undefined || resetsAt === undefined ? undefined : { utilization, resetsAt }
 }
 
 function stringOf(value: unknown): string {
@@ -70,6 +89,8 @@ export class ClaudeStreamDecoder {
   stopReason: string | undefined
   /** Whether any DSH block was announced. */
   hasContent = false
+  /** The latest well-formed plan-usage reading from a `rate_limit_event` line, if any arrived. */
+  rateLimit: RateLimitReading | undefined
 
   private readonly open = new Map<number, OpenBlock>()
   private nextIndex = 0
@@ -93,6 +114,10 @@ export class ClaudeStreamDecoder {
     if (!isRecord(parsed)) return []
     if (parsed.type === 'result') {
       this.result = parsed
+      return []
+    }
+    if (parsed.type === 'rate_limit_event') {
+      this.captureRateLimit(parsed.rate_limit_info)
       return []
     }
     if (parsed.type !== 'stream_event' || !isRecord(parsed.event) || this.messageComplete) return []
@@ -137,6 +162,17 @@ export class ClaudeStreamDecoder {
       { type: 'text-delta', index: 0, text },
       { type: 'block-end', index: 0, block: { type: 'text', text } },
     ]
+  }
+
+  private captureRateLimit(info: unknown): void {
+    if (!isRecord(info) || !isRecord(info.unifiedWindows)) return
+    const fiveHour = windowOf(info.unifiedWindows.five_hour)
+    const sevenDay = windowOf(info.unifiedWindows.seven_day)
+    if (fiveHour === undefined && sevenDay === undefined) return
+    this.rateLimit = {
+      ...fiveHour === undefined ? {} : { fiveHour },
+      ...sevenDay === undefined ? {} : { sevenDay },
+    }
   }
 
   private announce(block: OpenBlock, blockType: 'text' | 'reasoning'): StreamChunk {

@@ -4,7 +4,8 @@
  * headless `claude -p` process of the user's own executable under the shared
  * subprocess seam. By default the run uses the login the user's Claude Code
  * already has; the optional `credential` option instead hands the child the
- * access token (or API key) of a stored DSH credential record.
+ * access token (or API key) of a stored DSH credential record, and the optional
+ * `rateLimitFile` option shares the latest plan-usage reading as a JSON file.
  *
  * @module @deepseek-ai/dsh-llm-claude-code
  */
@@ -22,8 +23,10 @@ import {
   ClaudeCodeLlmAdapter,
 } from './adapter.ts'
 import { credentialEnv } from './credential.ts'
+import type { RateLimitReading } from './decoder.ts'
 import { defaultExecutable } from './executable.ts'
 import type { ClaudeModelEntry } from './models.ts'
+import { RateLimitFile } from './rate-limit.ts'
 
 export {
   CLAUDE_CODE_DEFAULT_CONTEXT_WINDOW,
@@ -33,6 +36,7 @@ export {
   claudeArgv,
 } from './adapter.ts'
 export type { ClaudeCodeLlmAdapterOptions } from './adapter.ts'
+export type { RateLimitReading, RateLimitWindow } from './decoder.ts'
 export { DEFAULT_CLAUDE_EXECUTABLE, defaultExecutable, locateExecutable } from './executable.ts'
 export { BUILTIN_MODELS, CLAUDE_EFFORTS } from './models.ts'
 export type { ClaudeModelEntry } from './models.ts'
@@ -58,6 +62,8 @@ export interface Config {
   defaultContextWindow?: number
   /** Credential record key (e.g. `llm-pi-ai/anthropic`) whose token or key authenticates the child; unset uses Claude Code's own login. */
   credential?: string
+  /** JSON file that receives the latest plan-usage reading (five-hour and seven-day windows) after each call; unset writes nothing. */
+  rateLimitFile?: string
   /** Models added to (or overriding entries of) the built-in Claude catalog. */
   models?: ClaudeModelEntry[]
 }
@@ -68,6 +74,7 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().step(1).min(1),
   defaultContextWindow: z.number().step(1).min(1),
   credential: z.string().min(1),
+  rateLimitFile: z.string().min(1),
   models: z.array(z.object({
     id: z.string().min(1).required(),
     name: z.string().min(1).required(),
@@ -101,6 +108,17 @@ function credentialResolver(ctx: Context, key: string): () => Promise<Record<str
   }
 }
 
+/** Build the observer that writes each run's plan-usage reading to `path`, warning once per distinct reason. */
+function rateLimitWriter(ctx: Context, path: string): (reading: RateLimitReading) => void {
+  const warned = new Set<string>()
+  const file = new RateLimitFile(path, (reason) => {
+    if (warned.has(reason)) return
+    warned.add(reason)
+    ctx.logger.warn(`llm-claude-code: rateLimitFile "${path}": ${reason}`)
+  })
+  return (reading) => { void file.write(reading) }
+}
+
 /** Register the Claude Code adapter's provider route with `ctx.llm`. */
 export function apply(ctx: Context, config: Config): void {
   const adapter = new ClaudeCodeLlmAdapter({
@@ -110,6 +128,7 @@ export function apply(ctx: Context, config: Config): void {
     defaultContextWindow: config.defaultContextWindow ?? CLAUDE_CODE_DEFAULT_CONTEXT_WINDOW,
     models: config.models ?? [],
     ...config.credential === undefined ? {} : { resolveEnv: credentialResolver(ctx, config.credential) },
+    ...config.rateLimitFile === undefined ? {} : { onRateLimit: rateLimitWriter(ctx, config.rateLimitFile) },
     spawn: spec => ctx.subprocess.spawn(spec),
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_LLM_PROVIDER_ID], adapter)
