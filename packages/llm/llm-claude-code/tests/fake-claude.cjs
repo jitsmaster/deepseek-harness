@@ -89,6 +89,14 @@ const scenarios = {
     messageEnd('tool_use')
     hang()
   },
+  ratelimitedtoollate() {
+    // The real order: the usage line arrives just AFTER the message stops.
+    messageStart()
+    toolBlock(0, 'toolu_1', 'mcp__dsh__read', ['{"path":"a.txt"}'])
+    messageEnd('tool_use')
+    rateLimit()
+    hang()
+  },
   tool() {
     messageStart()
     toolBlock(0, 'toolu_1', 'mcp__dsh__read', ['', '{"path":', '"a.txt"}'])
@@ -187,7 +195,7 @@ process.stdin.on('end', () => {
   }) + '\n')
   const word = /scenario:(\w+)/.exec(stdin)?.[1] ?? 'text'
   scenarios[word]()
-  if (word === 'tool' || word === 'multitool' || word === 'firsttool' || word === 'ratelimitedtool' || word === 'hang' || word === 'slowhang') return
+  if (word === 'tool' || word === 'multitool' || word === 'firsttool' || word === 'ratelimitedtool' || word === 'ratelimitedtoollate' || word === 'hang' || word === 'slowhang') return
   // Let buffered stdout flush, then end with the scenario's exit code.
   process.stdout.write('', () => process.exit(process.exitCode ?? 0))
 })

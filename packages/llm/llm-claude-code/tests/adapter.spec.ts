@@ -223,6 +223,13 @@ describe('ClaudeCodeLlmAdapter plan-usage reading', () => {
     expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'tool-calls' } })
   }, 30_000)
 
+  it('reports a reading that arrives just after the tool-call stop (the real Claude order)', async () => {
+    const readings: unknown[] = []
+    const chunks = await collect(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('ratelimitedtoollate', { tools: [READ] }))
+    expect(readings).toEqual([READING])
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'tool-calls' } })
+  }, 30_000)
+
   it('does not wait for a reading that has not arrived on the tool-call path', async () => {
     const readings: unknown[] = []
     await collect(makeAdapter({ onRateLimit: (reading) => { readings.push(reading) } }), request('tool', { tools: [READ] }))

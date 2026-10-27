@@ -64,6 +64,9 @@ const TERMINATION_GRACE_MS = 2_000
 /** How long a finished run may take to exit before the final cleanup terminates it. */
 const EXIT_GRACE_MS = 2_000
 
+/** How long a tool-call stop waits for the trailing plan-usage line, in milliseconds. */
+const RATE_LIMIT_GRACE_MS = 800
+
 /** Stderr tail kept for failure diagnostics, in bytes. */
 const STDERR_TAIL_BYTES = 8_192
 
@@ -307,6 +310,11 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
           break
         }
         if (decoder.result !== undefined) break
+      }
+      if (toolCalls && decoder.rateLimit === undefined && iterator !== undefined) {
+        // Claude prints the plan-usage line right AFTER the message stops, so give it a short bounded read.
+        const late = await within(iterator.next(), RATE_LIMIT_GRACE_MS)
+        if (late?.done === false) decoder.push(late.value)
       }
       report()
       if (toolCalls) {
