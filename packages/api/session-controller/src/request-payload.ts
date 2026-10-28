@@ -11,10 +11,15 @@ import type { SessionRequestPayloadValue } from './types.ts'
 
 const gunzipAsync = promisify(gunzip)
 
-/** File names the writer produces: no separators, no leading dot, `.json.gz` suffix. */
+/**
+ * File names the writer produces: no separators, no leading dot, `.json.gz` suffix.
+ * Keep in step with `NAME_PATTERN` in `packages/core/agent-loop/src/request-payload.ts`.
+ */
 const BLOB_PATTERN = /^\w[\w.-]*\.json\.gz$/
 /** Stored files are capped at 5 MB of JSON by the writer; refuse to inflate beyond this. */
 const MAX_INFLATED_BYTES = 8_000_000
+/** Sanity bound on the gzip file itself, well above anything the writer produces. */
+const MAX_STORED_BYTES = 8_000_000
 
 /** A stored request payload; oversized ones carry the writer's truncation marker. */
 export type StoredRequestPayload = NonNullable<SessionRequestPayloadValue>
@@ -72,7 +77,7 @@ export async function readRequestPayload(
   try {
     const info = await stat(file)
     if (!info.isFile()) return undefined
-    if (info.size > MAX_INFLATED_BYTES) throw new Error('stored payload is too large')
+    if (info.size > MAX_STORED_BYTES) throw new Error('stored payload is too large')
     compressed = await readFile(file, { signal })
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
