@@ -1,4 +1,4 @@
-import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { constants, gzip } from 'node:zlib'
@@ -6,6 +6,10 @@ import type { RequestPayload } from '@deepseek-ai/dsh-llm'
 
 const gzipAsync = promisify(gzip)
 const NAME_PATTERN = /^[\w.-]+$/
+
+async function exists(path: string): Promise<boolean> {
+  return stat(path).then(() => true, () => false)
+}
 
 export interface RequestPayloadBlob {
   /** Sidecar file name, `<name>.json.gz`, relative to `<dir>/payloads/`. */
@@ -70,9 +74,12 @@ export async function writeRequestPayload(
   // Fastest level: this runs on every LLM call and the blob is read rarely.
   const compressed = await gzipAsync(Buffer.from(json), { level: constants.Z_BEST_SPEED })
   const payloads = join(dir, 'payloads')
-  const blob = `${name}.json.gz`
-  const tmp = join(payloads, `${blob}.${process.pid}.tmp`)
   await mkdir(payloads, { recursive: true, mode: 0o700 })
+  // A resumed session restarts its attempt counter, so a name can already exist:
+  // take the next free suffix instead of overwriting an earlier request's blob.
+  let blob = `${name}.json.gz`
+  for (let n = 1; await exists(join(payloads, blob)); n++) blob = `${name}-r${String(n)}.json.gz`
+  const tmp = join(payloads, `${blob}.${process.pid}.tmp`)
   try {
     await writeFile(tmp, compressed, { mode: 0o600 })
     await rename(tmp, join(payloads, blob))

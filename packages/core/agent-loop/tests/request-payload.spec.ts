@@ -76,6 +76,16 @@ describe('writeRequestPayload', () => {
     expect(Buffer.byteLength(JSON.stringify(d))).toBeLessThanOrEqual(2_000)
   })
 
+  it('never overwrites an earlier blob that has the same name', async () => {
+    const first = await writeRequestPayload(dir, 'same', payload)
+    const second = await writeRequestPayload(dir, 'same', { ...payload, stdin: 'other' })
+    expect(second.blob).not.toBe(first.blob)
+    expect(second.blob).toMatch(/^[\w.-]+\.json\.gz$/)
+    expect((await read('same')).stdin).toBe('hello')
+    const other = JSON.parse(gunzipSync(await readFile(join(dir, 'payloads', second.blob))).toString()) as { stdin: string }
+    expect(other.stdin).toBe('other')
+  })
+
   it('rejects when the directory is unwritable', async () => {
     const file = join(dir, 'file')
     await writeFile(file, 'x')
