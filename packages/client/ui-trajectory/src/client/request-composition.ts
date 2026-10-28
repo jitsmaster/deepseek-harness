@@ -18,6 +18,8 @@ export type ComposableRequestPayload = RequestPayload & {
   readonly truncated?: true
   readonly stdinBytes?: number
   readonly systemBytes?: number
+  /** Original byte length of `tools` when the writer dropped the list. */
+  readonly toolsBytes?: number
 }
 
 export interface ComposedItem {
@@ -136,10 +138,12 @@ function shares(weights: readonly number[], total: number): number[] {
  */
 export function composeRequest(payload: ComposableRequestPayload, reported?: ReportedUsage): ComposedRequest {
   const { preface, system } = systemItems(payload)
-  const tools = payload.tools.map(tool => item(
-    tool.name,
-    JSON.stringify({ description: tool.description, inputSchema: tool.inputSchema }, null, 2),
-  ))
+  const tools = payload.truncated === true && payload.toolsBytes !== undefined && payload.tools.length === 0
+    ? [item('Tools', '', payload.toolsBytes)]
+    : payload.tools.map(tool => item(
+      tool.name,
+      JSON.stringify({ description: tool.description, inputSchema: tool.inputSchema }, null, 2),
+    ))
   const groups: readonly [ComposedCategoryId, ComposedItem[]][] = [
     ['preface', preface],
     ['system', system],

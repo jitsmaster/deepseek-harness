@@ -121,6 +121,18 @@ describe('composeRequest', () => {
     expect(transcript.items[0]?.bytes).toBe(9000)
   })
 
+  it('keeps the original size of tool definitions the writer dropped', () => {
+    const truncated = {
+      ...payload({ tools: [] }),
+      truncated: true as const,
+      toolsBytes: 7000,
+    }
+    const tools = category(composeRequest(truncated), 'tools')
+    expect(tools.bytes).toBe(7000)
+    expect(tools.items).toHaveLength(1)
+    expect(tools.items[0]).toMatchObject({ label: 'Tools', bytes: 7000 })
+  })
+
   it('handles an empty payload without throwing', () => {
     const empty = payload({ system: '', tools: [], stdin: '' })
     expect(composeRequest(empty).totalBytes).toBe(0)

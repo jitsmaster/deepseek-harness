@@ -363,6 +363,8 @@ export type SessionRequestPayloadValue = {
   readonly stdinBytes?: number
   /** Original byte length of `system` when truncated. */
   readonly systemBytes?: number
+  /** Original byte length of `tools` when the tool list was dropped. */
+  readonly toolsBytes?: number
 } | undefined
 
 /** Pending queue mutation request. */
