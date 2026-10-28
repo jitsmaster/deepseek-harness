@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 /** Right-click "Inspect request" on an assistant row of the trajectory ledger. */
+import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { TrajectoryTable } from '../src/client/TrajectoryTable.tsx'
@@ -23,7 +24,7 @@ const TURNS: readonly TrajectoryTurnModel[] = [{
 
 const REQUESTS = [{ seq: 2, turn: 1, step: 2, group: 'Step 2', number: 1, payloadBlob: '2-2-1.json.gz' }]
 
-function renderTable(onInspectRequest?: (request: (typeof REQUESTS)[number]) => void) {
+function renderTable(onInspectRequest?: NonNullable<ComponentProps<typeof TrajectoryTable>['onInspectRequest']>) {
   return render(<TrajectoryTable
     turns={TURNS}
     requestNumbers={REQUESTS}
