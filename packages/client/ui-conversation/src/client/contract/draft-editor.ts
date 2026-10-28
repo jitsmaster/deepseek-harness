@@ -93,6 +93,11 @@ export interface ComposerKeyboard {
   caretSpan(): EditSelection
   /** Keyboard arbitration while the menu is open ('pass' when no pipeline). */
   arbitrate(key: ArbitrateKey, composing: boolean): ArbitrateOutcome
+  /**
+   * ArrowUp/ArrowDown recall of the session's earlier human prompts.
+   * @returns true when the draft was replaced and the native caret move must not run.
+   */
+  recall(direction: 'up' | 'down'): boolean
   /** Space adjudication; true = the input applied a claim — caller preventDefaults. */
   space(): boolean
   /** Dismiss the popupSelect shell (any interaction outside the box). */

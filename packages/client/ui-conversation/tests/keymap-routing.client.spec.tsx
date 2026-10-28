@@ -141,4 +141,53 @@ describe('keymap keydown routing', () => {
     fireEvent.keyDown(root, { key: 'Tab', keyCode: 9, shiftKey: true })
     expect(arbitrate).toHaveBeenLastCalledWith('tabBack', false)
   })
+
+  describe('ArrowUp / ArrowDown prompt recall', () => {
+    function setup(arbitrate: () => 'consumed' | 'pick-highlighted' | 'pass', recall: (d: 'up' | 'down') => boolean) {
+      const editor = createEditor({ namespace: 'keymap-recall', onError: (e) => { throw e } })
+      const root = document.createElement('div')
+      root.contentEditable = 'true'
+      document.body.appendChild(root)
+      onTestFinished(() => { editor.setRootElement(null); root.remove() })
+      editor.setRootElement(root)
+      onTestFinished(registerPlainText(editor))
+      onTestFinished(registerComposerKeymap(editor, {
+        arbitrate, space: () => false, dismissPopup: () => {}, canSubmit: () => true,
+        submit: () => {}, intakeFiles: () => {}, pasteText: () => {}, recall,
+      }))
+      return root
+    }
+
+    it('recalls on ArrowUp / ArrowDown when the menu passes, and prevents the default move', () => {
+      const recall = vi.fn(() => true)
+      const root = setup(() => 'pass', recall)
+      expect(fireEvent.keyDown(root, { key: 'ArrowUp' })).toBe(false)
+      expect(recall).toHaveBeenLastCalledWith('up')
+      expect(fireEvent.keyDown(root, { key: 'ArrowDown' })).toBe(false)
+      expect(recall).toHaveBeenLastCalledWith('down')
+    })
+
+    it('leaves the key to the editor when recall declines', () => {
+      const root = setup(() => 'pass', () => false)
+      expect(fireEvent.keyDown(root, { key: 'ArrowUp' })).toBe(true)
+    })
+
+    it('never recalls when the completion menu consumes the key', () => {
+      const recall = vi.fn(() => true)
+      const root = setup(() => 'consumed', recall)
+      expect(fireEvent.keyDown(root, { key: 'ArrowUp' })).toBe(false)
+      expect(recall).not.toHaveBeenCalled()
+    })
+
+    it('never recalls during IME composition or with modifier keys', () => {
+      const recall = vi.fn(() => true)
+      const root = setup(() => 'pass', recall)
+      fireEvent.keyDown(root, { key: 'ArrowUp', keyCode: 229 })
+      fireEvent.keyDown(root, { key: 'ArrowUp', shiftKey: true })
+      fireEvent.keyDown(root, { key: 'ArrowUp', altKey: true })
+      fireEvent.keyDown(root, { key: 'ArrowUp', ctrlKey: true })
+      fireEvent.keyDown(root, { key: 'ArrowUp', metaKey: true })
+      expect(recall).not.toHaveBeenCalled()
+    })
+  })
 })

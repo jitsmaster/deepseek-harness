@@ -25,6 +25,7 @@ import type { ComposerBlocks } from '../contract/composer-blocks.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import type { PopupDismissFace } from './facade.ts'
 import { SessionInputShell } from './facade.ts'
+import { humanPromptHistory } from './prompt-history.ts'
 import { reportMessageSubmission } from './submission-analytics.ts'
 import { readConversationDraft } from '../stores.ts'
 
@@ -133,6 +134,7 @@ export class InputHub implements SessionInputResolver {
           && this.conversation().blocks.storeFor(session.sessionId).getSnapshot() === undefined
       },
       steerQueue: () => { void this.steerQueue(session, shell) },
+      promptHistory: () => humanPromptHistory(binding.eventSource.getSnapshot().entries),
       commandAttachments: {
         serialize: async (ids) => {
           const result = await this.conversation().serializeDraftAttachments(ids)

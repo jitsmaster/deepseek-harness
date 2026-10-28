@@ -45,6 +45,12 @@ export interface ComposerKeymapHandlers {
   intakeFiles(files: readonly File[], directories?: ReadonlySet<File>): void
   /** Pasted plain text (sanitized insertion through the shell). */
   pasteText(text: string): void
+  /**
+   * Prompt recall on a bare ArrowUp/ArrowDown the completion menu left alone.
+   * @param direction - older (up) or newer (down).
+   * @returns true when a prompt was restored and the native caret move must not run.
+   */
+  recall?(direction: 'up' | 'down'): boolean
 }
 
 /** Composition state a keydown can trust (see the module doc's Safari note). */
@@ -199,6 +205,12 @@ export function registerComposerKeymap(editor: LexicalEditor, handlers: Composer
     const inComposition = event !== null && isComposingEvent(event, recentlyComposing)
     if (handlers.arbitrate(key, inComposition) !== 'pass') {
       event?.preventDefault()
+      return true
+    }
+    if ((key === 'up' || key === 'down') && event !== null && !inComposition
+      && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey
+      && handlers.recall?.(key) === true) {
+      event.preventDefault()
       return true
     }
     return false

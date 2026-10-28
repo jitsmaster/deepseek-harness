@@ -25,6 +25,8 @@ import type {
 import type { InputSubmitMode, MessageSubmission, MessageSubmissionState } from '../contract/composer-submission.ts'
 import { serializeDraftPrompt } from './prompt.ts'
 import { SubmitMachine } from './machine.ts'
+import { recallPrompt } from './prompt-history.ts'
+import type { PromptRecallState } from './prompt-history.ts'
 import { resolveDraftInput, snapshotDraft } from '../draft.ts'
 import { DraftEditorRuntime } from './editor/runtime.ts'
 import type { EditorProjection } from './editor/projection.ts'
@@ -57,6 +59,8 @@ export interface SessionInputDeps {
    * order (the empty-draft accelerated-Enter gesture); absent = unsupported.
    */
   steerQueue?: (() => void) | undefined
+  /** The session's earlier human prompts, oldest first (ArrowUp recall); absent = no recall. */
+  promptHistory?: (() => readonly string[]) | undefined
   /** The plain-message sink (send choreography / materialize fork — the hub owns it). */
   defaultSink(
     text: string,
@@ -468,6 +472,40 @@ export class SessionInputShell implements SessionInput {
    */
   arbitrate(key: ArbitrateKey, composing: boolean): ArbitrateOutcome {
     return this.deps.inputTriggers?.()?.arbitrate(key, composing) ?? 'pass'
+  }
+
+  /** Recall cursor state; `shown` is the text recall last wrote, so any other draft means the user edited. */
+  private recallState: PromptRecallState = { index: null, draft: '' }
+  private recallShown: string | undefined
+  private recallHistoryLength = 0
+
+  /**
+   * ArrowUp / ArrowDown prompt recall over the session's earlier human prompts.
+   * @param direction - older (up) or newer (down).
+   * @returns true when the draft was replaced and the native caret move must not run.
+   */
+  recall(direction: 'up' | 'down'): boolean {
+    if (this.snapshot.phase !== 'plain' || this.disposed) return false
+    const history = this.deps.promptHistory?.() ?? []
+    const current = this.projection.clipboardText
+    if (this.recallState.index !== null
+      && (current !== this.recallShown || history.length !== this.recallHistoryLength)) {
+      this.recallState = { index: null, draft: '' }
+    }
+    if (this.recallState.index !== null) {
+      // Inside a multi-line recalled prompt the arrows move the caret until it reaches the edge line.
+      const caret = this.caretSpan()
+      if (direction === 'up' && current.slice(0, caret.start).includes('\n')) return false
+      if (direction === 'down' && current.slice(caret.end).includes('\n')) return false
+    }
+    const result = recallPrompt(history, this.recallState, direction, current)
+    if (result.text === undefined) return false
+    this.recallState = result.state
+    this.recallHistoryLength = history.length
+    this.setDraft(result.text)
+    // The draft strips placeholder characters, so compare against what it actually holds.
+    this.recallShown = this.projection.clipboardText
+    return true
   }
 
   /**
