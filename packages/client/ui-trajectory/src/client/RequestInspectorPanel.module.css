@@ -1,0 +1,63 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow: auto;
+  border-left: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+}
+
+.note {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.total {
+  margin: 0;
+  font-weight: 600;
+}
+
+.list,
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items {
+  padding-left: 16px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.text {
+  max-height: 320px;
+  margin: 0 0 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
