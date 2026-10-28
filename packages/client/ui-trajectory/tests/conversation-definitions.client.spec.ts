@@ -485,6 +485,26 @@ describe('Trajectory conversation Definitions', () => {
     }])
   })
 
+  it('attaches the recorded request payload blob to its assistant request', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'step/start', { turn: 1, step: 1 }),
+      at(3, 'request/payload', { turn: 1, step: 1, blob: '2-1-1.json.gz', bytes: 900, storedBytes: 300 }),
+      at(4, 'request/payload', {
+        turn: 1, step: 1, blob: '2-1-2.json.gz', bytes: 9000, storedBytes: 400, truncated: true,
+      }),
+      at(5, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('a1', 'done') }),
+      at(6, 'step/end', { turn: 1, step: 1 }),
+      at(7, 'step/start', { turn: 1, step: 2 }),
+      at(8, 'assistant/message', { turn: 1, step: 2, message: assistantMessage('a2', 'no payload') }),
+      at(9, 'step/end', { turn: 1, step: 2 }),
+    ])
+    const requests = snapshot(value).requests
+    expect(requests[0]).toMatchObject({ step: 1, payloadBlob: '2-1-2.json.gz', payloadTruncated: true })
+    expect(requests[1]).toMatchObject({ step: 2 })
+    expect(requests[1]).not.toHaveProperty('payloadBlob')
+  })
+
   it('uses live Assistant deltas without replaying settled embedded streams', () => {
     const runningHistory = [
       at(1, 'turn/start', { turn: 1 }),

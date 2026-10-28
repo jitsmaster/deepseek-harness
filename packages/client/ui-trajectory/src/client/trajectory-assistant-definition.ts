@@ -47,6 +47,18 @@ interface AssistantState {
   readonly usage: UsageValue | undefined
   readonly retry: RetryValue | undefined
   readonly stepEnd: ConversationMatch | undefined
+  /** Sidecar blob of the latest recorded request payload for this step. */
+  readonly payloadBlob?: string
+  readonly payloadTruncated?: true
+}
+
+function withPayload(state: AssistantState, event: SessionEvent<'request/payload'>): AssistantState {
+  const { payloadTruncated: _previous, ...rest } = state
+  return {
+    ...rest,
+    payloadBlob: event.data.blob,
+    ...event.data.truncated === true ? { payloadTruncated: true as const } : {},
+  }
 }
 
 function initialState(
@@ -241,6 +253,9 @@ function fallbackState(context: ConversationNodeContext<AssistantState>): Assist
     } else if (event.type === 'assistant/message') {
       state ??= initialState(event.data.turn, event.data.step, event.seq, event.time, false)
       state = settleMessage(state, match, event)
+    } else if (event.type === 'request/payload') {
+      state ??= initialState(event.data.turn, event.data.step, event.seq, event.time, false)
+      state = withPayload(state, event)
     } else if (event.type === 'step/end' && state !== undefined) {
       state = { ...state, stepEnd: match }
     }
@@ -324,6 +339,8 @@ function assistantRequest(
         ...(node.providerMetadata === undefined ? {} : { providerMetadata: node.providerMetadata }),
       }),
     ...(state.usage === undefined ? {} : { usage: state.usage }),
+    ...(state.payloadBlob === undefined ? {} : { payloadBlob: state.payloadBlob }),
+    ...(state.payloadTruncated === undefined ? {} : { payloadTruncated: true as const }),
   }
 }
 
@@ -339,6 +356,7 @@ const trajectoryAssistantDefinition: ConversationNodeDefinition<AssistantState> 
       || event.type === 'assistant/message'
       || event.type === 'assistant/attempt'
       || event.type === 'llm/retry'
+      || event.type === 'request/payload'
       || event.type === 'step/end') {
       return { id: `${event.data.turn}:${event.data.step}`, role: 'update' }
     }
@@ -363,6 +381,7 @@ const trajectoryAssistantDefinition: ConversationNodeDefinition<AssistantState> 
     if (match.event.type === 'assistant/message') return settleMessage(context.state, match, match.event)
     if (match.event.type === 'assistant/attempt') return settleTiming(context.state, match.event)
     if (match.event.type === 'step/end') return { ...context.state, stepEnd: match }
+    if (match.event.type === 'request/payload') return withPayload(context.state, match.event)
     if (match.event.type !== 'llm/retry') return context.state
     const data = match.event.data
     const failure = displayFailure(data.failure)

@@ -151,6 +151,10 @@ interface AssistantRequestView extends RequestViewBase {
   prompt?: ConversationPromptSnapshot
   /** Prompt change logged while preparing this request. */
   promptChange?: RequestPromptChange
+  /** Sidecar blob name of the recorded request payload, when one was stored. */
+  payloadBlob?: string
+  /** True when the stored payload had to be truncated to fit its size cap. */
+  payloadTruncated?: true
   /** Retry ordinal scheduled after a failed ordinary request. */
   retry?: number
   maxRetries?: number
