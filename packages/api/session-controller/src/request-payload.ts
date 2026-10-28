@@ -4,10 +4,10 @@ import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { gunzip } from 'node:zlib'
-import type { RequestPayload } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import type { SessionRequestPayloadValue } from './types.ts'
 
 const gunzipAsync = promisify(gunzip)
 
@@ -17,7 +17,7 @@ const BLOB_PATTERN = /^\w[\w.-]*\.json\.gz$/
 const MAX_INFLATED_BYTES = 8_000_000
 
 /** A stored request payload; oversized ones carry the writer's truncation marker. */
-export type StoredRequestPayload = RequestPayload & { readonly truncated?: true }
+export type StoredRequestPayload = NonNullable<SessionRequestPayloadValue>
 
 /**
  * Read one recorded request payload for a Session.

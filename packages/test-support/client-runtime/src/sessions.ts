@@ -131,6 +131,15 @@ export class FixtureSession implements SessionFace {
   }
 
   /**
+   * Fail-loud stub; supply `readRequestPayload` on the fixture's session face to exercise it.
+   * @param _blob - sidecar blob name.
+   * @returns never — always throws.
+   */
+  readRequestPayload(_blob: string): never {
+    throw new Error(`test session "${this.sessionId}": readRequestPayload is not stubbed — supply it on the fixture's session face`)
+  }
+
+  /**
    * Fail-loud stub; supply `updateQueue` on the fixture's session face to exercise it.
    * @returns never — always throws.
    */

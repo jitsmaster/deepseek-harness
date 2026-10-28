@@ -17,6 +17,7 @@ import type {
   SessionAssistantStreamBaseline,
   SessionProjectionBaseline,
   SessionRequestId,
+  SessionRequestPayloadValue,
 } from '../../types.ts'
 import type {
   BeginSubmissionInput, PendingSubmissionRetirement, SessionFace, SubmissionHandle,
@@ -330,6 +331,15 @@ export class Session implements SessionFace {
     const binary = atob(result.value.data)
     const data = Uint8Array.from(binary, char => char.charCodeAt(0))
     return { ok: true, value: { attachment: result.value.attachment, data } }
+  }
+
+  /**
+   * Read one recorded LLM request payload belonging to this session.
+   * @param blob - sidecar blob name from a `request/payload` event.
+   * @returns the stored payload, or the business error.
+   */
+  async readRequestPayload(blob: string): Promise<RemoteResult<SessionRequestPayloadValue>> {
+    return this.remote.session.requestPayload({ sessionId: this.sessionId, blob })
   }
 
   /** Apply one operation to a still-pending queue occurrence. */

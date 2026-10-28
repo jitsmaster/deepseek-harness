@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
-import type { RequestPayload, TextBlock } from '@deepseek-ai/dsh-llm'
+import type { TextBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionMap, SessionProjectionSummaryExcluded, SessionProjectionSummaryValues } from '@deepseek-ai/dsh-session-projection/types'
 import type { Principal } from '@deepseek-ai/dsh-typert-protocol'
@@ -347,7 +347,23 @@ export interface SessionRequestPayloadRequest {
 }
 
 /** Recorded request payload; `undefined` when none was stored. */
-export type SessionRequestPayloadValue = (RequestPayload & { readonly truncated?: true }) | undefined
+export type SessionRequestPayloadValue = {
+  readonly argv: readonly string[]
+  readonly envKeys: readonly string[]
+  readonly system: string
+  readonly tools: readonly {
+    readonly name: string
+    readonly description: string
+    readonly inputSchema: JsonValue
+  }[]
+  readonly stdin: string
+  /** Set when the stored payload was cut to fit its size cap. */
+  readonly truncated?: true
+  /** Original byte length of `stdin` when truncated. */
+  readonly stdinBytes?: number
+  /** Original byte length of `system` when truncated. */
+  readonly systemBytes?: number
+} | undefined
 
 /** Pending queue mutation request. */
 export interface SessionUpdateQueueRequest {

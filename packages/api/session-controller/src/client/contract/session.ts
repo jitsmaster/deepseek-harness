@@ -12,7 +12,9 @@ import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { PromptContentPart, QueueAction, SessionRequestId } from '../../types.ts'
+import type {
+  PromptContentPart, QueueAction, SessionRequestId, SessionRequestPayloadValue,
+} from '../../types.ts'
 import type { PendingSubmissionAttachment, SessionSnapshot } from './snapshot.ts'
 
 /**
@@ -98,6 +100,12 @@ export interface ISession {
   readAttachment(
     attachmentId: AttachmentIdType,
   ): Promise<RemoteResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>>
+  /**
+   * Read one recorded LLM request payload belonging to this session.
+   * @param blob - sidecar blob name from a `request/payload` event.
+   * @returns the stored payload (`undefined` when none exists), or the business error.
+   */
+  readRequestPayload(blob: string): Promise<RemoteResult<SessionRequestPayloadValue>>
   /**
    * Apply one edit, remove, or Steer action to a still-pending queue occurrence.
    * @param itemId - agent-owned inbox occurrence identity.

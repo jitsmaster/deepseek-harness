@@ -144,6 +144,7 @@ export const sessionWorld: RemoteTable = {
       attachment: { attachmentId: 'a', mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
       data: 'AA==',
     }),
+    'session/requestPayload': ok({ argv: [], envKeys: [], system: 'sys', tools: [], stdin: 'in' }),
     'session/page': pageRule(ok({ records: [], hasMore: false })),
     'session/projections': ok({ kind: 'sequenced', asOfSeq: -1, values: { subagentCatalog: [] } }),
     'subagents/prompt': ok({ messageId: 'fake-message' }),

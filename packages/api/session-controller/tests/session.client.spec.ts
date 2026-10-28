@@ -699,6 +699,13 @@ describe('prompt and cancel errors', () => {
     }])
   })
 
+  it('reads a recorded request payload by blob name for its own session', async ({ mock, start }) => {
+    const session = await sessionBench(mock, start, SID)
+    const result = await session.readRequestPayload('4-1-1.json.gz')
+    expect(result).toMatchObject({ ok: true, value: { system: 'sys', stdin: 'in' } })
+    expect(mock.log.requests('session/requestPayload')).toEqual([{ sessionId: SID, blob: '4-1-1.json.gz' }])
+  })
+
   it('forwards attachment rejection without trying to decode absent bytes', async ({ mock, start }) => {
     const session = await sessionBench(mock, start, SID)
     const failure = new RemoteError('gateway/internal', 'attachment unavailable', {})
