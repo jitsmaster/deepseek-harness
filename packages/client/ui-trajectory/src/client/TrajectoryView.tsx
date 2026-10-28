@@ -13,6 +13,8 @@ import {
   type TrajectoryRequestNumber,
   type TrajectoryUsage,
 } from './TrajectoryTable.tsx'
+import { RequestInspectorPanel, type RequestInspectorState } from './RequestInspectorPanel.tsx'
+import type { ComposableRequestPayload, ReportedUsage } from './request-composition.ts'
 import { TrajectoryToolbar } from './TrajectoryToolbar.tsx'
 import { TrajectoryTimeline } from './TrajectoryTimeline.tsx'
 import {
@@ -83,6 +85,21 @@ export interface TrajectoryViewInjected {
   loadOlder: () => Promise<boolean>
   loadImage: MessageImageLoader
   setActualDuration: (actualDuration: boolean) => void
+  /** Read one recorded request payload by sidecar blob name; absent hides Inspect request. */
+  readRequestPayload?: (blob: string) => Promise<
+    | { readonly ok: true; readonly value: ComposableRequestPayload | undefined }
+    | { readonly ok: false }
+  >
+}
+
+type InspectedRequest = {
+  readonly request: TrajectoryRequestNumber
+  readonly state: RequestInspectorState
+}
+
+function reportedUsage(usage: TrajectoryUsage | undefined): ReportedUsage | undefined {
+  if (usage?.input === undefined) return undefined
+  return { input: usage.input, cacheRead: usage.cacheRead ?? 0, cacheWrite: usage.cacheWrite ?? 0 }
 }
 
 interface UsageLike {
@@ -131,7 +148,7 @@ function addUsage(
 
 export function TrajectoryView({
   useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration,
-  viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping,
+  viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping, readRequestPayload,
 }: ConvViewProps
   & Pick<PropsRenderSlots<'conversation.trajectory.images'>, 'renderSlot'>
   & InjectFace<TrajectoryViewInjected>
@@ -261,6 +278,8 @@ export function TrajectoryView({
           step,
           group: t('group.step', { step }),
           number: index + 1,
+          ...(request?.payloadBlob === undefined ? {} : { payloadBlob: request.payloadBlob }),
+          ...(request?.payloadTruncated === undefined ? {} : { payloadTruncated: true as const }),
           status: request?.status ?? (node?.interrupted === true ? 'error' : 'complete'),
           ...(startedAt === undefined ? {} : { startedAt }),
           ...(completedAt === undefined ? {} : { completedAt }),
@@ -503,6 +522,33 @@ export function TrajectoryView({
     })
   }
 
+  const [inspected, setInspected] = useState<InspectedRequest | null>(null)
+  const inspectToken = useRef(0)
+  const inspectRequest = useCallback((request: TrajectoryRequestNumber) => {
+    if (readRequestPayload === undefined) return
+    const token = ++inspectToken.current
+    const settle = (state: RequestInspectorState) => {
+      if (inspectToken.current === token) setInspected({ request, state })
+    }
+    if (request.payloadBlob === undefined) {
+      settle({ kind: 'missing' })
+      return
+    }
+    setInspected({ request, state: { kind: 'loading' } })
+    readRequestPayload(request.payloadBlob).then(
+      (result) => {
+        settle(result.ok && result.value !== undefined
+          ? { kind: 'ready', payload: result.value }
+          : { kind: 'missing' })
+      },
+      () => { settle({ kind: 'missing' }) },
+    )
+  }, [readRequestPayload])
+  const closeInspector = useCallback(() => {
+    inspectToken.current++
+    setInspected(null)
+  }, [])
+
   const loadEarlierHistory = useCallback(async () => {
     if (!hasResidentOlderHistory && !await loadOlder()) return false
     setHistoryNodeLimit(limit => limit + HISTORY_PAGE_NODES)
@@ -573,7 +619,22 @@ export function TrajectoryView({
           onToggleAssistant={toggleAssistant}
           inspectCallId={inspectCallId}
           onInspectApplied={completeViewRequest}
+          onInspectRequest={readRequestPayload === undefined ? undefined : inspectRequest}
         />
+        {inspected !== null && (
+          <div className={css.inspector}>
+            <RequestInspectorPanel
+              state={inspected.state}
+              {...(() => {
+                const usage = reportedUsage(inspected.request.usage)
+                return usage === undefined ? {} : { usage }
+              })()}
+              {...(inspected.request.model === undefined ? {} : { model: inspected.request.model })}
+              t={t}
+              onClose={closeInspector}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

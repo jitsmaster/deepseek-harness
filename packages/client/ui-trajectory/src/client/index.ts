@@ -105,6 +105,7 @@ export function apply(ctx: Context): void {
           { peek: (attachment: ImageAttachmentRef) => ctx.uiConversation.peekImageUrl(sessionId, attachment) },
         ),
         setActualDuration: (value) => { duration.set(value) },
+        readRequestPayload: blob => session.readRequestPayload(blob),
       }
     },
   }, TrajectoryView))

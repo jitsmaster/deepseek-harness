@@ -199,6 +199,13 @@ interface ToolCallTextParts {
   args?: string
 }
 
+/** Open right-click menu on an assistant row, positioned in viewport coordinates. */
+interface InspectMenuState {
+  x: number
+  y: number
+  request: TrajectoryRequestNumber
+}
+
 interface SelectedRequest {
   identity: string
 }
@@ -438,12 +445,18 @@ export interface TrajectoryTableProps {
   inspectCallId?: string | null
   /** Acknowledge a consumed (or unresolvable) inspect request. */
   onInspectApplied?: (() => void) | undefined
+  /** Open the request payload inspector for one assistant call; absent hides the row menu. */
+  onInspectRequest?: ((request: TrajectoryRequestNumber) => void) | undefined
 }
 
 /** Request-inspector fields shared by ordinary generation and compaction. */
 interface TrajectoryRequestNumberBase {
   group: string
   number: number
+  /** Sidecar blob name holding the exact payload sent for this request. */
+  payloadBlob?: string
+  /** Whether the recorded payload was truncated to its size limit. */
+  payloadTruncated?: true
   status?: 'complete' | 'running' | 'error'
   startedAt?: number
   completedAt?: number | null
@@ -2108,7 +2121,10 @@ export function TrajectoryTable({
   onToggleAssistant,
   inspectCallId = null,
   onInspectApplied,
+  onInspectRequest,
 }: TrajectoryTableProps) {
+  const [inspectMenu, setInspectMenu] = useState<InspectMenuState | null>(null)
+  const inspectMenuRef = useRef<HTMLDivElement>(null)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [selectedRequest, setSelectedRequest] = useState<SelectedRequest | null>(null)
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
@@ -2595,12 +2611,54 @@ export function TrajectoryTable({
     virtualizationEnabled,
   ])
 
+  useEffect(() => {
+    if (inspectMenu === null) return undefined
+    const close = () => { setInspectMenu(null) }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    const onPointer = (event: MouseEvent) => {
+      if (inspectMenuRef.current?.contains(event.target as Node) === true) return
+      close()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onPointer)
+    window.addEventListener('blur', close)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onPointer)
+      window.removeEventListener('blur', close)
+    }
+  }, [inspectMenu])
+
   const olderBusy = olderHistoryLoading || olderLoading
   const showInitialLoading = historyLoading || !tableScrollReady
   const historyRowOffset = hasOlderRecords ? 1 : 0
 
   return (
     <div ref={rootRef} className={css.split} style={splitStyle}>
+      {inspectMenu !== null && (
+        <div
+          ref={inspectMenuRef}
+          role="menu"
+          className={css.inspectMenu}
+          style={{ left: inspectMenu.x, top: inspectMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={css.inspectMenuItem}
+            autoFocus
+            onClick={() => {
+              const { request } = inspectMenu
+              setInspectMenu(null)
+              onInspectRequest?.(request)
+            }}
+          >
+            {t('inspect.menu')}
+          </button>
+        </div>
+      )}
       <div
         ref={tablePaneRef}
         className={css.tablePane}
@@ -2785,6 +2843,16 @@ export function TrajectoryTable({
                         event.preventDefault()
                         onToggleTurn(record.turn)
                       }}
+                      onContextMenu={onInspectRequest === undefined
+                        || record.cell.kind !== 'message'
+                        || isCollapsedSummary
+                        || requestInfo === undefined
+                        || requestInfo.purpose === 'compaction'
+                        ? undefined
+                        : (event) => {
+                          event.preventDefault()
+                          setInspectMenu({ x: event.clientX, y: event.clientY, request: requestInfo })
+                        }}
                       onKeyDown={(event) => {
                         if (isRequestOnly || singleToolNotice) return
                         if (event.key !== 'Enter' && event.key !== ' ') return
