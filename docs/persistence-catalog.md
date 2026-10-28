@@ -53,6 +53,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:plan/mode` | event | `a7cf43ce7c2a4c038feed1885cd7a00d5c6ee2d90a7e0d56b46f78a3e1ca327f` | [`{ type: "plan/mode" }`](#persistence-type-sha256-a7cf43ce7c2a4c038feed1885cd7a00d5c6ee2d90a7e0d56b46f78a3e1ca327f) |
 | `event:request/context` | event | `37cbc9cf06d494cfe5c67f078af1605eacb8e4c2c853e9e26455b73de0ee7ccf` | [`{ type: "request/context" }`](#persistence-type-sha256-37cbc9cf06d494cfe5c67f078af1605eacb8e4c2c853e9e26455b73de0ee7ccf) |
 | `event:request/header` | event | `4208123b50df5006b181481ab45fcf1cde807b88d3fd4d340090bc2e202fac41` | [`{ type: "request/header" }`](#persistence-type-sha256-4208123b50df5006b181481ab45fcf1cde807b88d3fd4d340090bc2e202fac41) |
+| `event:request/payload` | event | `4f1dde166c80098f289f486d4e4e7a5f81c203d900413368e792cf166c41754a` | [`{ type: "request/payload" }`](#persistence-type-sha256-4f1dde166c80098f289f486d4e4e7a5f81c203d900413368e792cf166c41754a) |
 | `event:sandbox/mode` | event | `516da4cdd6d2f1e5ce488e648578ca51f40e458f707b803e5b24de870e799415` | [`{ type: "sandbox/mode" }`](#persistence-type-sha256-516da4cdd6d2f1e5ce488e648578ca51f40e458f707b803e5b24de870e799415) |
 | `event:schedule/change` | event | `a0a2e5c42e1c929445ecd1cd70f49be6b66441894ec72c08e8ae332821d4a3cb` | [`{ type: "schedule/change" }`](#persistence-type-sha256-a0a2e5c42e1c929445ecd1cd70f49be6b66441894ec72c08e8ae332821d4a3cb) |
 | `event:session-log-deepseek/delivery-accepted` | event | `d63b8b8ffad9c02fd80c43a17df4f240c1fe8118ecca9de34f9d5871838ab5b9` | [`{ type: "session-log-deepseek/delivery-accepted" }`](#persistence-type-sha256-d63b8b8ffad9c02fd80c43a17df4f240c1fe8118ecca9de34f9d5871838ab5b9) |
@@ -161,7 +162,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-Sources: [`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:447`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:470`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:501`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:456`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:464`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:487`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:518`](../packages/core/session/src/types.ts)
 
 ## Events
 
@@ -778,6 +779,32 @@ Source: [`packages/core/session/src/types.ts:410`](../packages/core/session/src/
 
 Source: [`packages/core/session/src/types.ts:398`](../packages/core/session/src/types.ts)
 
+<a id="requestpayload--log-only"></a>
+
+#### `request/payload` — log-only
+
+```ts persistence-catalog
+/**
+ * Pointer to a gzip sidecar holding the exact request payload sent to a provider
+ * for one step. Log-only; it has no model-visible effect and does not
+ * participate in request reconstruction.
+ */
+'request/payload': {
+  turn: number
+  step: number
+  headerSeq?: SessionSeq
+  /** Sidecar file name under the session's payloads/ directory. */
+  blob: string
+  /** Original uncompressed JSON size in bytes. */
+  bytes: number
+  /** Stored (compressed) size in bytes. */
+  storedBytes: number
+  truncated?: true
+}
+```
+
+Source: [`packages/core/session/src/types.ts:416`](../packages/core/session/src/types.ts)
+
 ### `sandbox/*`
 
 <a id="sandboxmode--log-only"></a>
@@ -853,7 +880,7 @@ Source: [`packages/schedule/schedule/src/types.ts:371`](../packages/schedule/sch
 'session/end-seed': { inherited?: true }
 ```
 
-Source: [`packages/core/session/src/types.ts:435`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:452`](../packages/core/session/src/types.ts)
 
 <a id="sessiontitle--log-only"></a>
 
@@ -2439,6 +2466,14 @@ SHA-256: `70b082fe78991edf13cf66e1b4d06cd2dcff9cacfd76f8cfb996bfb61939e7b2`
 SHA-256: `3e0eff5946255ff05d88a10839c60305135801f97794ea48d409f8503303317e`
 
 `"request/header"`
+
+<a id="persistence-type-sha256-5176eb3ac036be9291d72f3e80985b2196311075df9216505749ce031213b2b3"></a>
+
+### `"request/payload"`
+
+SHA-256: `5176eb3ac036be9291d72f3e80985b2196311075df9216505749ce031213b2b3`
+
+`"request/payload"`
 
 <a id="persistence-type-sha256-5bd310104cfe448e530beb11422d2f791e2e32e8e95fdc528a15f9ca693dae75"></a>
 
@@ -4964,7 +4999,7 @@ Sources: [`packages/subagent/subagent/src/continuation-messages.ts:29`](../packa
 
 SHA-256: `335e242de1fcc17b6ca920fc420d71bec2d76e53e37955c00948b65ab77f05c5`
 
-Sources: [`packages/core/session/src/types.ts:470`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:487`](../packages/core/session/src/types.ts)
 
 One of:
 
@@ -5910,6 +5945,24 @@ Sources: [`packages/core/session/src/types.ts:369`](../packages/core/session/src
 | `step` | required | `number` |
 | `turn` | required | `number` |
 
+<a id="persistence-type-sha256-583385b9530e758be60406ce3fc16a2a7a3581203bb44e781712407b2e90bb85"></a>
+
+### `{ blob, bytes, headerSeq?, step, … }`
+
+SHA-256: `583385b9530e758be60406ce3fc16a2a7a3581203bb44e781712407b2e90bb85`
+
+Sources: [`packages/core/session/src/types.ts:416`](../packages/core/session/src/types.ts)
+
+| Property | Presence | Type |
+|---|---|---|
+| `blob` | required | `string` |
+| `bytes` | required | `number` |
+| `headerSeq` | optional | `number` |
+| `step` | required | `number` |
+| `storedBytes` | required | `number` |
+| `truncated` | optional | `true` |
+| `turn` | required | `number` |
+
 <a id="persistence-type-sha256-1528539c63db8b23506f0209a99ce77d8ad138adfbfcee3d4769b7382d93756c"></a>
 
 ### `{ callId, files, turn }`
@@ -6279,7 +6332,7 @@ Sources: [`packages/compaction/compaction/src/types.ts:38`](../packages/compacti
 
 SHA-256: `bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825`
 
-Sources: [`packages/core/session/src/types.ts:472`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:489`](../packages/core/session/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -6445,7 +6498,7 @@ SHA-256: `e3e77b26f0148755a505f5b8ea843a3be117827d4703bb5754d9dc8ddbef521f`
 
 SHA-256: `17d1afb770d9941936130996da00dc86782cfef731d8d6526162c301256a4ac3`
 
-Sources: [`packages/core/session/src/types.ts:435`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:452`](../packages/core/session/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -8782,6 +8835,22 @@ SHA-256: `4208123b50df5006b181481ab45fcf1cde807b88d3fd4d340090bc2e202fac41`
 | `seq` | required | `number` |
 | `time` | required | `number` |
 | `type` | required | `"request/header"` |
+
+<a id="persistence-type-sha256-4f1dde166c80098f289f486d4e4e7a5f81c203d900413368e792cf166c41754a"></a>
+
+<a id="persistence-type-eventrequestpayload"></a>
+
+### `{ type: "request/payload" }`
+
+SHA-256: `4f1dde166c80098f289f486d4e4e7a5f81c203d900413368e792cf166c41754a`
+
+| Property | Presence | Type |
+|---|---|---|
+| `data` | required | [`{ blob, bytes, headerSeq?, step, … }`](#persistence-type-sha256-583385b9530e758be60406ce3fc16a2a7a3581203bb44e781712407b2e90bb85) |
+| `ignorable` | optional | `true` |
+| `seq` | required | `number` |
+| `time` | required | `number` |
+| `type` | required | `"request/payload"` |
 
 <a id="persistence-type-sha256-516da4cdd6d2f1e5ce488e648578ca51f40e458f707b803e5b24de870e799415"></a>
 

@@ -409,6 +409,23 @@ export interface SessionEventMap {
    */
   'request/context': RequestContext
   /**
+   * Pointer to a gzip sidecar holding the exact request payload sent to a provider
+   * for one step. Log-only; it has no model-visible effect and does not
+   * participate in request reconstruction.
+   */
+  'request/payload': {
+    turn: number
+    step: number
+    headerSeq?: SessionSeq
+    /** Sidecar file name under the session's payloads/ directory. */
+    blob: string
+    /** Original uncompressed JSON size in bytes. */
+    bytes: number
+    /** Stored (compressed) size in bytes. */
+    storedBytes: number
+    truncated?: true
+  }
+  /**
    * Separates inherited or restored history from later lifecycle-owned work.
    * This log-only marker need not be at {@link Session.firstLiveSeq}: a fork
    * seed can already contain its tagged marker and child-owned synthetic
