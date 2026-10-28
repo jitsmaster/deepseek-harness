@@ -212,6 +212,11 @@ const harness = await vi.hoisted(async () => {
     menu, popup, socketHeaders: vi.fn(), loginShell, readLoginShell, updateCheck, updateDownload, updateInstall,
     platformDispose,
     platformCloseAndWait,
+    cookieJar: {
+      get: vi.fn(async () => [] as { name: string; domain: string; path: string; secure: boolean }[]),
+      remove: vi.fn(async (_url: string, _name: string) => undefined),
+    },
+    welcomeConnect: vi.fn(),
 
     get analyticsEnabled() { return analyticsEnabled },
     set analyticsEnabled(value: boolean) { analyticsEnabled = value; analyticsEnabledListener?.(value) },
@@ -312,6 +317,7 @@ vi.mock('electron', () => ({
   Menu: { setApplicationMenu: harness.menu.setApplicationMenu, buildFromTemplate: harness.menu },
   session: { defaultSession: {
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: harness.socketHeaders },
+    cookies: harness.cookieJar,
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: harness.protocolHandle },
   powerMonitor: harness.powerMonitor,
@@ -382,14 +388,17 @@ vi.mock('../src/platform-view.ts', async importOriginal => ({
   },
 }))
 vi.mock('../src/welcome-backend.ts', () => ({
-  connectDesktopWelcome: async () => ({
-    analyticsEnabled: async () => harness.analyticsEnabled,
-    report: harness.analytics,
-    readLocalePreference: async () => null,
-    read: async (): Promise<unknown> => (await harness.hosts.at(-1)!.fetch()).json() as Promise<unknown>,
-    save: async () => ({ ok: true }),
-    account: { watch: harness.watchAccount, state: async () => ({ status: 'signed-out', attempt: null }) },
-  }),
+  connectDesktopWelcome: async () => {
+    harness.welcomeConnect()
+    return {
+      analyticsEnabled: async () => harness.analyticsEnabled,
+      report: harness.analytics,
+      readLocalePreference: async () => null,
+      read: async (): Promise<unknown> => (await harness.hosts.at(-1)!.fetch()).json() as Promise<unknown>,
+      save: async () => ({ ok: true }),
+      account: { watch: harness.watchAccount, state: async () => ({ status: 'signed-out', attempt: null }) },
+    }
+  },
 }))
 
 function configureTestAuthPopup(allow: boolean): void {
@@ -1089,6 +1098,23 @@ describe('desktop main startup', () => {
     expect(callback).toHaveBeenLastCalledWith({})
     handler({ ...details, url: `${socketProtocol === 'wss:' ? 'ws:' : 'wss:'}//127.0.0.1:3080/api/remote.mux` }, callback)
     expect(callback).toHaveBeenLastCalledWith({})
+  })
+
+  it('removes stale Host auth cookies before the welcome connection stores this launch\'s cookie', async () => {
+    harness.cookieJar.get.mockReset().mockResolvedValueOnce([
+      { name: 'dsh-auth-old', domain: '127.0.0.1', path: '/', secure: false },
+      { name: 'unrelated', domain: '127.0.0.1', path: '/', secure: false },
+    ])
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    harness.prepared.resolve()
+    await harness.hostStarted.promise
+    harness.hosts[0]!.ready.resolve()
+    await Promise.resolve(invoke(DESKTOP_IPC.boot))
+    expect(harness.cookieJar.remove).toHaveBeenCalledTimes(1)
+    expect(harness.cookieJar.remove).toHaveBeenCalledWith('http://127.0.0.1/', 'dsh-auth-old')
+    expect(harness.welcomeConnect).toHaveBeenCalledOnce()
+    expect(harness.cookieJar.remove.mock.invocationCallOrder[0]).toBeLessThan(harness.welcomeConnect.mock.invocationCallOrder[0]!)
   })
 
   it('shares login key discovery with onboarding and rejects foreign renderers', async () => {
