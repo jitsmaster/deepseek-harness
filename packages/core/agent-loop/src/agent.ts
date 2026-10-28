@@ -19,7 +19,7 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { AgentModel, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, RequestPayload } from '@deepseek-ai/dsh-llm'
 import {
   LlmError,
   createAssistantMessage,
@@ -38,6 +38,7 @@ import { ToolActivationError, ToolBatchExecutionError } from '@deepseek-ai/dsh-t
 import type { ResolvedToolSet } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.ts'
+import { writeRequestPayload } from './request-payload.ts'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { AssistantStreamAttempt } from './assistant-stream.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
@@ -469,10 +470,16 @@ export class ReactLoopAgent implements Agent {
         this.session.append('user/message', context, { surfaceOp: 'append' })
       }
       firstAttempt = false
-      const request = this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, startsRequestSeries, signal)
+      // Lives outside the frozen request; the adapter's onRequest fills it.
+      const capture: { payload?: RequestPayload } = {}
+      const { request, headerSeq } = this.buildRequest(
+        config, preparedCall, assembly.tools, { turn, step }, startsRequestSeries, signal,
+        (payload) => { capture.payload = payload },
+      )
+      const attempt = ++this.assistantAttemptCounter
       const live = new AssistantStreamAttempt(
         this.session.id,
-        ++this.assistantAttemptCounter,
+        attempt,
         () => ++this.assistantStreamRevision,
         turn,
         step,
@@ -489,7 +496,9 @@ export class ReactLoopAgent implements Agent {
           live.push(chunk)
         }
         signal.throwIfAborted()
+        await this.recordRequestPayload(capture.payload, { turn, step, headerSeq, attempt })
       } catch (error: unknown) {
+        await this.recordRequestPayload(capture.payload, { turn, step, headerSeq, attempt })
         if (!started) throw error
         try {
           if (signal.aborted) {
@@ -653,7 +662,8 @@ export class ReactLoopAgent implements Agent {
     position: { turn: number; step: number },
     startsRequestSeries: boolean,
     signal: AbortSignal,
-  ): GenerateOptions {
+    onRequest: (payload: RequestPayload) => void,
+  ): { request: GenerateOptions; headerSeq: SessionSeq | undefined } {
     const { session } = this
     const surfaceGeneration = session.surface.contentGeneration
     const header = canonicalHeader({
@@ -732,7 +742,36 @@ export class ReactLoopAgent implements Agent {
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
       signal,
+      onRequest,
     }))
-    return request
+    return { request, headerSeq }
+  }
+
+  /**
+   * Store the adapter-reported request payload beside the session and log its
+   * pointer. Best effort: any failure is logged and leaves the call untouched.
+   */
+  private async recordRequestPayload(
+    payload: RequestPayload | undefined,
+    at: { turn: number; step: number; headerSeq: SessionSeq | undefined; attempt: number },
+  ): Promise<void> {
+    if (payload === undefined) return
+    try {
+      const dir = this.loopCtx.get('sessionPersistence')?.sessionDirectory(this.session.header)
+      if (dir === undefined) return
+      const name = `${at.headerSeq ?? at.turn}-${at.step}-${at.attempt}`
+      const { blob, bytes, storedBytes, truncated } = await writeRequestPayload(dir, name, payload)
+      this.session.append('request/payload', {
+        turn: at.turn,
+        step: at.step,
+        ...at.headerSeq === undefined ? {} : { headerSeq: at.headerSeq },
+        blob,
+        bytes,
+        storedBytes,
+        ...truncated ? { truncated: true as const } : {},
+      })
+    } catch (error: unknown) {
+      this.loopCtx.logger.warn(`agent "${this.id}": request payload not recorded: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 }

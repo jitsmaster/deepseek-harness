@@ -348,6 +348,11 @@ class JsonlSessionPersistence extends SessionPersistence {
 
   // --- SessionPersistence service API ---
 
+  /** The session's own directory, which also holds its `payloads/` sidecars. */
+  override sessionDirectory(header: Pick<SessionHeader, 'id' | 'cwd'>): string {
+    return sessionDir(this.root, header.cwd, header.id)
+  }
+
   /**
    * Create a new stored session and take its write ownership. The session is
    * visible to this process immediately; the physical artifact appears on the

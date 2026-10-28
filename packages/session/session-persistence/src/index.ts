@@ -208,6 +208,18 @@ export abstract class SessionPersistence extends Service {
    * @returns one snapshot per stored session.
    */
   abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+  /**
+   * Directory that holds one stored session's artifacts, so callers can keep
+   * sidecar files (such as request payloads) beside the log and have them
+   * pruned with the session. Backends without a per-session directory keep
+   * this default and report `undefined`.
+   * @param header - the session's stored header.
+   * @returns the absolute directory, or `undefined` when none exists.
+   */
+  sessionDirectory(_header: Pick<SessionHeader, 'id' | 'cwd'>): string | undefined {
+    return undefined
+  }
 }
 
 export default SessionPersistence
