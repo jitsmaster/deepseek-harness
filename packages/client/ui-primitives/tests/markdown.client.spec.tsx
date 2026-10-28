@@ -908,3 +908,31 @@ describe('JsonBlock', () => {
     expect(body).toContain('截断')
   })
 })
+
+describe('MarkdownText action-item wrapper', () => {
+  it('hides the literal <u> wrapper around an action item and keeps the bold text', () => {
+    const { container } = render(<MarkdownText text={'Before.\n\n<u>**Approve this plan?**</u>\n\nAfter <u>**inline**</u> text.'} />)
+    expect(container.textContent).not.toContain('<u>')
+    expect(container.textContent).not.toContain('</u>')
+    expect(container.textContent).toContain('Approve this plan?')
+    expect(Array.from(container.querySelectorAll('strong')).map(s => s.textContent)).toEqual(['Approve this plan?', 'inline'])
+  })
+
+  it('still shows other raw HTML as literal text', () => {
+    const { container } = render(<MarkdownText text={'a <b>x</b> c'} />)
+    expect(container.textContent).toContain('<b>')
+  })
+})
+
+describe('MarkdownText action-item wrapper variants', () => {
+  it('hides the wrapper while streaming, with omitHtml, and for a bare block tag', () => {
+    for (const props of [{ streaming: true }, { omitHtml: true }] as const) {
+      const { container, unmount } = render(<MarkdownText text={'<u>**Go?**</u>'} {...props} />)
+      expect(container.textContent).not.toContain('<u>')
+      expect(container.textContent).toContain('Go?')
+      unmount()
+    }
+    const { container } = render(<MarkdownText text={'<U>\n\ntext'} />)
+    expect(container.textContent).not.toContain('<U>')
+  })
+})

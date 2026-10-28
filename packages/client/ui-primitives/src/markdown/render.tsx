@@ -24,6 +24,7 @@ import type {} from 'mdast-util-math'
 import { normalizeUri } from 'micromark-util-sanitize-uri'
 import type { CodeToolbarLabels } from '../CodeToolbar.tsx'
 import { CodeBlock } from './CodeBlock.tsx'
+import { ACTION_WRAPPER_TAG } from './action-wrapper.ts'
 import { parseFileLink } from './file-link.ts'
 import { renderTexToReact } from './katex.tsx'
 import { LinkIconMedium, classifyLinkPath } from '../LinkIcon.tsx'
@@ -366,6 +367,8 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     }
     case 'html':
       // No HTML parser enters the pipeline: raw HTML is literal text, or nothing where the owner omits it.
+      // The bare underline tags wrap action items (`<u>**...**</u>`); the bold text stays, the tag transport is hidden.
+      if (ACTION_WRAPPER_TAG.test(node.value)) return null
       return context.omitHtml ? null : node.value
     case 'code':
       return renderCode(node, key, context)

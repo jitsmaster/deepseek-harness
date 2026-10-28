@@ -6,6 +6,7 @@
  * keeps its source text.
  */
 
+import { ACTION_WRAPPER_TAG } from './action-wrapper.ts'
 import { parseGfm } from './parse.ts'
 
 /** Amount of parsed Markdown content returned by the extractor. */
@@ -36,7 +37,7 @@ function inlineText(node: MarkdownNode): string {
     case 'break':
       return '\n'
     case 'html':
-      return node.value ?? ''
+      return ACTION_WRAPPER_TAG.test(node.value ?? '') ? '' : node.value ?? ''
     default:
       return node.children?.map(inlineText).join('') ?? ''
   }
@@ -67,7 +68,7 @@ function blockText(node: MarkdownNode): string {
     case 'tableCell':
       return compactInline(inlineText(node))
     case 'html':
-      return node.value ?? ''
+      return ACTION_WRAPPER_TAG.test(node.value ?? '') ? '' : node.value ?? ''
     case 'thematicBreak':
     case 'definition':
       return ''

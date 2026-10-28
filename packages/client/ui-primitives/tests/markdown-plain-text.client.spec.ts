@@ -69,3 +69,10 @@ describe('extractMarkdownPlainText', () => {
     ].join('\n'))
   })
 })
+
+describe('extractMarkdownPlainText action-item wrapper', () => {
+  it('drops the bare <u> tags around an action item and keeps its text', () => {
+    expect(extractMarkdownPlainText('<u>**Go?**</u>')).toBe('Go?')
+    expect(extractMarkdownPlainText('Say <U>**yes**</U> now')).toBe('Say yes now')
+  })
+})
