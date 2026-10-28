@@ -135,6 +135,11 @@ export type ClaudeMakeDefaultView =
   | { readonly ok: true; readonly backupDir: string; readonly unchanged: boolean }
   | { readonly ok: false; readonly reason: string }
 
+/** How a sign-out request ended; a failure names its reason and carries no secret. */
+export type ClaudeSignOutView =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string }
+
 /** Confirmation that the settings document was handed to the native editor. */
 export interface SettingsDocumentOpenValue {
   readonly opened: true

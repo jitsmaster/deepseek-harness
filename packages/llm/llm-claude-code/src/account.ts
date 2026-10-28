@@ -142,6 +142,30 @@ export function extractAuthorizeUrl(output: string): string | undefined {
   return undefined
 }
 
+/**
+ * Turn what the human pasted into the form `claude auth login` accepts: `<code>#<state>`.
+ * The Claude page shows both halves joined by a `#`, and a double-click or a selection that
+ * stops at the `#` copies only the first. The CLI then waits silently for ever (it sends no
+ * request and prints no error), so the missing state is filled in from the `state` of the
+ * sign-in page it printed, which is the one the code belongs to.
+ * @param pasted - the text typed or pasted into the code prompt.
+ * @param authorizeUrl - the sign-in page address the CLI printed.
+ * @returns the code without whitespace, with `#<state>` when the pasted text had no state.
+ */
+export function completeAuthCode(pasted: string, authorizeUrl: string): string {
+  const compact = pasted.replaceAll(/\s+/gu, '')
+  const hash = compact.indexOf('#')
+  if (compact.length === 0 || (hash >= 0 && hash < compact.length - 1)) return compact
+  let state: string | null = null
+  try {
+    state = new URL(authorizeUrl).searchParams.get('state')
+  } catch {
+    // Not a URL: the code goes through as pasted.
+  }
+  if (state === null || state.length === 0) return compact
+  return `${hash >= 0 ? compact.slice(0, hash) : compact}#${state}`
+}
+
 /** Remove terminal escape sequences (CSI, OSC) so a message reads as plain text. */
 export function stripEscapes(text: string): string {
   return text

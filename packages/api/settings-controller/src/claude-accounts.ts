@@ -16,6 +16,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import { z } from 'zod'
 import type {
   ClaudeAccountView, ClaudeAccountsStatusView, ClaudeAccountUsageView, ClaudeAccountWindowView, ClaudeMakeDefaultView,
+  ClaudeSignOutView,
 } from './types.ts'
 
 /** An email as the plugin normalizes it: one `@`, no spaces, bounded length. */
@@ -105,6 +106,26 @@ export class ClaudeAccountsController extends TypertRemoteService {
     return outcome.ok
       ? { ok: true, backupDir: outcome.backupDir, unchanged: outcome.unchanged }
       : { ok: false, reason: outcome.reason }
+  }
+
+  /**
+   * Sign one account out of DSH: delete its saved Claude login and take it off the signed-in list.
+   * The email stays in the configured list, and the default Claude Code login is not touched.
+   * @param email - the account's email.
+   * @returns ok, or the reason nothing was removed.
+   * @throws RemoteError `gateway/bad-request` when `email` is not an address, or `gateway/internal` while
+   *   the Claude Code plugin is not mounted.
+   */
+  @Remote
+  async signOut(email: string): Promise<ClaudeSignOutView> {
+    const parsed = emailSchema.safeParse(email)
+    if (!parsed.success) throw new RemoteError('gateway/bad-request', 'invalid email for claudeAccounts.signOut', { issues: parsed.error.issues })
+    const service = this.ctx.get('claudeAccounts')
+    if (service === undefined) {
+      throw new RemoteError('gateway/internal', 'claudeAccounts is absent: this deployment does not mount the Claude Code LLM plugin', {})
+    }
+    const outcome = await service.signOut(parsed.data)
+    return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason }
   }
 }
 

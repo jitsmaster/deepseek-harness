@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -44,6 +44,7 @@ function deps(overrides: Partial<ClaudeAccountsDeps> & { listed?: string[]; sign
     accounts: () => listed,
     activeAccount: () => undefined,
     readRecord: () => Promise.resolve(signed.length === 0 ? undefined : accountsRecord(signed.map(entry))),
+    forgetAccount: () => Promise.resolve(),
     defaultPaths: () => defaultConfigPaths({ dir: defaultDir, home: scratch }),
     log: () => undefined,
     ...rest,
@@ -174,8 +175,89 @@ describe('the claudeAccounts service of the mounted plugin', () => {
     await root.fiber.dispose()
   }, 30_000)
 
+  it('signs an account out through the credentials service: its folder goes and its record entry is rewritten without it', async () => {
+    signIn('a@x.com')
+    signIn('b@x.com')
+    let stored: ReturnType<typeof accountsRecord> | undefined = accountsRecord([entry('a@x.com'), entry('b@x.com')])
+    const root = new Context()
+    await root.plugin(FakeClaudeSubprocess)
+    await root.plugin(LlmRuntime)
+    root.provide('credentials', {
+      readRecord: (key: string) => Promise.resolve(key === ACCOUNT_KEY ? stored : undefined),
+      modifyRecord: async (key: string, mutate: (current: typeof stored) => Promise<typeof stored>) => {
+        if (key !== ACCOUNT_KEY) throw new Error(`unexpected record ${key}`)
+        stored = await mutate(stored) ?? stored
+        return stored
+      },
+    } as never)
+    const fiber = await root.plugin(claudeCodePlugin, { executable: process.execPath, accountsDir, accounts: ['a@x.com', 'b@x.com'], defaultConfigDir: defaultDir })
+    const service = root.get('claudeAccounts')
+    expect(await service!.signOut('a@x.com')).toEqual({ ok: true })
+    expect(existsSync(join(accountsDir, accountId('a@x.com')))).toBe(false)
+    expect(JSON.stringify(stored)).not.toContain('a@x.com')
+    expect(JSON.stringify(stored)).toContain('b@x.com')
+    expect((await service!.status()).accounts.map(a => [a.email, a.signedIn])).toEqual([['a@x.com', false], ['b@x.com', true]])
+    await fiber.dispose()
+    await root.fiber.dispose()
+  }, 30_000)
+
   it('accepts defaultConfigDir in the config schema', () => {
     expect(() => claudeCodePlugin.Config({ defaultConfigDir: 'C:\\claude-default' })).not.toThrow()
     expect(() => claudeCodePlugin.Config({ defaultConfigDir: '' })).toThrow()
+  })
+})
+
+describe('claudeAccounts.signOut', () => {
+  it('deletes the account login folder, forgets it in the record, and leaves other accounts and the default login alone', async () => {
+    signIn('a@x.com')
+    signIn('b@x.com')
+    writeFileSync(join(defaultDir, '.credentials.json'), 'DEFAULT-LOGIN')
+    const forgotten: string[] = []
+    const logs: string[] = []
+    const service = createClaudeAccountsService(deps({
+      listed: ['a@x.com', 'b@x.com'], signed: ['a@x.com', 'b@x.com'],
+      forgetAccount: (id) => { forgotten.push(id); return Promise.resolve() },
+      log: (line) => { logs.push(line) },
+    }))
+    expect(await service.signOut(' A@x.com ')).toEqual({ ok: true })
+    expect(existsSync(join(accountsDir, accountId('a@x.com')))).toBe(false)
+    expect(existsSync(join(accountsDir, accountId('b@x.com'), '.credentials.json'))).toBe(true)
+    expect(readFileSync(join(defaultDir, '.credentials.json'), 'utf8')).toBe('DEFAULT-LOGIN')
+    expect(forgotten).toEqual([accountId('a@x.com')])
+    expect(logs.join('\n')).toContain('a@x.com signed out')
+    expect(logs.join('\n')).not.toContain('secret-')
+  })
+
+  it('refuses an account that never signed in, without forgetting anything', async () => {
+    const forgotten: string[] = []
+    const service = createClaudeAccountsService(deps({ listed: ['a@x.com'], forgetAccount: (id) => { forgotten.push(id); return Promise.resolve() } }))
+    expect(await service.signOut('a@x.com')).toEqual({ ok: false, reason: 'a@x.com is not signed in' })
+    expect(forgotten).toEqual([])
+  })
+
+  it('drops a recorded account whose login folder is already gone', async () => {
+    const forgotten: string[] = []
+    const service = createClaudeAccountsService(deps({ listed: ['a@x.com'], signed: ['a@x.com'], forgetAccount: (id) => { forgotten.push(id); return Promise.resolve() } }))
+    expect(await service.signOut('a@x.com')).toEqual({ ok: true })
+    expect(forgotten).toEqual([accountId('a@x.com')])
+  })
+
+  it('keeps the folder and the record when the folder holds a link', async () => {
+    signIn('a@x.com')
+    const dir = join(accountsDir, accountId('a@x.com'))
+    symlinkSync(scratch, join(dir, 'link'), 'junction')
+    const forgotten: string[] = []
+    const result = await createClaudeAccountsService(deps({ listed: ['a@x.com'], signed: ['a@x.com'], forgetAccount: (id) => { forgotten.push(id); return Promise.resolve() } })).signOut('a@x.com')
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining('contains a link') as string })
+    expect(existsSync(join(dir, '.credentials.json'))).toBe(true)
+    expect(forgotten).toEqual([])
+  })
+
+  it('reports a failure to update the record instead of rejecting', async () => {
+    signIn('a@x.com')
+    const result = await createClaudeAccountsService(deps({
+      listed: ['a@x.com'], signed: ['a@x.com'], forgetAccount: () => Promise.reject(Object.assign(new Error('disk'), { code: 'EIO' })),
+    })).signOut('a@x.com')
+    expect(result).toEqual({ ok: false, reason: 'could not sign a@x.com out (EIO)' })
   })
 })

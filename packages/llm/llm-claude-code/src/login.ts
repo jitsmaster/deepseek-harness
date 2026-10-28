@@ -24,6 +24,7 @@ import {
   accountId,
   ACCOUNT_KEY,
   accountsRecord,
+  completeAuthCode,
   CONFIG_DIR_ENV,
   CREDENTIALS_FILE,
   extractAuthorizeUrl,
@@ -40,6 +41,9 @@ import { locateExecutable } from './executable.ts'
 
 /** Default whole-login budget: the human has to open a page and copy a code. */
 export const LOGIN_DEFAULT_TIMEOUT_MS = 600_000
+
+/** Default silence allowed after the code is written (the real CLI answers in under a second). */
+export const CODE_REPLY_DEFAULT_TIMEOUT_MS = 60_000
 
 /** Code of a sign-in that exceeded its deadline. */
 const LOGIN_TIMEOUT_CODE = 'LLM_CLAUDE_CODE_LOGIN_TIMEOUT'
@@ -92,6 +96,8 @@ export interface AccountFlowOptions {
   warn?: (message: string) => void
   /** Whole-login deadline in milliseconds. Defaults to ten minutes. */
   loginTimeoutMs?: number
+  /** How long the login may stay silent after the code is written before the sign-in fails. Defaults to 60 seconds. */
+  codeReplyTimeoutMs?: number
   /** How often the swap retries a directory a running process holds open. */
   swapAttempts?: number
   /** Pause between swap retries, in milliseconds. */
@@ -144,9 +150,9 @@ function stopError(signal: AbortSignal): Error {
     : new Error(`Claude sign-in timed out after ${timeout.timeoutMs}ms`, { cause: timeout })
 }
 
-/** The last readable characters of captured output, with escape sequences and any secret removed. */
+/** The last readable characters of captured output, with escape sequences, page addresses and any secret removed. */
 function tail(output: string, secret?: string): string {
-  const clean = stripEscapes(output).trim()
+  const clean = stripEscapes(output).replaceAll(/https?:\/\/\S+/gu, '<link>').trim()
   const redacted = secret === undefined || secret.length === 0 ? clean : clean.replaceAll(secret, '[code]')
   return redacted.slice(-DETAIL_CHARS)
 }
@@ -263,8 +269,12 @@ function whenUrl(login: Launched): Promise<{ kind: 'url'; url: string }> {
 function failure(login: Launched, exit: Exit, secret?: string): Error {
   if (exit.error !== undefined) return new Error(`Claude Code could not start: ${errorText(exit.error)}`, { cause: exit.error })
   const how = exit.exitCode === null ? 'was terminated' : `exited with code ${exit.exitCode}`
-  const detail = tail(login.output(), secret)
-  return new Error(`Claude Code sign-in ${how}${detail.length > 0 ? `: ${detail}` : ''}`)
+  // The error goes to stderr; the rest of the output is the page address and the prompt, which only clutter the message.
+  const detail = tail(login.stderr().trim().length > 0 ? login.stderr() : login.output(), secret)
+  const base = `Claude Code sign-in ${how}${detail.length > 0 ? `: ${detail}` : ''}`
+  return new Error(/status code 40[0-3]/u.test(detail)
+    ? `${base}. A sign-in code works once and only for the link shown in this dialog: open that link (not an older tab), copy the whole code, and sign in again.`
+    : base)
 }
 
 /** Read the new account's facts with `claude auth status`, which uses no quota. */
@@ -342,6 +352,7 @@ async function converse(
   login: Launched,
   signal: AbortSignal,
   message: string,
+  replyTimeoutMs: number,
 ): Promise<{ exit: Exit; code?: string }> {
   const first = await Promise.race([whenUrl(login), login.exited, stopped(signal)])
   if (first.kind === 'stop') throw stopError(signal)
@@ -350,7 +361,7 @@ async function converse(
   const asking = new AbortController()
   const answer = session.prompt({
     kind: 'text',
-    message: 'Paste the code from the Claude page (sign-in also finishes by itself once the browser completes it).',
+    message: 'Paste the whole code from the Claude page, including the part after the "#" (sign-in also finishes by itself once the browser completes it).',
     placeholder: 'Paste code here',
     signal: asking.signal,
   }).then(value => ({ kind: 'code' as const, value }))
@@ -361,12 +372,22 @@ async function converse(
     asking.abort()
     return { exit: next }
   }
-  const code = next.value.trim()
+  const code = completeAuthCode(next.value, first.url)
   if (code.length === 0) throw new Error('no sign-in code was entered')
   session.notify({ message: 'Finishing sign-in…' })
   login.child.stdin?.write(`${code}\n`)
-  const exit = await Promise.race([login.exited, stopped(signal)])
+  // The CLI answers a code in under a second (success or an error). Silence means it did not take the code, and it
+  // would otherwise wait for the whole login budget.
+  let timer: NodeJS.Timeout | undefined
+  const silent = new Promise<{ kind: 'silent' }>((resolve) => {
+    timer = setTimeout(() => { resolve({ kind: 'silent' }) }, replyTimeoutMs)
+    timer.unref()
+  })
+  const exit = await Promise.race([login.exited, stopped(signal), silent]).finally(() => { clearTimeout(timer) })
   if (exit.kind === 'stop') throw stopError(signal)
+  if (exit.kind === 'silent') {
+    throw new Error(`Claude Code did not answer the code within ${Math.round(replyTimeoutMs / 1000)} seconds. Copy the whole code from the Claude page (it has a "#" in the middle) and sign in again.`)
+  }
   return { exit, code }
 }
 
@@ -448,7 +469,8 @@ export function claudeAccountFlow(options: AccountFlowOptions): AuthorizationFlo
         login = launch(options, [executable, 'auth', 'login', '--claudeai', `--email=${picked}`], env, signal, true)
         const started = login
         const message = `Open this page${hint}, sign in as ${picked}, and paste the code it shows.`
-        const { exit, code } = await converse(session, started, signal, message)
+        const replyTimeoutMs = options.codeReplyTimeoutMs ?? CODE_REPLY_DEFAULT_TIMEOUT_MS
+        const { exit, code } = await converse(session, started, signal, message, replyTimeoutMs)
         if (exit.exitCode !== 0) throw failure(started, exit, code)
         if (!await exists(join(staging, CREDENTIALS_FILE))) {
           throw new Error('Claude Code finished signing in but wrote no credentials file in the account directory (this platform may keep them in a keychain, which this sign-in does not support)')

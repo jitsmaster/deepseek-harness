@@ -8,16 +8,21 @@
 
 import type { ContentBlock, GenerateOptions, RequestMessage } from '@deepseek-ai/dsh-llm'
 
-/** Explains the transcript convention; the DSH system prompt follows it in `system.txt`. */
+/**
+ * Explains the transcript convention; the DSH system prompt follows it in `system.txt`.
+ * The request to continue lives here, not after the transcript: the transcript must end on
+ * its own last element so that the previous call's cached prefix is still a prefix of this one.
+ */
 export const TRANSCRIPT_PREFACE = [
-  'The conversation so far is given to you as a transcript inside <conversation>; continue it as the assistant.',
+  'The user message you receive is a transcript of the conversation so far, one element per content block;',
+  'continue it as the assistant with the next assistant turn.',
   'It holds <user>, <assistant>, <developer> and <tool_result> turns.',
   'Earlier tool calls and their results appear as <tool_call> and <tool_result> elements: they are history,',
   'never write those elements yourself - call tools natively instead.',
 ].join(' ')
 
-/** Closing line that asks for the next assistant turn. */
-const CONTINUE_LINE = 'Continue as the assistant.'
+/** Stands in for a conversation that has no renderable turn, so the user message is never empty. */
+const EMPTY_TRANSCRIPT = '(The conversation is empty.)'
 
 const IMAGE_PLACEHOLDER = '[image omitted: this route reads text only]'
 const FILE_PLACEHOLDER = '[file omitted: this route reads text only]'
@@ -53,21 +58,24 @@ function element(tag: string, attributes: string, lines: readonly string[]): str
 }
 
 /**
- * Render the conversation as the `<conversation>` transcript sent on stdin.
+ * Render the conversation as transcript elements, one per turn.
  * System messages are not part of it (they become `system.txt`); reasoning of
- * earlier turns is omitted.
+ * earlier turns is omitted. Each element becomes its own content block of the
+ * stdin user message (see `renderStdin`): Anthropic's prompt cache matches a
+ * previous call's prefix only at block boundaries, so a history sent as one
+ * growing text block is never read back from cache.
  * @param messages - the request messages in order.
- * @returns the transcript followed by the closing instruction.
+ * @returns the elements in order; the same history always renders to the same leading elements.
  */
-export function renderTranscript(messages: readonly RequestMessage[]): string {
+export function renderTranscriptBlocks(messages: readonly RequestMessage[]): string[] {
   const toolNames = new Map<string, string>()
-  const lines: string[] = ['<conversation>']
+  const blocks: string[] = []
   for (const message of messages) {
     switch (message.role) {
       case 'user':
       case 'developer': {
         const body = textLines(message.content)
-        if (body.length > 0) lines.push(...element(message.role, '', body))
+        if (body.length > 0) blocks.push(element(message.role, '', body).join('\n'))
         break
       }
       case 'assistant': {
@@ -80,21 +88,32 @@ export function renderTranscript(messages: readonly RequestMessage[]): string {
             body.push(...textLines([block]))
           }
         }
-        if (body.length > 0) lines.push(...element('assistant', '', body))
+        if (body.length > 0) blocks.push(element('assistant', '', body).join('\n'))
         break
       }
       case 'tool': {
         const name = toolNames.get(message.toolCallId) ?? 'unknown'
         const error = message.isError === true ? ' error="true"' : ''
-        lines.push(...element('tool_result', ` id="${escapeAttribute(message.toolCallId)}" name="${escapeAttribute(name)}"${error}`, textLines(message.content)))
+        blocks.push(element('tool_result', ` id="${escapeAttribute(message.toolCallId)}" name="${escapeAttribute(name)}"${error}`, textLines(message.content)).join('\n'))
         break
       }
       default:
         break
     }
   }
-  lines.push('</conversation>', '', CONTINUE_LINE)
-  return lines.join('\n')
+  return blocks
+}
+
+/**
+ * The stdin of one run: a single `--input-format stream-json` user message whose
+ * content has one text block per transcript element.
+ * @param messages - the request messages in order.
+ * @returns one JSON line, newline-terminated.
+ */
+export function renderStdin(messages: readonly RequestMessage[]): string {
+  const blocks = renderTranscriptBlocks(messages)
+  const content = (blocks.length > 0 ? blocks : [EMPTY_TRANSCRIPT]).map(text => ({ type: 'text', text }))
+  return `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`
 }
 
 /**

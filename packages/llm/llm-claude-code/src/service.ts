@@ -9,13 +9,15 @@
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CredentialRecord } from '@deepseek-ai/dsh-credentials'
-import { accountDir, accountId, CREDENTIALS_FILE, isPlausibleEmail, normalizeEmail, parseAccounts } from './account.ts'
+import { accountDir, accountId, CREDENTIALS_FILE, findAccount, isPlausibleEmail, normalizeEmail, parseAccounts } from './account.ts'
 import type { AccountEntry } from './account.ts'
 import { makeDefaultLogin, readDefaultEmail } from './default-login.ts'
 import type { DefaultConfigPaths, KnownAccount } from './default-login.ts'
+import { removeTree } from './login.ts'
 import { readAccountUsage } from './rate-limit.ts'
 import type {
   ClaudeAccountInfo, ClaudeAccountsService, ClaudeAccountsStatus, ClaudeAccountUsage, ClaudeAccountWindow, ClaudeMakeDefaultResult,
+  ClaudeSignOutResult,
 } from './types.ts'
 
 /** What the service reads from its plugin. */
@@ -28,6 +30,8 @@ export interface ClaudeAccountsDeps {
   activeAccount: () => string | undefined
   /** The record of signed-in accounts, if a credentials service is mounted. */
   readRecord: () => Promise<CredentialRecord | undefined>
+  /** Take one account off the stored list of signed-in accounts. */
+  forgetAccount: (id: string) => Promise<void>
   /** The default Claude Code configuration to read and swap. */
   defaultPaths: () => DefaultConfigPaths
   /** Called with a secret-free line after a swap. */
@@ -115,8 +119,36 @@ export function createClaudeAccountsService(deps: ClaudeAccountsDeps): ClaudeAcc
     return outcome
   }
 
+  async function signOutOne(raw: string): Promise<ClaudeSignOutResult> {
+    const email = normalizeEmail(raw)
+    const entry = findAccount(await deps.readRecord().catch(() => undefined), email)
+    if (entry === undefined) return { ok: false, reason: `${email} is not signed in` }
+    const dir = accountDir(deps.accountsDir, entry.id)
+    if (await exists(join(dir, CREDENTIALS_FILE))) {
+      let removed: boolean
+      try {
+        removed = await removeTree(dir, deps.log)
+      } catch {
+        return { ok: false, reason: `${email} is in use by a running Claude Code process; try again when no request is running` }
+      }
+      if (!removed) return { ok: false, reason: `the login folder of ${email} contains a link, so it was left untouched` }
+    }
+    // A listed account whose folder is already gone is dropped from the list too, so the card stops showing a login that is not there.
+    await deps.forgetAccount(entry.id)
+    deps.log(`${email} signed out: its saved login was deleted`)
+    return { ok: true }
+  }
+
   return {
     status: () => status().catch(() => ({ accounts: [], defaultAccount: {} })),
+    signOut(email) {
+      const next = tail.then(() => signOutOne(email)).catch((error: unknown): ClaudeSignOutResult => ({
+        ok: false,
+        reason: `could not sign ${normalizeEmail(email)} out (${typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : 'unexpected error'})`,
+      }))
+      tail = next
+      return next
+    },
     makeDefault(email) {
       const next = tail.then(() => swap(email)).catch((error: unknown): ClaudeMakeDefaultResult => ({
         ok: false,

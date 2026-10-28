@@ -137,7 +137,7 @@ describe('claude account sign-in flow', () => {
     expect(env).toHaveProperty('ANTHROPIC_API_KEY', undefined)
     expect(env.BROWSER).toBeUndefined()
     expect(talk.notices.filter(notice => notice.url !== undefined)).toEqual([{ message: expect.stringContaining(`sign in as ${EMAIL}`) as string, url: PAGE }])
-    expect(readRuns().find(run => run.code !== undefined)?.code).toBe('PASTE-CODE-123')
+    expect(readRuns().find(run => run.code !== undefined)?.code).toBe('PASTE-CODE-123#abc123')
     expect(readFileSync(join(dirFor(EMAIL), '.credentials.json'), 'utf8')).toContain(SECRET)
     expect(talk.commits).toHaveLength(1)
     const [record] = talk.commits
@@ -334,6 +334,40 @@ describe('claude account sign-in flow', () => {
     await until(() => readRuns().some(run => run.pid !== undefined), 'the login child to log its pid')
     await until(() => !alive(loginPid()), 'the login child to be killed')
     expect(oldCredentials()).toBe(`OLD-ACCOUNT-${EMAIL}`)
+    expect(leftovers()).toEqual([])
+  }, 30_000)
+
+  it('reports a rejected code without the page address and says how to retry', async () => {
+    FakeClaudeSubprocess.authScenario = 'rejected'
+    const error = await (await flow()).run(converse({ code: 'OLD#CODE' }).session).catch((caught: unknown) => caught as Error)
+    const message = (error as Error).message
+    expect(message).toContain('exited with code 1: Login failed: Request failed with status code 400')
+    expect(message).toContain('only for the link shown in this dialog')
+    expect(message).not.toContain('https://')
+    expect(message).not.toContain('OLD#CODE')
+  }, 30_000)
+
+  it('adds the missing #state of a pasted code from the sign-in page, and leaves a complete code alone', async () => {
+    // The Claude page shows `code#state`; selecting only the first half used to hang the login for good.
+    await (await flow()).run(converse({ code: '  CODE-ONLY \n' }).session)
+    expect(readRuns().find(run => run.code !== undefined)?.code).toBe('CODE-ONLY#abc123')
+    await (await flow()).run(converse({ code: 'MINE#THEIRS' }).session)
+    expect(readRuns().filter(run => run.code !== undefined).at(-1)?.code).toBe('MINE#THEIRS')
+    await (await flow()).run(converse({ code: 'TRAILING#' }).session)
+    expect(readRuns().filter(run => run.code !== undefined).at(-1)?.code).toBe('TRAILING#abc123')
+  }, 30_000)
+
+  it('fails in seconds, not at the login deadline, when the login stays silent after the code', async () => {
+    seedAccount()
+    FakeClaudeSubprocess.authScenario = 'silent'
+    const talk = converse({ code: 'SOME#CODE' })
+    const started = Date.now()
+    await expect((await flow({ codeReplyTimeoutMs: 700 })).run(talk.session)).rejects.toThrow(/did not answer the code within 1 seconds/u)
+    expect(Date.now() - started).toBeLessThan(10_000)
+    await until(() => readRuns().some(run => run.pid !== undefined), 'the login child to log its pid')
+    await until(() => !alive(loginPid()), 'the login child to be killed')
+    expect(oldCredentials()).toBe(`OLD-ACCOUNT-${EMAIL}`)
+    expect(talk.commits).toEqual([])
     expect(leftovers()).toEqual([])
   }, 30_000)
 

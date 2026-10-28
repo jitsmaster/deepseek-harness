@@ -38,7 +38,7 @@ import { CLAUDE_EFFORTS, mergeModels } from './models.ts'
 import type { ClaudeModelEntry } from './models.ts'
 import { buildToolAliases, MCP_SERVER_NAME } from './names.ts'
 import { STUB_SOURCE } from './stub.ts'
-import { renderSystemText, renderTranscript } from './transcript.ts'
+import { renderStdin, renderSystemText } from './transcript.ts'
 
 /** Stable provider route id this adapter registers under. */
 export const CLAUDE_CODE_LLM_PROVIDER_ID = 'claude-code'
@@ -120,6 +120,7 @@ export function claudeArgv(input: ArgvInput): string[] {
   return [
     input.executable,
     '-p',
+    '--input-format', 'stream-json',
     '--output-format', 'stream-json',
     '--verbose',
     '--include-partial-messages',
@@ -275,7 +276,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       child = this.options.spawn({
         argv: claudeArgv({ executable, directory, model: options.model, effort: options.reasoningEffort, withTools: tools.length > 0 }),
         cwd: directory,
-        stdio: { stdin: { data: renderTranscript(options.messages) }, stdout: 'pipe', stderr: { maxBytes: STDERR_TAIL_BYTES } },
+        stdio: { stdin: { data: renderStdin(options.messages) }, stdout: 'pipe', stderr: { maxBytes: STDERR_TAIL_BYTES } },
         graceMs: TERMINATION_GRACE_MS,
         signal,
         ...Object.keys(env).length === 0 ? {} : { env },

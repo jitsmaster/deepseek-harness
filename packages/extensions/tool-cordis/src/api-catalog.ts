@@ -667,6 +667,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'email', description: 'the account\'s email, in any case.' }],
         returns: 'the backup folder of the replaced login, or the reason nothing changed; never rejects.',
       },
+      {
+        signature: 'signOut(email: string): Promise<ClaudeSignOutResult>',
+        description: 'Sign one account out of DSH: delete its saved login folder and take it off the list of signed-in accounts. The email stays in the configured list so it can sign in again; the default Claude Code login is not touched.',
+        parameters: [{ name: 'email', description: 'the account\'s email, in any case.' }],
+        returns: '`ok`, or the reason nothing was removed; never rejects.',
+      },
     ],
   },
   {
@@ -685,6 +691,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Make one signed-in account the login of every new Claude Code process on this machine.',
         parameters: [{ name: 'email', description: 'the account\'s email.' }],
         returns: 'the backup folder of the replaced login, or the reason nothing changed.',
+        throws: ['RemoteError `gateway/bad-request` when `email` is not an address, or `gateway/internal` while the Claude Code plugin is not mounted.'],
+      },
+      {
+        signature: '@Remote async signOut(email: string): Promise<ClaudeSignOutView>',
+        description: 'Sign one account out of DSH: delete its saved Claude login and take it off the signed-in list. The email stays in the configured list, and the default Claude Code login is not touched.',
+        parameters: [{ name: 'email', description: 'the account\'s email.' }],
+        returns: 'ok, or the reason nothing was removed.',
         throws: ['RemoteError `gateway/bad-request` when `email` is not an address, or `gateway/internal` while the Claude Code plugin is not mounted.'],
       },
     ],
@@ -5443,6 +5456,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ClaudeSessionImportListValue',
     declaration: 'export interface ClaudeSessionImportListValue {\n    readonly sessions: readonly DiscoveredSessionView[];\n}',
+  },
+  {
+    name: 'ClaudeSignOutResult',
+    declaration: 'export type ClaudeSignOutResult = {\n    readonly ok: true;\n} | {\n    readonly ok: false;\n    readonly reason: string;\n};',
+  },
+  {
+    name: 'ClaudeSignOutView',
+    declaration: 'export type ClaudeSignOutView = {\n    readonly ok: true;\n} | {\n    readonly ok: false;\n    readonly reason: string;\n};',
   },
   {
     name: 'ClientArtifactBaseline',

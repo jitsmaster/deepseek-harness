@@ -793,6 +793,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ClaudeAccountView: 'credentials.md',
   ClaudeMakeDefaultResult: 'credentials.md',
   ClaudeMakeDefaultView: 'credentials.md',
+  ClaudeSignOutResult: 'credentials.md',
+  ClaudeSignOutView: 'credentials.md',
   AuthorizationFlow: 'credentials.md',
   AuthorizationInteraction: 'credentials.md',
   AuthorizationMethod: 'credentials.md',

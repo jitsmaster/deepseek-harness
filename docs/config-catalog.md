@@ -1877,7 +1877,7 @@ export interface Config {
 
 - `inject`: `llm` · `subprocess`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/llm/llm-claude-code/src/index.ts:97`](../packages/llm/llm-claude-code/src/index.ts)
+- `source`: [`packages/llm/llm-claude-code/src/index.ts:100`](../packages/llm/llm-claude-code/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config (all optional — `apply` fills the defaults). */
@@ -4321,6 +4321,14 @@ export interface Config {
 export interface Config {
   /** Maximum normalized description length rendered in the session catalog; minimum 3. */
   catalogDescriptionMaxLength?: number
+  /**
+   * Skill names left out of the model-facing catalog, each an exact name or a prefix ending in `*`
+   * (`modes-*`). A hidden skill still loads through the `skill` tool by its exact name and by the
+   * user's `/name`; only the catalog lines, which cost tokens in every session, are dropped.
+   */
+  catalogHide?: string[]
+  /** Names or `*` prefixes that stay in the catalog even when `catalogHide` matches them. */
+  catalogKeep?: string[]
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-skill -->

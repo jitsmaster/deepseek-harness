@@ -56,6 +56,11 @@ export type ClaudeMakeDefaultResult =
   | { readonly ok: true; readonly backupDir: string; readonly unchanged: boolean }
   | { readonly ok: false; readonly reason: string }
 
+/** How a sign-out request ended. A failure names its reason and carries no secret. */
+export type ClaudeSignOutResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string }
+
 /** The service surface (`ctx.claudeAccounts`). */
 export interface ClaudeAccountsService {
   /**
@@ -69,6 +74,13 @@ export interface ClaudeAccountsService {
    * @returns the backup folder of the replaced login, or the reason nothing changed; never rejects.
    */
   makeDefault(email: string): Promise<ClaudeMakeDefaultResult>
+  /**
+   * Sign one account out of DSH: delete its saved login folder and take it off the list of signed-in accounts.
+   * The email stays in the configured list so it can sign in again; the default Claude Code login is not touched.
+   * @param email - the account's email, in any case.
+   * @returns `ok`, or the reason nothing was removed; never rejects.
+   */
+  signOut(email: string): Promise<ClaudeSignOutResult>
 }
 
 declare module '@deepseek-ai/cordis' {

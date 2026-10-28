@@ -28,6 +28,7 @@ interface Scripts {
   mutate?: () => unknown
   status?: () => unknown
   makeDefault?: () => unknown
+  signOut?: () => unknown
 }
 
 async function bench(scripts: Scripts = {}) {
@@ -47,6 +48,7 @@ async function bench(scripts: Scripts = {}) {
   const claudeAccounts = {
     status: vi.fn(scripts.status ?? (() => Promise.resolve(ok({ accounts: [], defaultAccount: {} })))),
     makeDefault: vi.fn(scripts.makeDefault ?? (() => Promise.resolve(ok({ ok: true, backupDir: 'D:/b', unchanged: false })))),
+    signOut: vi.fn(scripts.signOut ?? (() => Promise.resolve(ok({ ok: true })))),
   }
   const remote = new TestRemote(ctx, { settings, authorization: {}, claudeAccounts })
   return { ctx, slots: ctx.get('slots') as SlotRegistry, remote, settings, claudeAccounts }
@@ -155,6 +157,16 @@ describe('Claude accounts operations over the Remote namespaces', () => {
     expect(await bad.ops.makeDefault('x')).toEqual({ kind: 'refused', message: 'invalid email' })
     const declined = await operations({ makeDefault: () => Promise.resolve(ok({ ok: false, reason: 'not signed in' })) })
     expect(await declined.ops.makeDefault('a@x.com')).toEqual({ kind: 'refused', message: 'not signed in' })
+  })
+
+  it('maps a sign-out to done, to the reason a signed-in-less account gives, and to a refused call', async () => {
+    const good = await operations()
+    expect(await good.ops.signOut('a@x.com')).toEqual({ kind: 'done' })
+    expect(good.claudeAccounts.signOut).toHaveBeenCalledWith('a@x.com')
+    const declined = await operations({ signOut: () => Promise.resolve(ok({ ok: false, reason: 'a@x.com is not signed in' })) })
+    expect(await declined.ops.signOut('a@x.com')).toEqual({ kind: 'refused', message: 'a@x.com is not signed in' })
+    const bad = await operations({ signOut: () => Promise.resolve(fail('gateway/bad-request', 'invalid email')) })
+    expect(await bad.ops.signOut('x')).toEqual({ kind: 'refused', message: 'invalid email' })
   })
 })
 

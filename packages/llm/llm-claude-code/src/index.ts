@@ -35,11 +35,13 @@ import {
 import {
   ACCOUNT_KEY,
   accountEnv,
+  accountsRecord,
   CONFIG_DIR_ENV,
   CREDENTIALS_FILE,
   defaultAccountsDir,
   findAccount,
   isAccountId,
+  parseAccounts,
 } from './account.ts'
 import { credentialEnv } from './credential.ts'
 import { defaultConfigPaths } from './default-login.ts'
@@ -76,6 +78,7 @@ export type { DefaultConfigPaths, KnownAccount, MakeDefaultOutcome } from './def
 export { createClaudeAccountsService } from './service.ts'
 export type {
   ClaudeAccountInfo, ClaudeAccountsService, ClaudeAccountsStatus, ClaudeAccountUsage, ClaudeAccountWindow, ClaudeMakeDefaultResult,
+  ClaudeSignOutResult,
 } from './types.ts'
 export { readAccountUsage } from './rate-limit.ts'
 export type { AccountUsage } from './rate-limit.ts'
@@ -313,6 +316,11 @@ export function apply(ctx: Context, config: Config): void {
     accounts: () => config.accounts.get(),
     activeAccount: () => config.activeAccount.get(),
     readRecord: async () => ctx.get('credentials')?.readRecord(ACCOUNT_KEY),
+    forgetAccount: async (id) => {
+      await ctx.get('credentials')?.modifyRecord(ACCOUNT_KEY, record => Promise.resolve(
+        accountsRecord(parseAccounts(record).filter(entry => entry.id !== id)),
+      ))
+    },
     defaultPaths: () => defaultConfigPaths({ dir: config.defaultConfigDir, env: process.env, home: homedir() }),
     log: (message) => { ctx.logger.info(`llm-claude-code: ${message}`) },
   }))

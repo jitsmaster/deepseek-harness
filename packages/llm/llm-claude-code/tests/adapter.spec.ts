@@ -104,6 +104,7 @@ describe('ClaudeCodeLlmAdapter text answer', () => {
     const run = firstRun()
     expect(run.argv).toEqual([
       '-p',
+      '--input-format', 'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
       '--include-partial-messages',
@@ -119,12 +120,13 @@ describe('ClaudeCodeLlmAdapter text answer', () => {
     expect(run.argv).not.toContain('--safe-mode')
     expect(run.argv).not.toContain('--bare')
     expect(run.argv).not.toContain('--effort')
-    expect(run.stdin).toContain('<conversation>')
-    expect(run.stdin).toContain('<user>\nhello scenario:text\n</user>')
-    expect(run.stdin.endsWith('Continue as the assistant.')).toBe(true)
+    expect(JSON.parse(run.stdin)).toEqual({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: '<user>\nhello scenario:text\n</user>' }] },
+    })
     expect(run.cwdEntries).toEqual(['system.txt'])
     expect(run.files.system).toContain('You are DSH.')
-    expect(run.files.system).toContain('The conversation so far is given to you as a transcript inside <conversation>')
+    expect(run.files.system).toContain('The user message you receive is a transcript of the conversation so far')
     expect(spec?.stdio.stdin).toEqual({ data: run.stdin })
   }, 30_000)
 

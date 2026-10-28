@@ -113,6 +113,37 @@ describe.skipIf(!ENABLED)('real claude LLM adapter', () => {
       expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'stop' } })
     })
   }, 150_000)
+
+  it('reads the earlier part of a growing history from the prompt cache instead of rewriting it', async () => {
+    await withAdapter(async (adapter) => {
+      const nonce = Math.random().toString(36).slice(2)
+      // About 10k tokens of text that no earlier run can have cached.
+      const bulk = Array.from({ length: 450 }, (_, i) => `Entry ${i} (${nonce}): the file lists item ${i * 7 + 3} next to item ${i * 13 + 5}.`).join('\n')
+      const call = (id: string): ReturnType<typeof createAssistantMessage> => createAssistantMessage({
+        content: [{ type: 'tool-call', id: ToolCallId(id), name: 'read', arguments: '{"path":"C:\\\\temp\\\\list.txt"}' }],
+        source: { provider: 'claude-code', model: base.model },
+      })
+      const result = (id: string, text: string): ReturnType<typeof createToolResultMessage> =>
+        createToolResultMessage({ callId: ToolCallId(id), content: [{ type: 'text', text }], isError: false })
+      const first = [
+        createUserMessage({ content: [{ type: 'text', text: 'Read C:\\temp\\list.txt with the read tool, then reply with the single word: done' }], source: { kind: 'user' } }),
+        call('toolu_cache_1'),
+        result('toolu_cache_1', bulk),
+      ]
+      const second = [...first, call('toolu_cache_2'), result('toolu_cache_2', 'short second result')]
+      const usageOf = (chunks: StreamChunk[]): { cacheReadTokens?: number; cacheWriteTokens?: number } => {
+        const chunk = chunks.find(item => item.type === 'usage')
+        return chunk?.type === 'usage' ? chunk.usage : {}
+      }
+      const one = usageOf((await collect(adapter, { ...base, tools: [READ], messages: first })).chunks)
+      const two = usageOf((await collect(adapter, { ...base, tools: [READ], messages: second })).chunks)
+      console.log(`[e2e] cache: call 1 wrote ${one.cacheWriteTokens}, call 2 read ${two.cacheReadTokens} and wrote ${two.cacheWriteTokens}`)
+      expect(one.cacheWriteTokens ?? 0).toBeGreaterThan(5_000)
+      // Call 2 must read the history call 1 wrote (nearly all of it) and write only what is new.
+      expect(two.cacheReadTokens ?? 0).toBeGreaterThan((one.cacheWriteTokens ?? 0) * 0.8)
+      expect(two.cacheWriteTokens ?? Infinity).toBeLessThan((one.cacheWriteTokens ?? 0) * 0.2)
+    })
+  }, 300_000)
 })
 
 describe.skipIf(!ENABLED)('real claude auth status', () => {

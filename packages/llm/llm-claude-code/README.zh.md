@@ -63,7 +63,9 @@ kind: "package-reference"
 
 每次调用都会创建一个全新的临时目录（即进程工作目录，结束后删除），其中保存 `system.txt`；带工具的请求还会保存 `tools.json` 和 `mcp.json`。它运行 `claude -p --output-format stream-json --verbose --include-partial-messages --no-session-persistence --setting-sources "" --strict-mcp-config --tools "" --permission-mode dontAsk --system-prompt-file <dir>/system.txt --model <model>`，选择了强度时追加 `--effort <effort>`，带工具的请求再追加 `--mcp-config <dir>/mcp.json --allowedTools mcp__dsh`。提示词通过 stdin 传入，因此没有命令行长度限制。`--setting-sources ""` 让用户的全局 `CLAUDE.md` 不进入运行，`--tools ""` 移除所有内置工具。
 
-对话由 DSH 持有，所以运行是无状态的：历史被写成 `<conversation>` 转录（`<user>`、含 `<tool_call>` 元素的 `<assistant>`、`<tool_result>`、`<developer>`），DSH 系统提示词前面加一段说明该约定的简短文字，作为 `system.txt`。消息文本会被转义，内容无法伪造转录元素；更早轮次的推理内容会被省略。
+对话由 DSH 持有，所以运行是无状态的：历史作为一条 stream-json 用户消息发送，**每个转录元素一个文本块**（`<user>`、含 `<tool_call>` 元素的 `<assistant>`、`<tool_result>`、`<developer>`），DSH 系统提示词前面加一段说明该约定的简短文字，作为 `system.txt`。消息文本会被转义，内容无法伪造转录元素；更早轮次的推理内容会被省略。
+
+按元素分块是提示词缓存生效的关键。Anthropic 只在内容块边界匹配缓存前缀，所以把历史发成一个不断增长的文本块时，历史从未命中缓存，每次调用都被重新写入（实测：长会话后期每次调用约 15 万缓存写入 token）。每元素一块后，每次调用从缓存读取之前的历史，只写入新增元素（在真实二进制上实测：第二次调用读取 16,031 token，写入 450）。同理，消息末尾不带“继续”块：历史之后追加任何内容都会移动缓存边界，该指令放在 `system.txt` 的前言中。
 
 工具通过用 `node -e` 启动的 stdio MCP 桩提供给 Claude，该桩的 `tools/call` 永远不应答，因此 Claude 只能发出调用而无法执行。Claude 看到的每个工具名为 `mcp__dsh__<name>`；不符合 Claude 64 字符规则的名称会得到确定性的安全别名，并在返回时映射回来。一旦某条消息以 `tool_use` 结束，适配器立即发出 usage 和 `tool-calls` 结束事件并终止进程，不再等待 Claude 的下一轮。
 
@@ -174,7 +176,7 @@ Claude Code 在每次运行的 `rate_limit_event` 行中报告订阅的套餐用
 
 #### 模型看到什么
 
-Claude 收到的系统提示词由一段说明转录约定的简短文字加上 DSH 系统提示词（开头的 system 消息，否则是一次性的 `GenerateOptions.system`）组成；stdin 中是作为单个 `<conversation>` 转录的对话，包含 `<user>`、`<assistant>`（可见文本加带原始 JSON 参数的 `<tool_call id name>` 元素）、`<tool_result id name [error]>` 和 `<developer>` 轮次，并以 `Continue as the assistant.` 结尾。消息文本会被转义，内容无法伪造这些元素。更早轮次的推理、后续的 system 消息以及工具变更块都不会被渲染；图片和文件以文本占位符形式到达。请求的完整工具列表作为原生 `mcp__dsh__<name>` 工具暴露，Claude 工具名规则不接受的名称会得到确定性别名；Claude 自带工具、设置以及用户的全局 `CLAUDE.md` 对本次运行都不可用。
+Claude 收到的系统提示词由一段说明转录约定的简短文字加上 DSH 系统提示词（开头的 system 消息，否则是一次性的 `GenerateOptions.system`）组成；stdin 中是一条 stream-json 用户消息，对话按“每个元素一个文本块”排列，包含 `<user>`、`<assistant>`（可见文本加带原始 JSON 参数的 `<tool_call id name>` 元素）、`<tool_result id name [error]>` 和 `<developer>` 轮次，末尾不追加任何块（“继续”指令在系统提示词前言中）。消息文本会被转义，内容无法伪造这些元素。更早轮次的推理、后续的 system 消息以及工具变更块都不会被渲染；图片和文件以文本占位符形式到达。请求的完整工具列表作为原生 `mcp__dsh__<name>` 工具暴露，Claude 工具名规则不接受的名称会得到确定性别名；Claude 自带工具、设置以及用户的全局 `CLAUDE.md` 对本次运行都不可用。
 
 #### Token 影响
 

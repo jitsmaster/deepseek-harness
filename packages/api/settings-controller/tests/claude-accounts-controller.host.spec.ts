@@ -32,7 +32,7 @@ async function boot(service?: ClaudeAccountsService): Promise<Context> {
 }
 
 describe('the claudeAccounts Remote namespace a configuration surface calls', () => {
-  it('publishes the namespace from its own service key with two direct methods', async () => {
+  it('publishes the namespace from its own service key with three direct methods', async () => {
     const ctx = await boot()
     const controller = ctx.claudeAccountsController
     expect(controller.typertRemote.serviceKey).toBe('claudeAccountsController')
@@ -40,6 +40,7 @@ describe('the claudeAccounts Remote namespace a configuration surface calls', ()
     expect(remoteMethods(controller)).toEqual([
       { method: 'status', invocation: { kind: 'direct' } },
       { method: 'makeDefault', invocation: { kind: 'direct' } },
+      { method: 'signOut', invocation: { kind: 'direct' } },
     ])
   })
 
@@ -62,6 +63,7 @@ describe('the claudeAccounts Remote namespace a configuration surface calls', ()
         })),
       }),
       makeDefault: () => Promise.resolve({ ok: true as const, backupDir: 'D:/b', unchanged: false, token: 'sk-leak' }),
+      signOut: () => Promise.resolve({ ok: true as const }),
     } as ClaudeAccountsService
     const ctx = await boot(leaky)
     const status = await ctx.claudeAccountsController.status()
@@ -77,7 +79,7 @@ describe('the claudeAccounts Remote namespace a configuration surface calls', ()
   })
 
   it('omits an absent default email and active account', async () => {
-    const ctx = await boot({ status: () => Promise.resolve({ accounts: [], defaultAccount: {} }), makeDefault: () => Promise.reject(new Error('unused')) })
+    const ctx = await boot({ status: () => Promise.resolve({ accounts: [], defaultAccount: {} }), makeDefault: () => Promise.reject(new Error('unused')), signOut: () => Promise.reject(new Error('unused')) })
     expect(await ctx.claudeAccountsController.status()).toEqual({ accounts: [], defaultAccount: {} })
   })
 
@@ -89,25 +91,51 @@ describe('the claudeAccounts Remote namespace a configuration surface calls', ()
         seen.push(email)
         return Promise.resolve(email === 'a@x.com' ? { ok: true, backupDir: 'D:/backup', unchanged: false } : { ok: false, reason: 'not signed in' })
       },
+      signOut: () => Promise.reject(new Error('unused')),
     })
     expect(await ctx.claudeAccountsController.makeDefault('a@x.com')).toEqual({ ok: true, backupDir: 'D:/backup', unchanged: false })
     expect(await ctx.claudeAccountsController.makeDefault('b@x.com')).toEqual({ ok: false, reason: 'not signed in' })
     expect(seen).toEqual(['a@x.com', 'b@x.com'])
   })
 
+  it('maps both signOut outcomes without leaking extra service fields, and passes the email through', async () => {
+    const seen: string[] = []
+    const ctx = await boot({
+      status: () => Promise.resolve(STATUS),
+      makeDefault: () => Promise.reject(new Error('unused')),
+      signOut: (email) => {
+        seen.push(email)
+        return Promise.resolve(email === 'a@x.com' ? { ok: true, token: 'sk-leak' } as { ok: true } : { ok: false, reason: 'not signed in' })
+      },
+    })
+    const done = await ctx.claudeAccountsController.signOut('a@x.com')
+    expect(done).toEqual({ ok: true })
+    expect(JSON.stringify(done)).not.toContain('sk-leak')
+    expect(await ctx.claudeAccountsController.signOut('b@x.com')).toEqual({ ok: false, reason: 'not signed in' })
+    expect(seen).toEqual(['a@x.com', 'b@x.com'])
+  })
+
+  it('answers signOut with gateway/internal while the Claude Code plugin is not mounted', async () => {
+    const ctx = await boot()
+    const failure = await ctx.claudeAccountsController.signOut('a@x.com').catch((error: unknown) => error)
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'gateway/internal' })
+  })
+
   it('rejects a value that is not an email as a bad request without calling the service', async () => {
     let calls = 0
-    const ctx = await boot({ status: () => Promise.resolve(STATUS), makeDefault: () => { calls += 1; return Promise.reject(new Error('unused')) } })
+    const ctx = await boot({ status: () => Promise.resolve(STATUS), makeDefault: () => { calls += 1; return Promise.reject(new Error('unused')) }, signOut: () => { calls += 1; return Promise.reject(new Error('unused')) } })
     for (const bad of ['', 'nobody', 'a b@x.com', '@x.com', `${'a'.repeat(400)}@x.com`]) {
       const failure = await ctx.claudeAccountsController.makeDefault(bad).catch((error: unknown) => error)
       expect(remoteErrorOf(failure)).toMatchObject({ code: 'gateway/bad-request' })
+      const signOutFailure = await ctx.claudeAccountsController.signOut(bad).catch((error: unknown) => error)
+      expect(remoteErrorOf(signOutFailure)).toMatchObject({ code: 'gateway/bad-request' })
     }
     expect(calls).toBe(0)
   })
 
   it('stops answering once the plugin withdraws its service', async () => {
     const ctx = new Context()
-    const dispose = ctx.provide('claudeAccounts', { status: () => Promise.resolve(STATUS), makeDefault: () => Promise.reject(new Error('unused')) })
+    const dispose = ctx.provide('claudeAccounts', { status: () => Promise.resolve(STATUS), makeDefault: () => Promise.reject(new Error('unused')), signOut: () => Promise.reject(new Error('unused')) })
     await ctx.plugin(ClaudeAccountsController)
     expect((await ctx.claudeAccountsController.status()).accounts).toHaveLength(2)
     dispose()

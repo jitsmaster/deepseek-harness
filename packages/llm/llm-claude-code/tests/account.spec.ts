@@ -5,6 +5,7 @@ import {
   accountEnv,
   accountId,
   accountsRecord,
+  completeAuthCode,
   CONFIG_DIR_ENV,
   defaultAccountsDir,
   extractAuthorizeUrl,
@@ -172,5 +173,27 @@ describe('keys and defaults', () => {
 
   it('places the default accounts root under the DSH home', () => {
     expect(defaultAccountsDir(join('home', '.dsh'))).toBe(join('home', '.dsh', 'claude-code', 'accounts'))
+  })
+})
+
+describe('completeAuthCode', () => {
+  it('adds the state of the sign-in page when only the code half was pasted', () => {
+    expect(completeAuthCode('abcDEF123', URL_TEXT)).toBe('abcDEF123#xyz')
+    expect(completeAuthCode('  abc DEF\n', URL_TEXT)).toBe('abcDEF#xyz')
+    expect(completeAuthCode('abcDEF123#', URL_TEXT)).toBe('abcDEF123#xyz')
+  })
+
+  it('leaves a code that already has its state alone, even when the state differs', () => {
+    expect(completeAuthCode('abc#def', URL_TEXT)).toBe('abc#def')
+    expect(completeAuthCode(' abc#def \n', URL_TEXT)).toBe('abc#def')
+  })
+
+  it('passes the code through when the page address has no state or is not an address', () => {
+    expect(completeAuthCode('abc', 'https://claude.com/cai/oauth/authorize?code=true')).toBe('abc')
+    expect(completeAuthCode('abc', 'not a url')).toBe('abc')
+  })
+
+  it('returns an empty string for blank input', () => {
+    expect(completeAuthCode('  \n ', URL_TEXT)).toBe('')
   })
 })

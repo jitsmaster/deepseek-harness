@@ -172,6 +172,31 @@ export class ClaudeAccountsController {
     await this.refresh(false)
   }
 
+  /**
+   * Sign one account out: the Host deletes its saved login and takes it off the signed-in list. The email stays in the
+   * list so it can sign in again; an active account that signs out stops being active, as it can no longer serve calls.
+   * @param email - the account's email.
+   * @returns settlement once the sign-out and the re-read finish.
+   */
+  async signOut(email: string): Promise<void> {
+    this.patch({ busy: true, notice: undefined })
+    const outcome = await this.operations.signOut(email)
+    if (this.isClosed()) return
+    if (outcome.kind === 'refused') {
+      this.patch({ busy: false, notice: { kind: 'error', key: 'signOutFailed', values: { reason: outcome.message } } })
+      await this.refresh(false)
+      return
+    }
+    const active = this.settings?.activeAccount
+    if (active !== undefined && normalizeEmail(active) === normalizeEmail(email)) {
+      await this.write([{ op: 'unset', path: ['activeAccount'] }])
+      if (this.isClosed()) return
+    }
+    // A failed write has already put its own error in the notice; do not cover it with the success line.
+    this.patch({ busy: false, ...this.store.getSnapshot().notice === undefined ? { notice: { kind: 'success', key: 'signOutDone', values: { email } } } : {} })
+    await this.refresh(false)
+  }
+
   /** Re-read everything after a sign-in attempt settled. */
   afterSignIn(): Promise<void> {
     return this.refresh(true)

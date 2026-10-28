@@ -28,6 +28,7 @@ function host(initial: { status?: ClaudeAccountsStatusView; settings?: ClaudeSet
     readSettings: vi.fn(() => Promise.resolve(state.settings)),
     writeSettings: vi.fn((): ReturnType<ClaudeAccountsOperations['writeSettings']> => Promise.resolve({ kind: 'written', snapshot: snapshot({ revision: 4 }) })),
     makeDefault: vi.fn((): ReturnType<ClaudeAccountsOperations['makeDefault']> => Promise.resolve({ kind: 'done', unchanged: false })),
+    signOut: vi.fn((): ReturnType<ClaudeAccountsOperations['signOut']> => Promise.resolve({ kind: 'done' })),
   } satisfies ClaudeAccountsOperations
   return { state, operations }
 }
@@ -252,5 +253,50 @@ describe('ClaudeAccountsController actions', () => {
     release()
     await write
     expect(controller.store.getSnapshot().notice).toBeUndefined()
+  })
+})
+
+describe('ClaudeAccountsController signOut', () => {
+  it('signs an account out, shows the success line, and re-reads status', async () => {
+    const { controller, h } = await ready()
+    h.operations.readStatus.mockClear()
+    await controller.signOut('b@x.com')
+    expect(h.operations.signOut).toHaveBeenCalledWith('b@x.com')
+    expect(controller.store.getSnapshot()).toMatchObject({ busy: false, notice: { kind: 'success', key: 'signOutDone', values: { email: 'b@x.com' } } })
+    expect(h.operations.writeSettings).not.toHaveBeenCalled()
+    expect(h.operations.readStatus).toHaveBeenCalled()
+  })
+
+  it('stops the account being the active one when it signs out, because it can no longer serve calls', async () => {
+    const { controller, h } = await ready()
+    await controller.signOut('A@x.com')
+    expect(h.operations.writeSettings).toHaveBeenCalledWith([{ op: 'unset', path: ['activeAccount'] }], 3)
+    expect(controller.store.getSnapshot().notice).toMatchObject({ kind: 'success', key: 'signOutDone' })
+  })
+
+  it('keeps a failed settings write visible instead of covering it with the success line', async () => {
+    const { controller, h } = await ready()
+    h.operations.writeSettings.mockResolvedValueOnce({ kind: 'conflict' })
+    await controller.signOut('a@x.com')
+    expect(controller.store.getSnapshot().notice).toMatchObject({ kind: 'error', key: 'conflict' })
+  })
+
+  it('shows a refusal as an error and changes no setting', async () => {
+    const { controller, h } = await ready()
+    h.operations.signOut.mockResolvedValueOnce({ kind: 'refused', message: 'in use' })
+    await controller.signOut('a@x.com')
+    expect(controller.store.getSnapshot()).toMatchObject({ busy: false, notice: { kind: 'error', key: 'signOutFailed', values: { reason: 'in use' } } })
+    expect(h.operations.writeSettings).not.toHaveBeenCalled()
+  })
+
+  it('is busy while the sign-out runs', async () => {
+    const { controller, h } = await ready()
+    let release = (): void => undefined
+    h.operations.signOut.mockImplementationOnce(() => new Promise((resolve) => { release = () => { resolve({ kind: 'done' }) } }))
+    const pending = controller.signOut('b@x.com')
+    expect(controller.store.getSnapshot().busy).toBe(true)
+    release()
+    await pending
+    expect(controller.store.getSnapshot().busy).toBe(false)
   })
 })

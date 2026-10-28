@@ -54,6 +54,7 @@ function fakeOperations(status: ClaudeAccountsStatusView | undefined, snapshot: 
     readSettings: vi.fn(() => Promise.resolve(snapshot)),
     writeSettings: vi.fn((): ReturnType<ClaudeAccountsOperations['writeSettings']> => Promise.resolve({ kind: 'written', snapshot })),
     makeDefault: vi.fn((): ReturnType<ClaudeAccountsOperations['makeDefault']> => Promise.resolve({ kind: 'done', unchanged: false })),
+    signOut: vi.fn((): ReturnType<ClaudeAccountsOperations['signOut']> => Promise.resolve({ kind: 'done' })),
   }
 }
 
@@ -250,6 +251,32 @@ describe('ClaudeAccountsCard', () => {
     fireEvent.click(await screen.findByRole('button', { name: fill(en.makeDefaultFor, { email: 'b@x.com' }) }))
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.confirmAction }))
     expect((await screen.findByRole('alert')).textContent).toBe(fill(en.makeDefaultFailed, { reason: 'disk full' }))
+  })
+
+  it('asks before signing a signed-in account out, and does nothing on cancel', async () => {
+    const { operations } = await mount(THREE)
+    fireEvent.click(await screen.findByRole('button', { name: fill(en.signOutFor, { email: 'b@x.com' }) }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(fill(en.signOutBody, { email: 'b@x.com' }))).toBeTruthy()
+    expect(operations.signOut).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getAllByRole('button', { name: en.cancel }).at(-1)!)
+    await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
+    expect(operations.signOut).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: fill(en.signOutFor, { email: 'b@x.com' }) }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.signOutAction }))
+    await waitFor(() => { expect(operations.signOut).toHaveBeenCalledWith('b@x.com') })
+    expect((await screen.findByRole('status')).textContent).toBe(fill(en.signOutDone, { email: 'b@x.com' }))
+  })
+
+  it('offers no sign-out for an account that is not signed in, and shows a refused sign-out as an alert', async () => {
+    const { operations } = await mount(THREE)
+    await screen.findByRole('radiogroup')
+    expect(screen.queryByRole('button', { name: fill(en.signOutFor, { email: 'c@x.com' }) })).toBeNull()
+    operations.signOut.mockResolvedValueOnce({ kind: 'refused', message: 'in use' })
+    fireEvent.click(screen.getByRole('button', { name: fill(en.signOutFor, { email: 'b@x.com' }) }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.signOutAction }))
+    expect((await screen.findByRole('alert')).textContent).toBe(fill(en.signOutFailed, { reason: 'in use' }))
   })
 
   it('disables every write control and says why when settings are read-only', async () => {

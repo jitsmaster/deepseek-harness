@@ -225,6 +225,13 @@ function authLogin(scenario) {
       pasted += chunk
       if (!pasted.includes('\n')) return
       authLog({ code: pasted.trim() })
+      // Like the real binary: a code without its #state half (or the silent scenario) is never answered.
+      if (scenario === 'silent' || !pasted.trim().includes('#')) return
+      if (scenario === 'rejected') {
+        // What the real binary prints for a code the server refuses.
+        process.stderr.write('Login failed: Request failed with status code 400\n')
+        process.exit(1)
+      }
       if (scenario === 'fail') {
         process.stderr.write(`Invalid code ${pasted.trim()}\n`)
         process.exit(1)

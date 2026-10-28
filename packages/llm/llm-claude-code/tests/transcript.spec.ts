@@ -8,7 +8,7 @@ import {
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, RequestMessage } from '@deepseek-ai/dsh-llm'
-import { renderSystemText, renderTranscript, TRANSCRIPT_PREFACE } from '../src/transcript.ts'
+import { renderStdin, renderSystemText, renderTranscriptBlocks, TRANSCRIPT_PREFACE } from '../src/transcript.ts'
 
 const text = (value: string): ContentBlock => ({ type: 'text', text: value })
 const user = (value: string): RequestMessage => createUserMessage({ content: [text(value)], source: { kind: 'user' } })
@@ -19,38 +19,26 @@ const call = (id: string, name: string, args: string): ContentBlock => ({ type: 
 const result = (id: string, value: string, isError = false): RequestMessage =>
   createToolResultMessage({ callId: ToolCallId(id), content: [text(value)], isError })
 
+/** The transcript elements joined for substring checks. */
+const renderTranscript = (messages: readonly RequestMessage[]): string => renderTranscriptBlocks(messages).join('\n')
+
 describe('transcript rendering', () => {
   it('renders the conversation in order with native-looking history elements', () => {
-    const rendered = renderTranscript([
+    const blocks = renderTranscriptBlocks([
       user('hello'),
       assistant({ type: 'reasoning', text: 'private thoughts' }, text('I will read.'), call('call_1', 'read', '{"path":"a.txt"}')),
       result('call_1', 'file text'),
       result('call_2', 'boom', true),
       developer('note'),
     ])
-    expect(rendered).toBe([
-      '<conversation>',
-      '<user>',
-      'hello',
-      '</user>',
-      '<assistant>',
-      'I will read.',
-      '<tool_call id="call_1" name="read">{"path":"a.txt"}</tool_call>',
-      '</assistant>',
-      '<tool_result id="call_1" name="read">',
-      'file text',
-      '</tool_result>',
-      '<tool_result id="call_2" name="unknown" error="true">',
-      'boom',
-      '</tool_result>',
-      '<developer>',
-      'note',
-      '</developer>',
-      '</conversation>',
-      '',
-      'Continue as the assistant.',
-    ].join('\n'))
-    expect(rendered).not.toContain('private thoughts')
+    expect(blocks).toEqual([
+      '<user>\nhello\n</user>',
+      '<assistant>\nI will read.\n<tool_call id="call_1" name="read">{"path":"a.txt"}</tool_call>\n</assistant>',
+      '<tool_result id="call_1" name="read">\nfile text\n</tool_result>',
+      '<tool_result id="call_2" name="unknown" error="true">\nboom\n</tool_result>',
+      '<developer>\nnote\n</developer>',
+    ])
+    expect(blocks.join('')).not.toContain('private thoughts')
   })
 
   it('accepts identity-free user inputs and skips system messages and tool-change blocks', () => {
@@ -80,8 +68,7 @@ describe('transcript rendering', () => {
     expect(rendered.match(/<\/user>/g)).toHaveLength(1)
     expect(rendered.match(/<\/tool_result>/g)).toHaveLength(1)
     expect(rendered.match(/<\/developer>/gi)).toHaveLength(1)
-    expect(rendered.match(/<\/conversation>/g)).toHaveLength(1)
-    expect(rendered.match(/<conversation>/g)).toHaveLength(1)
+    expect(rendered).not.toContain('</conversation>')
     expect(rendered).not.toContain('<DEVELOPER>')
     expect(rendered).toContain('&lt;/user>')
     // Ordinary markup and comparisons stay readable.
@@ -112,11 +99,46 @@ describe('transcript rendering', () => {
   })
 })
 
+describe('stdin message', () => {
+  const blocksOf = (stdin: string): string[] => {
+    const parsed = JSON.parse(stdin) as { type: string; message: { role: string; content: { type: string; text: string }[] } }
+    expect(parsed.type).toBe('user')
+    expect(parsed.message.role).toBe('user')
+    return parsed.message.content.map(block => block.text)
+  }
+
+  it('is one newline-terminated stream-json user message with one text block per turn', () => {
+    const stdin = renderStdin([user('hello'), assistant(call('c1', 'read', '{}')), result('c1', 'ok')])
+    expect(stdin.endsWith('\n')).toBe(true)
+    expect(stdin.trimEnd().includes('\n')).toBe(false)
+    expect(blocksOf(stdin)).toEqual([
+      '<user>\nhello\n</user>',
+      '<assistant>\n<tool_call id="c1" name="read">{}</tool_call>\n</assistant>',
+      '<tool_result id="c1" name="read">\nok\n</tool_result>',
+    ])
+  })
+
+  it('keeps the previous call\'s blocks as an unchanged prefix when the history grows, so prompt caching can reuse them', () => {
+    const first = [user('hello'), assistant(call('c1', 'read', '{}')), result('c1', 'ok')]
+    const second = [...first, assistant(call('c2', 'read', '{}')), result('c2', 'more')]
+    const before = blocksOf(renderStdin(first))
+    const after = blocksOf(renderStdin(second))
+    expect(after.slice(0, before.length)).toEqual(before)
+    expect(after).toHaveLength(before.length + 2)
+    // Nothing trails the last element: a trailing instruction block would change on every call and defeat the cache.
+    expect(after.at(-1)).toBe('<tool_result id="c2" name="read">\nmore\n</tool_result>')
+  })
+
+  it('never sends an empty message', () => {
+    expect(blocksOf(renderStdin([createSystemMessage('only system')]))).toEqual(['(The conversation is empty.)'])
+  })
+})
+
 describe('system text', () => {
   it('prefaces the leading system message with the transcript convention', () => {
     const systemText = renderSystemText({ messages: [createSystemMessage('You are DSH.'), user('hi')] })
     expect(systemText).toBe(`${TRANSCRIPT_PREFACE}\n\nYou are DSH.`)
-    expect(TRANSCRIPT_PREFACE).toContain('<conversation>')
+    expect(TRANSCRIPT_PREFACE).toContain('continue it as the assistant')
     expect(TRANSCRIPT_PREFACE).toContain('call tools natively')
   })
 

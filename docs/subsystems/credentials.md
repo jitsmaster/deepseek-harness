@@ -217,6 +217,14 @@ status(): Promise<ClaudeAccountsStatus>
  * @returns the backup folder of the replaced login, or the reason nothing changed; never rejects.
  */
 makeDefault(email: string): Promise<ClaudeMakeDefaultResult>
+
+/**
+ * Sign one account out of DSH: delete its saved login folder and take it off the list of signed-in accounts.
+ * The email stays in the configured list so it can sign in again; the default Claude Code login is not touched.
+ * @param email - the account's email, in any case.
+ * @returns `ok`, or the reason nothing was removed; never rejects.
+ */
+signOut(email: string): Promise<ClaudeSignOutResult>
 ```
 
 Source: [`packages/llm/llm-claude-code/src/types.ts`](../../packages/llm/llm-claude-code/src/types.ts)
@@ -243,6 +251,16 @@ Host service backing the generated `ctx.remote.claudeAccounts` namespace. Every 
  *   the Claude Code plugin is not mounted.
  */
 @Remote async makeDefault(email: string): Promise<ClaudeMakeDefaultView>
+
+/**
+ * Sign one account out of DSH: delete its saved Claude login and take it off the signed-in list.
+ * The email stays in the configured list, and the default Claude Code login is not touched.
+ * @param email - the account's email.
+ * @returns ok, or the reason nothing was removed.
+ * @throws RemoteError `gateway/bad-request` when `email` is not an address, or `gateway/internal` while
+ *   the Claude Code plugin is not mounted.
+ */
+@Remote async signOut(email: string): Promise<ClaudeSignOutView>
 ```
 
 Source: [`packages/api/settings-controller/src/claude-accounts.ts`](../../packages/api/settings-controller/src/claude-accounts.ts)

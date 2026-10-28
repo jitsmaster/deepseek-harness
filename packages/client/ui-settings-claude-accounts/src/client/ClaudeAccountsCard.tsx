@@ -106,6 +106,7 @@ export function ClaudeAccountsCard(props: ClaudeAccountsCardProps): ReactNode {
   const state = props.useClaudeAccounts(snapshot => snapshot)
   const [signingIn, setSigningIn] = useState(false)
   const [confirming, setConfirming] = useState<string | undefined>(undefined)
+  const [signingOut, setSigningOut] = useState<string | undefined>(undefined)
   const [draft, setDraft] = useState('')
   const [addError, setAddError] = useState<'addInvalid' | 'addDuplicate' | undefined>(undefined)
   const ids = useId()
@@ -171,6 +172,19 @@ export function ClaudeAccountsCard(props: ClaudeAccountsCardProps): ReactNode {
             </button>
           )
           : null}
+        {row.signedIn
+          ? (
+            <button
+              type="button"
+              className={css['dangerButton']}
+              aria-label={fill(t('signOutFor'), { email: row.email })}
+              disabled={state.busy}
+              onClick={() => { setSigningOut(row.email) }}
+            >
+              {t('signOut')}
+            </button>
+          )
+          : null}
         {row.listed
           ? (
             <button
@@ -233,6 +247,32 @@ export function ClaudeAccountsCard(props: ClaudeAccountsCardProps): ReactNode {
           />
         )
         : null}
+      {signingOut === undefined
+        ? null
+        : (
+          <Modal
+            open
+            onClose={() => { setSigningOut(undefined) }}
+            title={fill(t('signOutTitle'), { email: signingOut })}
+            closeLabel={t('cancel')}
+            footer={(
+              <>
+                <button type="button" className={`${css['secondaryButton']} ${css['dialogButton']}`} onClick={() => { setSigningOut(undefined) }}>
+                  {t('cancel')}
+                </button>
+                <button
+                  type="button"
+                  className={css['primaryButton']}
+                  onClick={() => { setSigningOut(undefined); void controller.signOut(signingOut) }}
+                >
+                  {t('signOutAction')}
+                </button>
+              </>
+            )}
+          >
+            <p className={css['dialogText']}>{fill(t('signOutBody'), { email: signingOut })}</p>
+          </Modal>
+        )}
       {confirmed === undefined
         ? null
         : (

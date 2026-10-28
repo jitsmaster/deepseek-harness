@@ -172,6 +172,7 @@ export type { WireAuthorizationPrompt } from '@deepseek-ai/dsh-api-settings-cont
 // Claude Code account vocabulary for the claudeAccounts namespace (usage fractions and emails only, never a token).
 export type {
   ClaudeAccountsStatusView, ClaudeAccountUsageView, ClaudeAccountView, ClaudeAccountWindowView, ClaudeMakeDefaultView,
+  ClaudeSignOutView,
 } from '@deepseek-ai/dsh-api-settings-controller/types'
 // Redacted namespace vocabulary for the settings namespace (secrets never ride
 // it). It travels with its seam, whose `./types` the Client face already reads.

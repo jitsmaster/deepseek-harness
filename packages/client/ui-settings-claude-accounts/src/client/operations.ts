@@ -35,6 +35,11 @@ export type ClaudeMakeDefaultOutcome =
   | { readonly kind: 'done'; readonly unchanged: boolean }
   | { readonly kind: 'refused'; readonly message: string }
 
+/** What a sign-out request answered. */
+export type ClaudeSignOutOutcome =
+  | { readonly kind: 'done' }
+  | { readonly kind: 'refused'; readonly message: string }
+
 /** The Host operations the card is driven through. */
 export interface ClaudeAccountsOperations {
   /** Read accounts, usage, and the default config's account; `undefined` when the read failed. */
@@ -45,6 +50,8 @@ export interface ClaudeAccountsOperations {
   writeSettings(ops: SettingsPathOpView[], expectedRevision: number | undefined): Promise<ClaudeSettingsWrite>
   /** Swap one account's login into the default Claude Code configuration. */
   makeDefault(email: string): Promise<ClaudeMakeDefaultOutcome>
+  /** Delete one account's saved login on the Host and take it off the signed-in list. */
+  signOut(email: string): Promise<ClaudeSignOutOutcome>
 }
 
 /** Read the card's fields out of one namespace view's resolved value. */
@@ -94,6 +101,11 @@ export function createClaudeAccountsOperations(ctx: ClientContext): ClaudeAccoun
       return response.value.ok
         ? { kind: 'done', unchanged: response.value.unchanged }
         : { kind: 'refused', message: response.value.reason }
+    },
+    signOut: async (email) => {
+      const response = await ctx.remote.claudeAccounts.signOut(email)
+      if (!response.ok) return { kind: 'refused', message: response.error.message }
+      return response.value.ok ? { kind: 'done' } : { kind: 'refused', message: response.value.reason }
     },
   }
 }
