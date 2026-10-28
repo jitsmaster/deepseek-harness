@@ -26,12 +26,23 @@ const CATEGORY_KEY = {
   transcript: 'inspect.transcript',
 } as const satisfies Record<ComposedCategoryId, string>
 
+/** Item text beyond this many characters is previewed until the user asks for all of it. */
+const PREVIEW_CHARS = 64_000
+
 function Body({ payload, usage, t }: {
   payload: ComposableRequestPayload
   usage: ReportedUsage | undefined
   t: TrajectoryTranslate
 }) {
-  const composed = useMemo(() => composeRequest(payload, usage), [payload, usage])
+  // Memoize by value: the caller builds a fresh usage object on every render.
+  const input = usage?.input
+  const cacheRead = usage?.cacheRead
+  const cacheWrite = usage?.cacheWrite
+  const stableUsage = useMemo<ReportedUsage | undefined>(
+    () => input === undefined ? undefined : { input, cacheRead: cacheRead ?? 0, cacheWrite: cacheWrite ?? 0 },
+    [input, cacheRead, cacheWrite],
+  )
+  const composed = useMemo(() => composeRequest(payload, stableUsage), [payload, stableUsage])
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const toggle = (id: string): void => {
     setOpen((current) => {
@@ -39,6 +50,10 @@ function Body({ payload, usage, t }: {
       if (!next.delete(id)) next.add(id)
       return next
     })
+  }
+  const [full, setFull] = useState<ReadonlySet<string>>(new Set())
+  const showAll = (id: string): void => {
+    setFull(current => new Set(current).add(id))
   }
   const size = (bytes: number, tokens: number | undefined): string => tokens === undefined
     ? t('inspect.bytes', { value: bytes })
@@ -68,7 +83,20 @@ function Body({ payload, usage, t }: {
                         <span>{entry.label}</span>
                         <span>{size(entry.bytes, entry.tokens)}</span>
                       </button>
-                      {open.has(id) && <pre className={css.text}>{entry.text}</pre>}
+                      {open.has(id) && (
+                        <>
+                          <pre className={css.text}>
+                            {full.has(id) || entry.text.length <= PREVIEW_CHARS
+                              ? entry.text
+                              : entry.text.slice(0, PREVIEW_CHARS)}
+                          </pre>
+                          {!full.has(id) && entry.text.length > PREVIEW_CHARS && (
+                            <button type="button" onClick={() => { showAll(id) }}>
+                              {t('inspect.showAll')}
+                            </button>
+                          )}
+                        </>
+                      )}
                     </li>
                   )
                 })}

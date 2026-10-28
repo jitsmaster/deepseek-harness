@@ -1,7 +1,7 @@
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { gzip } from 'node:zlib'
+import { constants, gzip } from 'node:zlib'
 import type { RequestPayload } from '@deepseek-ai/dsh-llm'
 
 const gzipAsync = promisify(gzip)
@@ -22,8 +22,12 @@ export interface RequestPayloadBlob {
  * list, then `argv` and `envKeys` (keeping their original byte lengths) until the
  * JSON fits `capBytes`.
  */
-function fit(payload: RequestPayload, capBytes: number): { json: string; truncated: boolean } {
-  let json = JSON.stringify(payload)
+function fit(
+  payload: RequestPayload,
+  capBytes: number,
+  full: string,
+): { json: string; truncated: boolean } {
+  let json = full
   if (Buffer.byteLength(json) <= capBytes) return { json, truncated: false }
   const stored: Record<string, unknown> = { ...payload, truncated: true }
   for (const field of ['stdin', 'system'] as const) {
@@ -60,9 +64,11 @@ export async function writeRequestPayload(
   capBytes = 5_000_000,
 ): Promise<RequestPayloadBlob> {
   if (!NAME_PATTERN.test(name)) throw new Error(`Invalid request payload name: ${JSON.stringify(name)}`)
-  const bytes = Buffer.byteLength(JSON.stringify(payload))
-  const { json, truncated } = fit(payload, capBytes)
-  const compressed = await gzipAsync(Buffer.from(json))
+  const full = JSON.stringify(payload)
+  const bytes = Buffer.byteLength(full)
+  const { json, truncated } = fit(payload, capBytes, full)
+  // Fastest level: this runs on every LLM call and the blob is read rarely.
+  const compressed = await gzipAsync(Buffer.from(json), { level: constants.Z_BEST_SPEED })
   const payloads = join(dir, 'payloads')
   const blob = `${name}.json.gz`
   const tmp = join(payloads, `${blob}.${process.pid}.tmp`)

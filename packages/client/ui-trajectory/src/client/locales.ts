@@ -211,6 +211,7 @@ export const zh = {
   'inspect.transcript': '对话记录',
   'inspect.tokens': '约 {value} 个令牌',
   'inspect.bytes': '{value} 字节',
+  'inspect.showAll': '显示全部',
 } as const
 
 /** The trajectory dictionary key union. */
@@ -435,6 +436,7 @@ export const en: Record<TrajectoryKey, string> = {
   'inspect.transcript': 'Transcript',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} bytes',
+  'inspect.showAll': 'Show all',
 }
 
 /** Japanese copy, checked against the English keys. */
@@ -645,6 +647,7 @@ export const ja = {
   'inspect.transcript': 'トランスクリプト',
   'inspect.tokens': '約 {value} トークン',
   'inspect.bytes': '{value} バイト',
+  'inspect.showAll': 'すべて表示',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -855,6 +858,7 @@ export const es = {
   'inspect.transcript': 'Transcripción',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} bytes',
+  'inspect.showAll': 'Mostrar todo',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -1065,6 +1069,7 @@ export const fr = {
   'inspect.transcript': 'Transcription',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} octets',
+  'inspect.showAll': 'Tout afficher',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -1275,6 +1280,7 @@ export const de = {
   'inspect.transcript': 'Transkript',
   'inspect.tokens': '~{value} Tokens',
   'inspect.bytes': '{value} Byte',
+  'inspect.showAll': 'Alles anzeigen',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -1485,6 +1491,7 @@ export const ru = {
   'inspect.transcript': 'Транскрипт',
   'inspect.tokens': '~{value} токенов',
   'inspect.bytes': '{value} байт',
+  'inspect.showAll': 'Показать всё',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -1695,4 +1702,5 @@ export const pt = {
   'inspect.transcript': 'Transcrição',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} bytes',
+  'inspect.showAll': 'Mostrar tudo',
 } satisfies Record<keyof typeof en, string>
