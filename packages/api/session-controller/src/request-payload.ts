@@ -19,6 +19,16 @@ const MAX_INFLATED_BYTES = 8_000_000
 /** A stored request payload; oversized ones carry the writer's truncation marker. */
 export type StoredRequestPayload = NonNullable<SessionRequestPayloadValue>
 
+function isStoredPayload(value: unknown): value is StoredRequestPayload {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.stdin === 'string'
+    && typeof candidate.system === 'string'
+    && Array.isArray(candidate.argv)
+    && Array.isArray(candidate.envKeys)
+    && Array.isArray(candidate.tools)
+}
+
 /**
  * Read one recorded request payload for a Session.
  * @param persistence - stored-session backend, or undefined when none is composed.
@@ -55,7 +65,9 @@ export async function readRequestPayload(
   }
   try {
     const inflated = await gunzipAsync(compressed, { maxOutputLength: MAX_INFLATED_BYTES })
-    return JSON.parse(inflated.toString('utf8')) as StoredRequestPayload
+    const value: unknown = JSON.parse(inflated.toString('utf8'))
+    if (!isStoredPayload(value)) throw new Error('stored payload has an unexpected shape')
+    return value
   } catch (error: unknown) {
     throw new RemoteError('gateway/internal', 'request payload is corrupt', {}, { cause: error })
   }

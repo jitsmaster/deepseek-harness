@@ -555,6 +555,8 @@ export function TrajectoryView({
     return true
   }, [hasResidentOlderHistory, loadOlder])
 
+  const inspectedUsage = inspected === null ? undefined : reportedUsage(inspected.request.usage)
+
   return (
     <div className={css.root} data-conversation-composer-overlay="">
       <TrajectoryToolbar
@@ -625,10 +627,7 @@ export function TrajectoryView({
           <div className={css.inspector}>
             <RequestInspectorPanel
               state={inspected.state}
-              {...(() => {
-                const usage = reportedUsage(inspected.request.usage)
-                return usage === undefined ? {} : { usage }
-              })()}
+              {...(inspectedUsage === undefined ? {} : { usage: inspectedUsage })}
               {...(inspected.request.model === undefined ? {} : { model: inspected.request.model })}
               t={t}
               onClose={closeInspector}

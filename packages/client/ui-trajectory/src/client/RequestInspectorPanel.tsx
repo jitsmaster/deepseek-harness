@@ -10,7 +10,6 @@ export type RequestInspectorState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'missing' }
   | { readonly kind: 'ready'; readonly payload: ComposableRequestPayload }
-  | { readonly kind: 'reconstructed'; readonly payload: ComposableRequestPayload }
 
 export interface RequestInspectorPanelProps {
   readonly state: RequestInspectorState
@@ -27,11 +26,10 @@ const CATEGORY_KEY = {
   transcript: 'inspect.transcript',
 } as const satisfies Record<ComposedCategoryId, string>
 
-function Body({ payload, usage, t, note }: {
+function Body({ payload, usage, t }: {
   payload: ComposableRequestPayload
   usage: ReportedUsage | undefined
   t: TrajectoryTranslate
-  note: string | undefined
 }) {
   const composed = useMemo(() => composeRequest(payload, usage), [payload, usage])
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
@@ -47,7 +45,6 @@ function Body({ payload, usage, t, note }: {
     : t('inspect.tokens', { value: tokens })
   return (
     <>
-      {note !== undefined && <p className={css.note}>{note}</p>}
       {composed.truncated === true && <p className={css.note}>{t('inspect.truncated')}</p>}
       <p className={css.total}>
         {t('inspect.total')}: {size(composed.totalBytes, composed.totalTokens)}
@@ -90,14 +87,14 @@ function Body({ payload, usage, t, note }: {
  * @returns the panel.
  */
 export function RequestInspectorPanel({ state, usage, model, t, onClose }: RequestInspectorPanelProps) {
-  const payload = state.kind === 'ready' || state.kind === 'reconstructed' ? state.payload : undefined
+  const payload = state.kind === 'ready' ? state.payload : undefined
   return (
     <aside className={css.panel} aria-label={t('inspect.title')}>
       <header className={css.header}>
         <h3>{t('inspect.title')}{model === undefined ? '' : ` · ${model}`}</h3>
         {payload !== undefined && (
           <button type="button" onClick={() => {
-            void navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+            navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).catch(() => undefined)
           }}>{t('inspect.copyJson')}</button>
         )}
         <button type="button" onClick={onClose}>{t('inspect.close')}</button>
@@ -105,8 +102,7 @@ export function RequestInspectorPanel({ state, usage, model, t, onClose }: Reque
       {state.kind === 'loading' && <p className={css.note}>{t('inspect.loading')}</p>}
       {state.kind === 'missing' && <p className={css.note}>{t('inspect.notCaptured')}</p>}
       {payload !== undefined && (
-        <Body payload={payload} usage={usage} t={t}
-          note={state.kind === 'reconstructed' ? t('inspect.reconstructed') : undefined} />
+        <Body payload={payload} usage={usage} t={t} />
       )}
     </aside>
   )

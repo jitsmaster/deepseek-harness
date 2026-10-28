@@ -60,11 +60,6 @@ describe('RequestInspectorPanel', () => {
     expect(within(view.container).getByText('Payload truncated to fit its size limit')).toBeTruthy()
   })
 
-  it('labels a reconstructed view', () => {
-    const view = renderPanel({ kind: 'reconstructed', payload: PAYLOAD })
-    expect(within(view.container).getByText(/Reconstructed from the prompt snapshot/)).toBeTruthy()
-  })
-
   it('shows loading and closes', () => {
     const onClose = vi.fn()
     const view = renderPanel({ kind: 'loading' }, onClose)

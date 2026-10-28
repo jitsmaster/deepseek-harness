@@ -50,6 +50,21 @@ describe('writeRequestPayload', () => {
     expect(b.argv).toEqual(payload.argv)
   })
 
+  it('drops the tool definitions too when stdin and system alone still exceed the cap', async () => {
+    const big = {
+      ...payload,
+      stdin: 'x'.repeat(2_000),
+      system: 'y'.repeat(2_000),
+      tools: [{ name: 't', description: 'd'.repeat(10_000), inputSchema: { type: 'object' } }],
+    }
+    const result = await writeRequestPayload(dir, 'c', big, 2_000)
+    expect(result.truncated).toBe(true)
+    const c = await read('c')
+    expect(c.tools).toEqual([])
+    expect(c.toolsBytes).toBe(Buffer.byteLength(JSON.stringify(big.tools)))
+    expect(Buffer.byteLength(JSON.stringify(c))).toBeLessThanOrEqual(2_000)
+  })
+
   it('rejects when the directory is unwritable', async () => {
     const file = join(dir, 'file')
     await writeFile(file, 'x')

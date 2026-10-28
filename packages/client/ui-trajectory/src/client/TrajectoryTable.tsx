@@ -18,6 +18,7 @@ import {
   IconUserOutlineRegular,
   JsonTree,
   MarkdownText,
+  Menu,
   StateDot,
   Tooltip,
   writeClipboard,
@@ -2124,7 +2125,6 @@ export function TrajectoryTable({
   onInspectRequest,
 }: TrajectoryTableProps) {
   const [inspectMenu, setInspectMenu] = useState<InspectMenuState | null>(null)
-  const inspectMenuRef = useRef<HTMLDivElement>(null)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [selectedRequest, setSelectedRequest] = useState<SelectedRequest | null>(null)
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
@@ -2611,25 +2611,18 @@ export function TrajectoryTable({
     virtualizationEnabled,
   ])
 
-  useEffect(() => {
-    if (inspectMenu === null) return undefined
-    const close = () => { setInspectMenu(null) }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close()
-    }
-    const onPointer = (event: MouseEvent) => {
-      if (inspectMenuRef.current?.contains(event.target as Node) === true) return
-      close()
-    }
-    document.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onPointer)
-    window.addEventListener('blur', close)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.removeEventListener('mousedown', onPointer)
-      window.removeEventListener('blur', close)
+  const closeInspectMenu = useCallback(() => { setInspectMenu(null) }, [])
+  const inspectMenuAnchor = useCallback((): DOMRect | null => {
+    if (inspectMenu === null) return null
+    const { x, y } = inspectMenu
+    return {
+      x, y, left: x, top: y, right: x, bottom: y, width: 0, height: 0, toJSON: () => ({}),
     }
   }, [inspectMenu])
+  const inspectMenuItems = useMemo(
+    () => [{ id: 'inspect', label: t('inspect.menu') }],
+    [t],
+  )
 
   const olderBusy = olderHistoryLoading || olderLoading
   const showInitialLoading = historyLoading || !tableScrollReady
@@ -2637,28 +2630,21 @@ export function TrajectoryTable({
 
   return (
     <div ref={rootRef} className={css.split} style={splitStyle}>
-      {inspectMenu !== null && (
-        <div
-          ref={inspectMenuRef}
-          role="menu"
-          className={css.inspectMenu}
-          style={{ left: inspectMenu.x, top: inspectMenu.y }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className={css.inspectMenuItem}
-            autoFocus
-            onClick={() => {
-              const { request } = inspectMenu
-              setInspectMenu(null)
-              onInspectRequest?.(request)
-            }}
-          >
-            {t('inspect.menu')}
-          </button>
-        </div>
-      )}
+      <Menu
+        open={inspectMenu !== null}
+        anchor={null}
+        portal
+        autoFocus
+        compact
+        items={inspectMenuItems}
+        getAnchorRect={inspectMenuAnchor}
+        onClose={closeInspectMenu}
+        onSelect={() => {
+          const request = inspectMenu?.request
+          setInspectMenu(null)
+          if (request !== undefined) onInspectRequest?.(request)
+        }}
+      />
       <div
         ref={tablePaneRef}
         className={css.tablePane}

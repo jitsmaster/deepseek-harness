@@ -96,6 +96,18 @@ describe('readRequestPayload', () => {
     await expect(result).rejects.not.toThrow(/secret-text/)
   })
 
+  it.each([
+    ['an empty object', {}],
+    ['a non-object', 'text'],
+    ['a payload with a non-array tools field', { ...PAYLOAD, tools: 'nope' }],
+    ['a payload with a non-string stdin', { ...PAYLOAD, stdin: 5 }],
+  ])('rejects %s as corrupt', async (_name, value) => {
+    const dir = join(root, 's1')
+    await store(dir, 'shape.json.gz', value)
+    await expect(readRequestPayload(persistence({ s1: dir }), { sessionId: sid('s1'), blob: 'shape.json.gz' }, signal))
+      .rejects.toMatchObject({ code: 'gateway/internal' })
+  })
+
   it('refuses to inflate an oversized payload', async () => {
     const dir = join(root, 's1')
     await store(dir, 'big.json.gz', { ...PAYLOAD, stdin: 'a'.repeat(9_000_000) })
