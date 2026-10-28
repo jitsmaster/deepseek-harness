@@ -79,6 +79,7 @@ describe('readRequestPayload', () => {
 
   it.each([
     '../x.json.gz', '..\\x.json.gz', 'sub/x.json.gz', '/etc/passwd', 'C:\\x.json.gz', '..', '.', '', 'x.json', '.hidden.json.gz', 'x.json.gz\0',
+    `${'a'.repeat(300)}.json.gz`, 'CON.json.gz', 'nul.json.gz', 'Com1.json.gz', 'LPT9.json.gz', 'aux.x.json.gz',
   ])('rejects the blob name %j', async (blob) => {
     const dir = join(root, 's1')
     await store(dir, 'x.json.gz', PAYLOAD)
@@ -101,6 +102,10 @@ describe('readRequestPayload', () => {
     ['a non-object', 'text'],
     ['a payload with a non-array tools field', { ...PAYLOAD, tools: 'nope' }],
     ['a payload with a non-string stdin', { ...PAYLOAD, stdin: 5 }],
+    ['a tool without a string name', { ...PAYLOAD, tools: [{ description: 'd', inputSchema: {} }] }],
+    ['a tool without a string description', { ...PAYLOAD, tools: [{ name: 'n', inputSchema: {} }] }],
+    ['a non-string argv entry', { ...PAYLOAD, argv: ['claude', 5] }],
+    ['a non-string envKeys entry', { ...PAYLOAD, envKeys: [{}] }],
   ])('rejects %s as corrupt', async (_name, value) => {
     const dir = join(root, 's1')
     await store(dir, 'shape.json.gz', value)

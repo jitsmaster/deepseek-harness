@@ -19,7 +19,8 @@ export interface RequestPayloadBlob {
 
 /**
  * Serialize `payload`, dropping the `stdin`, then `system` bodies, then the `tools`
- * list (keeping their original byte lengths) until the JSON fits `capBytes`.
+ * list, then `argv` and `envKeys` (keeping their original byte lengths) until the
+ * JSON fits `capBytes`.
  */
 function fit(payload: RequestPayload, capBytes: number): { json: string; truncated: boolean } {
   let json = JSON.stringify(payload)
@@ -35,6 +36,13 @@ function fit(payload: RequestPayload, capBytes: number): { json: string; truncat
   if (Buffer.byteLength(json) > capBytes) {
     stored.toolsBytes = Buffer.byteLength(JSON.stringify(payload.tools))
     stored.tools = []
+    json = JSON.stringify(stored)
+  }
+  if (Buffer.byteLength(json) > capBytes) {
+    stored.argvBytes = Buffer.byteLength(JSON.stringify(payload.argv))
+    stored.argv = []
+    stored.envKeysBytes = Buffer.byteLength(JSON.stringify(payload.envKeys))
+    stored.envKeys = []
     json = JSON.stringify(stored)
   }
   return { json, truncated: true }

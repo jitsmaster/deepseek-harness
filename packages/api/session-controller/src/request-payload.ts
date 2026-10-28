@@ -19,14 +19,26 @@ const MAX_INFLATED_BYTES = 8_000_000
 /** A stored request payload; oversized ones carry the writer's truncation marker. */
 export type StoredRequestPayload = NonNullable<SessionRequestPayloadValue>
 
+/** Longest blob name the writer can produce; anything longer is refused before touching the filesystem. */
+const MAX_BLOB_NAME_LENGTH = 255
+/** Windows device names resolve to devices rather than files, whatever their extension. */
+const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(entry => typeof entry === 'string')
+}
+
 function isStoredPayload(value: unknown): value is StoredRequestPayload {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Record<string, unknown>
   return typeof candidate.stdin === 'string'
     && typeof candidate.system === 'string'
-    && Array.isArray(candidate.argv)
-    && Array.isArray(candidate.envKeys)
+    && isStringArray(candidate.argv)
+    && isStringArray(candidate.envKeys)
     && Array.isArray(candidate.tools)
+    && candidate.tools.every((tool: unknown) => typeof tool === 'object' && tool !== null
+      && typeof (tool as Record<string, unknown>).name === 'string'
+      && typeof (tool as Record<string, unknown>).description === 'string')
 }
 
 /**
@@ -42,7 +54,11 @@ export async function readRequestPayload(
   request: { readonly sessionId: SessionId; readonly blob: string },
   signal: AbortSignal,
 ): Promise<StoredRequestPayload | undefined> {
-  if (!BLOB_PATTERN.test(request.blob)) {
+  if (
+    request.blob.length > MAX_BLOB_NAME_LENGTH
+    || !BLOB_PATTERN.test(request.blob)
+    || WINDOWS_DEVICE_NAME.test(request.blob)
+  ) {
     throw new RemoteError('gateway/bad-request', 'blob must be a request payload file name', {})
   }
   if (persistence === undefined) return undefined

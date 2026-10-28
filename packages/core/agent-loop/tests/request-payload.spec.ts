@@ -65,6 +65,17 @@ describe('writeRequestPayload', () => {
     expect(Buffer.byteLength(JSON.stringify(c))).toBeLessThanOrEqual(2_000)
   })
 
+  it('still honours the cap when argv alone is oversized', async () => {
+    const big = { ...payload, argv: ['claude', 'z'.repeat(10_000)], envKeys: Array.from({ length: 500 }, (_, i) => `KEY_${String(i)}`) }
+    const result = await writeRequestPayload(dir, 'd', big, 2_000)
+    expect(result.truncated).toBe(true)
+    const d = await read('d')
+    expect(d.argv).toEqual([])
+    expect(d.envKeys).toEqual([])
+    expect(d.argvBytes).toBe(Buffer.byteLength(JSON.stringify(big.argv)))
+    expect(Buffer.byteLength(JSON.stringify(d))).toBeLessThanOrEqual(2_000)
+  })
+
   it('rejects when the directory is unwritable', async () => {
     const file = join(dir, 'file')
     await writeFile(file, 'x')
