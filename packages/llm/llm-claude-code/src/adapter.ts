@@ -251,13 +251,16 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
   ): AsyncGenerator<StreamChunk> {
     const tools: readonly ToolSchema[] = options.tools ?? []
     const aliases = buildToolAliases(tools.map(tool => tool.name))
-    await writeFile(join(directory, 'system.txt'), renderSystemText(options))
+    const system = renderSystemText(options)
+    const stdin = renderStdin(options.messages)
+    const exposedTools = tools.map(tool => ({
+      name: aliases.aliasOf(tool.name),
+      description: tool.description,
+      inputSchema: objectSchema(tool.parameters),
+    }))
+    await writeFile(join(directory, 'system.txt'), system)
     if (tools.length > 0) {
-      await writeFile(join(directory, 'tools.json'), JSON.stringify(tools.map(tool => ({
-        name: aliases.aliasOf(tool.name),
-        description: tool.description,
-        inputSchema: objectSchema(tool.parameters),
-      }))))
+      await writeFile(join(directory, 'tools.json'), JSON.stringify(exposedTools))
       await writeFile(join(directory, 'mcp.json'), JSON.stringify({
         mcpServers: {
           [MCP_SERVER_NAME]: {
@@ -271,12 +274,18 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
 
     const extraEnv = await this.options.resolveEnv?.() ?? {}
     const env = { ...extraEnv, ...options.maxTokens === undefined ? {} : { [MAX_OUTPUT_TOKENS_ENV]: String(options.maxTokens) } }
+    const argv = claudeArgv({ executable, directory, model: options.model, effort: options.reasoningEffort, withTools: tools.length > 0 })
+    try {
+      options.onRequest?.({ argv, envKeys: Object.keys(env), system, tools: exposedTools, stdin })
+    } catch {
+      // A request observer must never fail the call.
+    }
     let child: SubprocessHandle
     try {
       child = this.options.spawn({
-        argv: claudeArgv({ executable, directory, model: options.model, effort: options.reasoningEffort, withTools: tools.length > 0 }),
+        argv,
         cwd: directory,
-        stdio: { stdin: { data: renderStdin(options.messages) }, stdout: 'pipe', stderr: { maxBytes: STDERR_TAIL_BYTES } },
+        stdio: { stdin: { data: stdin }, stdout: 'pipe', stderr: { maxBytes: STDERR_TAIL_BYTES } },
         graceMs: TERMINATION_GRACE_MS,
         signal,
         ...Object.keys(env).length === 0 ? {} : { env },

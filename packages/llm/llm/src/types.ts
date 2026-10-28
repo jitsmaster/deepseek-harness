@@ -525,6 +525,24 @@ export interface ToolHistory {
   }[]
 }
 
+/**
+ * The exact payload an adapter sends to its provider for one request, as
+ * reported through {@link GenerateOptions.onRequest}. Secrets (environment
+ * values, tokens, credentials) are never included.
+ */
+export interface RequestPayload {
+  /** Full command line of the spawned provider process. */
+  argv: readonly string[]
+  /** Names (never values) of the environment variables supplied to the process. */
+  envKeys: readonly string[]
+  /** System prompt text as written for the provider. */
+  system: string
+  /** Tool definitions as exposed to the provider (adapter-aliased names). */
+  tools: readonly { name: string; description: string; inputSchema: unknown }[]
+  /** Text written to the provider process's standard input. */
+  stdin: string
+}
+
 /** A single model request, fully assembled. */
 export interface GenerateOptions {
   /** Registered provider route selecting the adapter instance. */
@@ -568,4 +586,9 @@ export interface GenerateOptions {
    * requests leave it unset.
    */
   purpose?: 'compaction' | 'session-title'
+  /**
+   * Optional observer called once per provider request with the exact payload
+   * sent. It must never fail the call: adapters swallow anything it throws.
+   */
+  onRequest?: (payload: RequestPayload) => void
 }
