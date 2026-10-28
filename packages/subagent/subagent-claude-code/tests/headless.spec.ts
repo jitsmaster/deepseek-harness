@@ -43,7 +43,7 @@ describe('headless claude -p', () => {
   })
 
   it('passes a requested output schema to the CLI as one compact argument', () => {
-    const schema = { type: 'object', properties: { status: { type: 'string' } }, required: ['status'] } as const
+    const schema: NonNullable<Parameters<typeof headlessArgv>[1]> = { type: 'object', properties: { status: { type: 'string' } }, required: ['status'] }
     const argv = headlessArgv(spec({ model: 'opus' }), schema)
     expect(argv.slice(-2)).toEqual(['--json-schema', JSON.stringify(schema)])
     expect(argv).toContain('opus')

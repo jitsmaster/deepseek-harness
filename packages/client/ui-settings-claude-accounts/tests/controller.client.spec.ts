@@ -72,7 +72,8 @@ describe('ClaudeAccountsController reads', () => {
   })
 
   it('reports a failed first read, and keeps the last good rows through a later failure', async () => {
-    const h = host({ settings: undefined })
+    const h = host({})
+    h.state.settings = undefined
     h.state.status = undefined
     const controller = new ClaudeAccountsController(h.operations, () => NOW)
     await controller.refresh(true)

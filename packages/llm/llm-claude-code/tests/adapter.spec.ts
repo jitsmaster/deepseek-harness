@@ -129,7 +129,7 @@ describe('ClaudeCodeLlmAdapter text answer', () => {
   }, 30_000)
 
   it('passes the model verbatim and the reasoning effort as --effort', async () => {
-    await collect(makeAdapter(), request('text', { model: 'claude-sonnet-5-5', reasoningEffort: 'xhigh' as GenerateOptions['reasoningEffort'] }))
+    await collect(makeAdapter(), request('text', { model: 'claude-sonnet-5-5', reasoningEffort: 'xhigh' as NonNullable<GenerateOptions['reasoningEffort']> }))
     const argv = firstRun().argv
     expect(argv.slice(argv.indexOf('--model'), argv.indexOf('--model') + 4)).toEqual(['--model', 'claude-sonnet-5-5', '--effort', 'xhigh'])
   }, 30_000)

@@ -77,7 +77,7 @@ describe('ui-settings-claude-accounts apply', () => {
     const entry = slots.entries('settings.models.footer')[0]!
     expect(entry.options).toMatchObject({ id: 'claude-accounts', order: 100 })
     expect(entry.locale).toBe(NS)
-    const face = (entry.inject as () => ClaudeAccountsFace)()
+    const face = (entry.inject as unknown as () => ClaudeAccountsFace)()
     expect(Object.keys(face.hooks)).toEqual(['claudeAccounts'])
     expect(typeof face.controller.select).toBe('function')
     expect(typeof face.authOperations.beginAuthorization).toBe('function')
@@ -89,7 +89,7 @@ describe('ui-settings-claude-accounts apply', () => {
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     await vi.waitFor(() => { expect(slots.entries('settings.models.footer')).toHaveLength(1) })
-    const face = (slots.entries('settings.models.footer')[0]!.inject as () => ClaudeAccountsFace)()
+    const face = (slots.entries('settings.models.footer')[0]!.inject as unknown as () => ClaudeAccountsFace)()
     await face.controller.refresh(true)
     const base = settings.describe.mock.calls.length
 
