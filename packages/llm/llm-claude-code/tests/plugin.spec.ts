@@ -86,21 +86,21 @@ describe('llm-claude-code registration', () => {
     expect(new Set(ids).size).toBe(ids.length)
     for (const model of models) {
       expect(model.provider).toBe('claude-code')
-      expect(model.inputModalities).toEqual(['text'])
+      expect(model.inputModalities).toEqual(['text', 'image'])
     }
   })
 
   it('resolves any model id with text input and every claude effort', async () => {
     const root = await mount()
     const known = await root.llm.resolveModelInfo('claude-code', 'claude-sonnet-5-5')
-    expect(known).toMatchObject({ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', inputModalities: ['text'], context: { contextWindow: 1_000_000 } })
+    expect(known).toMatchObject({ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', inputModalities: ['text', 'image'], context: { contextWindow: 1_000_000 } })
     expect(known.reasoning?.efforts.map(effort => effort.id)).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(known.reasoning?.defaultEffort).toBeUndefined()
     const unknown = await root.llm.resolveModelInfo('claude-code', 'claude-future-9')
     expect(unknown).toMatchObject({ id: 'claude-future-9', name: 'claude-future-9', context: { contextWindow: 200_000 } })
     expect(unknown.reasoning?.efforts).toHaveLength(5)
     const alias = await root.llm.resolveModelInfo('claude-code', 'haiku')
-    expect(alias.inputModalities).toEqual(['text'])
+    expect(alias.inputModalities).toEqual(['text', 'image'])
   })
 
   it('applies config overrides: extra models, a changed window, and the unlisted default', async () => {
@@ -124,7 +124,7 @@ describe('llm-claude-code registration', () => {
     const root = await mount()
     const prepared = await root.llm.prepareCall({ provider: 'claude-code', model: 'sonnet', reasoningEffort: 'xhigh' as never })
     expect(prepared.config.reasoningEffort).toBe('xhigh')
-    expect(prepared.inputModalities).toEqual(['text'])
+    expect(prepared.inputModalities).toEqual(['text', 'image'])
     expect(prepared.config.maxTokens).toBeUndefined()
     await expect(root.llm.prepareCall({ provider: 'claude-code', model: 'sonnet', reasoningEffort: 'minimal' as never })).rejects.toMatchObject({ code: 'UNSUPPORTED_REASONING_EFFORT' })
   })

@@ -74,7 +74,7 @@ describe('llm-claude-code real Loader composition through cordis.yml', () => {
     expect((await ctx.llm.listModels('claude-code')).map(model => model.id)).toEqual(expect.arrayContaining(['claude-sonnet-5-5', 'haiku', 'my-claude']))
     const prepared = await ctx.llm.prepareCall({ provider: 'claude-code', model: 'my-claude', reasoningEffort: 'high' as never })
     expect(prepared.context).toEqual({ contextWindow: 150_000 })
-    expect(prepared.inputModalities).toEqual(['text'])
+    expect(prepared.inputModalities).toEqual(['text', 'image'])
     expect(prepared.config.reasoningEffort).toBe('high')
   }, 30_000)
 

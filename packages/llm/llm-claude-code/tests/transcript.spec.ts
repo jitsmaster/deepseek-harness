@@ -84,13 +84,46 @@ describe('transcript rendering', () => {
     expect(rendered).toContain('<tool_result id="a&quot;b&gt;&lt;x" name="we&quot;ird&lt;name">')
   })
 
-  it('renders any leftover image or file block as a placeholder', () => {
+  it('renders an unresolved image or any file block as a placeholder', () => {
     const image = { type: 'image', attachment: {} } as unknown as ContentBlock
     const file = { type: 'file', attachment: {} } as unknown as ContentBlock
     const rendered = renderTranscript([
       createUserMessage({ content: [text('look'), image, file], source: { kind: 'user' } }),
     ])
-    expect(rendered).toContain('look\n[image omitted: this route reads text only]\n[file omitted: this route reads text only]')
+    expect(rendered).toContain('look\n[image omitted: its bytes were not available to this request]\n[file omitted: this route reads text only]')
+  })
+
+  describe('image blocks', () => {
+    const ref = { type: 'image', attachment: { attachmentId: 'sha256:abc' } } as unknown as ContentBlock
+    const lookup = (): { mediaType: string; data: string } => ({ mediaType: 'image/png', data: 'QUJD' })
+    const parts = (stdin: string): { type: string; text?: string; source?: unknown }[] =>
+      (JSON.parse(stdin) as { message: { content: { type: string; text?: string; source?: unknown }[] } }).message.content
+
+    it('sends a resolved image as a base64 image block inside its element', () => {
+      const stdin = renderStdin([createUserMessage({ content: [text('look'), ref, text('after')], source: { kind: 'user' } })], lookup)
+      expect(parts(stdin)).toEqual([
+        { type: 'text', text: '<user>\nlook' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'QUJD' } },
+        { type: 'text', text: 'after\n</user>' },
+      ])
+    })
+
+    it('keeps text-only history identical with a lookup, so the cached prefix stays valid', () => {
+      const messages = [user('hello'), assistant(call('c1', 'read', '{}')), result('c1', 'ok')]
+      expect(renderStdin(messages, lookup)).toBe(renderStdin(messages))
+    })
+
+    it('names an image instead of embedding its bytes when redacted', () => {
+      const stdin = renderStdin([createUserMessage({ content: [ref], source: { kind: 'user' } })], lookup, true)
+      expect(stdin).not.toContain('QUJD')
+      expect(stdin).toContain('[image image/png, 3 bytes sent as an image block]')
+    })
+
+    it('falls back to the placeholder when the lookup resolves nothing', () => {
+      const stdin = renderStdin([createUserMessage({ content: [ref], source: { kind: 'user' } })], () => undefined)
+      expect(parts(stdin).every(part => part.type === 'text')).toBe(true)
+      expect(stdin).toContain('image omitted')
+    })
   })
 
   it('renders an assistant turn that carries only tool calls', () => {

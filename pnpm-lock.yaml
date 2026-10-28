@@ -12372,6 +12372,9 @@ importers:
       '@deepseek-ai/cosmokit':
         specifier: workspace:~
         version: link:../../../vendor/cosmokit
+      '@deepseek-ai/dsh-attachment':
+        specifier: workspace:*
+        version: link:../../attachment/attachment
       '@deepseek-ai/dsh-authorization':
         specifier: workspace:*
         version: link:../../credentials/authorization

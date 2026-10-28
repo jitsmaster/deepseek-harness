@@ -31,9 +31,11 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import type { AttachmentStore, ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 import { ClaudeStreamDecoder } from './decoder.ts'
 import type { RateLimitReading, ResultLine } from './decoder.ts'
 import { locateExecutable } from './executable.ts'
+import { imageTarget, prepareImages } from './images.ts'
 import { CLAUDE_EFFORTS, mergeModels } from './models.ts'
 import type { ClaudeModelEntry } from './models.ts'
 import { buildToolAliases, MCP_SERVER_NAME } from './names.ts'
@@ -95,6 +97,8 @@ export interface ClaudeCodeLlmAdapterOptions {
    * (at most once per run, when Claude reported one); errors are swallowed.
    */
   onRateLimit?(reading: RateLimitReading, env: Readonly<Record<string, string>>): void
+  /** The durable attachment service that holds pasted images; read lazily per call, absent when none is mounted. */
+  resolveAttachments?(): AttachmentStore | undefined
   /** Subprocess seam spawn. */
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle
 }
@@ -207,8 +211,13 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       id: model.id,
       name: model.name,
       ...model.description === undefined ? {} : { description: model.description },
-      inputModalities: ['text'] as const,
+      inputModalities: ['text', 'image'] as const,
     })))
+  }
+
+  /** Images go to Claude at most {@link imageTarget}'s size, the same size the UI maps screenshot coordinates with. */
+  override imageRequestTarget(_provider: string, _model: string, image: ImageAttachmentRef): ImageRequestTarget {
+    return imageTarget(image)
   }
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -219,7 +228,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       name: entry?.name ?? model,
       ...entry?.description === undefined ? {} : { description: entry.description },
       context: { contextWindow: entry?.contextWindow ?? this.options.defaultContextWindow },
-      inputModalities: ['text'],
+      inputModalities: ['text', 'image'],
       reasoning: { efforts: CLAUDE_EFFORTS },
     })
   }
@@ -252,7 +261,14 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
     const tools: readonly ToolSchema[] = options.tools ?? []
     const aliases = buildToolAliases(tools.map(tool => tool.name))
     const system = renderSystemText(options)
-    const stdin = renderStdin(options.messages)
+    let prepared: Awaited<ReturnType<typeof prepareImages>>
+    try {
+      prepared = await prepareImages(options.messages, this.options.resolveAttachments?.(), signal)
+    } catch (error: unknown) {
+      if (cancelled(signal)) throw this.cancellation(signal)
+      throw new LlmError(`Claude Code could not read an attached image: ${errorText(error)}`, 'UNSUPPORTED_CONTENT', { cause: error })
+    }
+    const stdin = renderStdin(prepared.messages, prepared.lookup)
     const exposedTools = tools.map(tool => ({
       name: aliases.aliasOf(tool.name),
       description: tool.description,
@@ -276,7 +292,9 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
     const env = { ...extraEnv, ...options.maxTokens === undefined ? {} : { [MAX_OUTPUT_TOKENS_ENV]: String(options.maxTokens) } }
     const argv = claudeArgv({ executable, directory, model: options.model, effort: options.reasoningEffort, withTools: tools.length > 0 })
     try {
-      options.onRequest?.({ argv, envKeys: Object.keys(env), system, tools: exposedTools, stdin })
+      // The inspected payload names each image and leaves its base64 out: it would dwarf the rest of the request.
+      const inspected = prepared.lookup === undefined ? stdin : renderStdin(prepared.messages, prepared.lookup, true)
+      options.onRequest?.({ argv, envKeys: Object.keys(env), system, tools: exposedTools, stdin: inspected })
     } catch {
       // A request observer must never fail the call.
     }

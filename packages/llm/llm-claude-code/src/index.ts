@@ -22,6 +22,7 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-authorization'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-subprocess'
@@ -290,6 +291,8 @@ export function apply(ctx: Context, config: Config): void {
     timeoutMs: clampTimeout(config.timeoutMs, CLAUDE_CODE_LLM_DEFAULT_TIMEOUT_MS, MAX_TIMER_DELAY_MS),
     defaultContextWindow: config.defaultContextWindow ?? CLAUDE_CODE_DEFAULT_CONTEXT_WINDOW,
     models: config.models ?? [],
+    // Pasted images live in the durable attachment service; it is read lazily so a late mount still counts.
+    resolveAttachments: () => ctx.get('attachments'),
     // The active DSH-signed-in account wins; the stored credential is read only when it is not usable.
     async resolveEnv() {
       const env = await account()
