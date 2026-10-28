@@ -62,12 +62,32 @@ function catalogSourceEntries(
 export interface Config {
   /** Maximum normalized description length rendered in the session catalog; minimum 3. */
   catalogDescriptionMaxLength?: number
+  /**
+   * Skill names left out of the model-facing catalog, each an exact name or a prefix ending in `*`
+   * (`modes-*`). A hidden skill still loads through the `skill` tool by its exact name and by the
+   * user's `/name`; only the catalog lines, which cost tokens in every session, are dropped.
+   */
+  catalogHide?: string[]
+  /** Names or `*` prefixes that stay in the catalog even when `catalogHide` matches them. */
+  catalogKeep?: string[]
 }
 
 /** Validate and default the model-facing skill catalog configuration. */
 export const Config: z<Config> = z.object({
   catalogDescriptionMaxLength: z.number().default(DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH),
+  catalogHide: z.array(z.string()).default([]),
+  catalogKeep: z.array(z.string()).default([]),
 })
+
+/** Whether a skill name matches an exact name or a trailing-`*` prefix pattern. */
+function matchesName(patterns: readonly string[], skillName: string): boolean {
+  return patterns.some(pattern => pattern.endsWith('*') ? skillName.startsWith(pattern.slice(0, -1)) : pattern === skillName)
+}
+
+/** Whether the catalog leaves a skill out: hidden by `catalogHide` and not rescued by `catalogKeep`. */
+function catalogHides(config: Config, skillName: string): boolean {
+  return matchesName(config.catalogHide ?? [], skillName) && !matchesName(config.catalogKeep ?? [], skillName)
+}
 
 /**
  * Register the model-facing skill loader and its visibility-matched
@@ -225,7 +245,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       : { skills: [], complete: true }
     signal.throwIfAborted()
     if (!snapshot.complete) return decision
-    const skills = snapshot.skills.filter(isModelInvocable)
+    const skills = snapshot.skills.filter(isModelInvocable).filter(skill => !catalogHides(config, skill.name))
     const entries = catalogSourceEntries(skills, catalogDescriptionMaxLength)
     const digest = digestCatalogEntries(entries)
     const history = catalogHistory(agent)

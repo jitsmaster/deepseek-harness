@@ -101,7 +101,7 @@ Failures surface as `WebError`: `WEB_PROVIDER_ERROR` for a failed or missing res
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `dsh-tool-web`, which retains this provider's answer text, `maxResults`-bounded links and titles, or its exact failure messages under the consumer's error wrapper. Each query spawns one headless Claude Code process that takes about ten seconds and consumes one Claude subscription message; the queries of one `web_search` call, up to its query cap, run as concurrent processes.
+Indirectly, through `dsh-tool-web`, which retains this provider's answer text, `maxResults`-bounded links and titles, or its exact failure messages under the consumer's error wrapper. Each query spawns one headless Claude Code process that takes about ten seconds and consumes one Claude subscription message. The process runs with a short DSH system prompt (`--system-prompt-file`), no settings sources (`--setting-sources ""`, so the user's CLAUDE.md, hooks and plugins stay out) and no skills (`--disable-slash-commands`); measured cost per query fell from about 17k to about 4.9k tokens; the queries of one `web_search` call, up to its query cap, run as concurrent processes.
 
 #### KV Cache effect
 

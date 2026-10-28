@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { consumeHeadlessLines, headlessArgv, successfulHeadlessResult, type HeadlessRunSpec } from '../src/headless.ts'
+import { consumeHeadlessLines, headlessArgv, SUBAGENT_SYSTEM_PROMPT, successfulHeadlessResult, type HeadlessRunSpec } from '../src/headless.ts'
 
 const spec = (over: Partial<HeadlessRunSpec> = {}): HeadlessRunSpec => ({
   executable: 'C:/u/claude.exe',
@@ -19,8 +19,26 @@ describe('headless claude -p', () => {
   it('builds the fixed argv with the task kept off the command line', () => {
     expect(headlessArgv(spec())).toEqual([
       'C:/u/claude.exe', '-p', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
+      '--system-prompt', SUBAGENT_SYSTEM_PROMPT,
+      '--settings', '{"disableAllHooks":true}',
       '--permission-mode', 'dontAsk', '--disallowedTools', 'AskUserQuestion',
     ])
+  })
+
+  it('switches the user\'s Claude Code hooks off but leaves permission rules, CLAUDE.md, MCP servers and skills loading', () => {
+    const argv = headlessArgv(spec())
+    expect(JSON.parse(argv[argv.indexOf('--settings') + 1] as string)).toEqual({ disableAllHooks: true })
+    // A SPARC brief tells the child to start with Skill(modes:<slug>): the Skill tool must stay available.
+    expect(argv).not.toContain('--disable-slash-commands')
+    expect(argv).not.toContain('--setting-sources')
+    expect(argv).not.toContain('--strict-mcp-config')
+  })
+
+  it('replaces Claude Code\'s own system prompt with the short DSH one, never appending to it', () => {
+    const argv = headlessArgv(spec())
+    expect(argv).not.toContain('--append-system-prompt')
+    expect(SUBAGENT_SYSTEM_PROMPT).toMatch(/^You are a Claude Code delegate working for DSH/)
+    expect(SUBAGENT_SYSTEM_PROMPT.length).toBeLessThan(700)
   })
 
   it('adds the model and plan-mode tool denials', () => {

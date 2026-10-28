@@ -7,7 +7,7 @@
  */
 'use strict'
 
-const { appendFileSync, readdirSync } = require('node:fs')
+const { appendFileSync, readdirSync, readFileSync } = require('node:fs')
 
 const SEARCH_ID = 'toolu_search'
 const LINKS = [
@@ -122,6 +122,7 @@ process.stdin.on('end', () => {
     argv: process.argv.slice(2),
     cwd: process.cwd(),
     cwdEntries: readdirSync(process.cwd()),
+    systemPrompt: process.argv.includes('--system-prompt-file') ? readFileSync(process.argv[process.argv.indexOf('--system-prompt-file') + 1], 'utf8') : undefined,
     stdin,
   }) + '\n')
   const word = /scenario:(\w+)/.exec(stdin)?.[1] ?? 'success'

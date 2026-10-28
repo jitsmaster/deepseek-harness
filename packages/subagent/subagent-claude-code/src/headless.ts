@@ -37,6 +37,28 @@ export interface HeadlessRunSpec extends ClaudeCodeRunSpec {
 }
 
 /**
+ * System prompt of a delegated run. It replaces Claude Code's own default prompt, which is
+ * many thousands of tokens billed on every turn of the run; the built-in tools keep their
+ * own descriptions, so this only has to say who the run works for and how to report.
+ */
+export const SUBAGENT_SYSTEM_PROMPT = [
+  'You are a Claude Code delegate working for DSH, a coding assistant. DSH gave you one task in the working directory.',
+  'Do exactly that task with your tools, then reply with a concise final report: what you found or changed (files, commands, results) and anything left open.',
+  'Nobody can answer questions during the run, so decide sensibly instead of asking, and make no change the task did not ask for.',
+].join(' ')
+
+/**
+ * Extra settings of a delegated run. Hooks written for the user's interactive Claude Code sessions
+ * (session-start routines, notifiers) belong to DSH's own layer here: they would re-run inside every
+ * delegated run, and one of them alone multiplied a trivial task's tokens by four (294k against 68k).
+ * Permission rules, the project's CLAUDE.md, MCP servers and the user's skills and commands still load:
+ * `dontAsk` keeps allowing the tools the user already allowed, and a brief that tells the child to start with
+ * `Skill(modes:<slug>)` (SPARC's delegation brief does) still finds that skill. `--disable-slash-commands`
+ * would save about 10k tokens per run but removes the Skill tool, so it is deliberately not passed.
+ */
+const DELEGATE_SETTINGS = JSON.stringify({ disableAllHooks: true })
+
+/**
  * Build the fixed `claude -p` argument vector. The task itself travels on
  * stdin, so it is never subject to command-line length limits or quoting.
  * @param spec - executable, model, and permission mode.
@@ -52,6 +74,10 @@ export function headlessArgv(spec: HeadlessRunSpec, outputSchema?: SubagentStart
     'stream-json',
     '--verbose',
     '--no-session-persistence',
+    '--system-prompt',
+    SUBAGENT_SYSTEM_PROMPT,
+    '--settings',
+    DELEGATE_SETTINGS,
     '--permission-mode',
     spec.permissionMode,
     '--disallowedTools',

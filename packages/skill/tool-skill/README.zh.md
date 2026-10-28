@@ -46,6 +46,8 @@ agent 可以在会话期间发现并加载 skill。在首次请求前，如果�
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `catalogDescriptionMaxLength` | `500` | 会话目录中渲染的规范化描述最大长度；最小为 3 |
+| `catalogHide` | `[]` | 不出现在面向模型的目录中的 skill 名称，每项为精确名称或以 `*` 结尾的前缀（`modes-*`）。被隐藏的 skill 仍可通过 `skill` 工具按精确名称加载，也可由用户用 `/name` 调用；只是去掉了每个会话都要花 token 的目录行 |
+| `catalogKeep` | `[]` | 即使被 `catalogHide` 匹配也仍保留在目录中的名称或 `*` 前缀 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-skill)是每个受支持字段的穷尽式真源。
 

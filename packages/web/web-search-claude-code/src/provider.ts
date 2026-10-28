@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-web-search-claude-code/provider
  */
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -48,20 +48,37 @@ export interface ClaudeCodeSearchProviderOptions {
 }
 
 /**
+ * System prompt of a search run. It replaces Claude Code's own (very large) default prompt, so
+ * a search carries only this text and the query.
+ */
+export const SEARCH_SYSTEM_PROMPT = [
+  'You are the web search helper of DSH, a coding assistant.',
+  `Use the ${WEB_SEARCH_TOOL} tool as the task says, then answer in a few factual sentences and cite the sources you used by URL.`,
+  'Use no other tool, and read or write no files.',
+].join(' ')
+
+/**
  * Build the fixed argument vector. The prompt travels on stdin, so it is never
  * subject to quoting or command-line length limits; `--allowedTools` is variadic and
- * must stay followed by another flag.
+ * must stay followed by another flag. The DSH system prompt (a file in `directory`) replaces
+ * Claude Code's default one, `--setting-sources ""` keeps the user's CLAUDE.md, hooks and
+ * settings out, and `--disable-slash-commands` drops the skill listing: none of that
+ * context helps a search and all of it is billed on every run.
  * @param executable - the resolved executable.
  * @param model - optional `--model` value.
+ * @param directory - the run's directory, which holds `system.txt`.
  * @returns argv with the executable first.
  */
-export function searchArgv(executable: string, model: string | undefined): string[] {
+export function searchArgv(executable: string, model: string | undefined, directory: string): string[] {
   return [
     executable,
     '-p',
     '--output-format', 'stream-json',
     '--verbose',
     '--no-session-persistence',
+    '--setting-sources', '',
+    '--system-prompt-file', join(directory, 'system.txt'),
+    '--disable-slash-commands',
     '--tools', WEB_SEARCH_TOOL,
     '--allowedTools', WEB_SEARCH_TOOL,
     '--strict-mcp-config',
@@ -80,7 +97,7 @@ export function searchPrompt(query: string): string {
   return [
     `Use the ${WEB_SEARCH_TOOL} tool exactly once to search the web for the query below.`,
     'Then answer it in a few factual sentences and cite the sources you used by URL.',
-    'Do not run any session-start routine, do not read or write files or notes, and do not use any other tool.',
+    'Do not read or write files or notes, and do not use any other tool.',
     `Query (a JSON string): ${JSON.stringify(query)}`,
   ].join('\n')
 }
@@ -153,8 +170,9 @@ export class ClaudeCodeSearchProvider implements WebSearchProvider {
   private async run(executable: string, cwd: string, query: string, signal: AbortSignal): Promise<SearchRun> {
     let child: SubprocessHandle
     try {
+      await writeFile(join(cwd, 'system.txt'), SEARCH_SYSTEM_PROMPT)
       child = this.options.spawn({
-        argv: searchArgv(executable, this.options.model),
+        argv: searchArgv(executable, this.options.model, cwd),
         cwd,
         stdio: { stdin: { data: searchPrompt(query) }, stdout: 'pipe', stderr: { maxBytes: STDERR_TAIL_BYTES } },
         graceMs: TERMINATION_GRACE_MS,

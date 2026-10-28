@@ -17,6 +17,8 @@ export interface FakeRun {
   argv: string[]
   cwd: string
   cwdEntries: string[]
+  /** Contents of the file named by --system-prompt-file, read while the run was alive. */
+  systemPrompt?: string
   stdin: string
   hanging?: number
 }

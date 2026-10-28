@@ -142,6 +142,8 @@ The Claude Code child receives the standalone text task as one fresh SDK query. 
 
 The child pays for an independent Claude Code context and query. Child tokens do not enter the parent's context.
 
+The headless run keeps that context small: `--system-prompt` replaces Claude Code's default prompt with a short DSH delegate prompt, `--settings '{"disableAllHooks":true}'` keeps the user's interactive-session hooks (session-start routines, notifiers) from re-running inside the child. Settings files, skills and commands still load, so the user's permission rules (which let `dontAsk` and `acceptEdits` runs use Bash and edit tools), the project's `CLAUDE.md`, MCP servers and the Skill tool behave as before; a brief that tells the child to start with `Skill(modes:<slug>)` keeps working. Measured on the real binary for a small Bash-plus-Read task: about 294k tokens over 11 turns with the hooks, about 68k over 3 turns without them.
+
 #### KV Cache effect
 
 Independent of the parent request cache. Reuse depends only on Claude Code's own model, instructions, tools, native settings, and fresh query.

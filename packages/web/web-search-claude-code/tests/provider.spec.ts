@@ -8,6 +8,7 @@ import { WebError } from '@deepseek-ai/dsh-web'
 import {
   CLAUDE_CODE_PROVIDER_ID,
   ClaudeCodeSearchProvider,
+  SEARCH_SYSTEM_PROMPT,
   searchArgv,
   searchPrompt,
   type ClaudeCodeSearchProviderOptions,
@@ -73,12 +74,13 @@ describe('headless invocation', () => {
     expect(rest).toEqual([])
     expect(run?.argv).toEqual([
       '-p', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
+      '--setting-sources', '', '--system-prompt-file', join(run?.cwd as string, 'system.txt'), '--disable-slash-commands',
       '--tools', 'WebSearch', '--allowedTools', 'WebSearch',
       '--strict-mcp-config', '--permission-mode', 'dontAsk',
       '--disallowedTools', 'AskUserQuestion',
     ])
     expect(run?.stdin).toBe(searchPrompt('node release schedule'))
-    expect(run?.cwdEntries).toEqual([])
+    expect(run?.cwdEntries).toEqual(['system.txt'])
     expect(run?.cwd).not.toBe(process.cwd())
     expect(existsSync(run?.cwd as string)).toBe(false)
     const spec = FakeClaudeSubprocess.spawned[0]
@@ -87,19 +89,34 @@ describe('headless invocation', () => {
   })
 
   it('passes --model only when configured', async () => {
-    expect(searchArgv('claude', undefined)).not.toContain('--model')
-    expect(searchArgv('claude', 'sonnet').slice(-2)).toEqual(['--model', 'sonnet'])
+    expect(searchArgv('claude', undefined, 'dir')).not.toContain('--model')
+    expect(searchArgv('claude', 'sonnet', 'dir').slice(-2)).toEqual(['--model', 'sonnet'])
     await provider({ model: 'sonnet' }).search({ query: 'q' })
     expect(readRuns()[0]?.argv.slice(-2)).toEqual(['--model', 'sonnet'])
   })
 
-  it('tells Claude Code to search once, cite sources, and avoid startup routines and files', () => {
+  it('tells Claude Code to search once, cite sources, and avoid files', () => {
     const prompt = searchPrompt('a "quoted"\nquery')
     expect(prompt).toContain('WebSearch tool exactly once')
     expect(prompt).toContain('cite')
-    expect(prompt).toMatch(/session-start routine/)
     expect(prompt).toMatch(/do not read or write files or notes/i)
     expect(prompt).toContain(JSON.stringify('a "quoted"\nquery'))
+  })
+})
+
+describe('system prompt', () => {
+  it('replaces Claude Code\'s own prompt with the small DSH one and keeps user settings out', () => {
+    const argv = searchArgv('claude', undefined, 'dir')
+    expect(argv.slice(argv.indexOf('--setting-sources'), argv.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', ''])
+    expect(argv).toContain('--system-prompt-file')
+    expect(argv).not.toContain('--append-system-prompt')
+    expect(SEARCH_SYSTEM_PROMPT).toMatch(/^You are the web search helper of DSH/)
+    expect(SEARCH_SYSTEM_PROMPT.length).toBeLessThan(500)
+  })
+
+  it('writes the prompt to the run directory before Claude starts', async () => {
+    await provider().search({ query: 'q' })
+    expect(readRuns()[0]?.systemPrompt).toBe(SEARCH_SYSTEM_PROMPT)
   })
 })
 

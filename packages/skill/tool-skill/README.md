@@ -46,6 +46,8 @@ Load the plugin together with the skill registry and at least one provider. The 
 | Field | Default | Meaning |
 |---|---|---|
 | `catalogDescriptionMaxLength` | `500` | Maximum normalized description length rendered in the session catalog; minimum 3 |
+| `catalogHide` | `[]` | Skill names left out of the model-facing catalog, each an exact name or a prefix ending in `*` (`modes-*`). A hidden skill still loads through the `skill` tool by exact name and by the user's `/name`; only its catalog line, which costs tokens in every session, is dropped |
+| `catalogKeep` | `[]` | Names or `*` prefixes that stay in the catalog even when `catalogHide` matches them |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-skill) is the exhaustive source for every accepted field.
 

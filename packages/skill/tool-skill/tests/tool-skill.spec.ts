@@ -813,6 +813,25 @@ describe('dsh-tool-skill', () => {
     await expect(ctx.plugin(toolSkill, { catalogDescriptionMaxLength: 2 })).rejects.toThrow('greater than or equal to 3')
   })
 
+  it('leaves hidden skills out of the catalog but still loads them by name', async () => {
+    const home = await tempDir('tool-hide')
+    const ctx = await setup(home, { catalogHide: ['modes-*', 'exact-skill'], catalogKeep: ['modes-sparc'] })
+    for (const name of ['modes-sparc', 'modes-code', 'modes-tdd', 'exact-skill', 'exact-skill-two', 'plain-skill']) {
+      ctx.skills.register({ name, description: `${name} description.`, source: 'runtime', provider: 'runtime', content: `${name} body.` })
+    }
+
+    const prefix = await composePrefix(ctx, '/workspace')
+    const catalog = prefix.find(message => message.source?.kind === 'skill-catalog')
+    if (catalog?.source?.kind !== 'skill-catalog') throw new Error('expected a skill catalog')
+    // `modes-*` is a prefix, `exact-skill` matches only that name, and `catalogKeep` rescues `modes-sparc`.
+    expect(catalog.source.entries.map(entry => entry.name)).toEqual(['exact-skill-two', 'modes-sparc', 'plain-skill'])
+
+    const loaded = await executeToolFixture(ctx, { signal: testToolSignal, callId: ToolCallId('c1'), name: 'skill', arguments: { name: 'modes-code' } })
+    expect(loaded.isError).toBe(false)
+    if (loaded.isError) throw new Error('expected a hidden skill to load by name')
+    expect(loaded.value).toMatchObject({ name: 'modes-code', content: 'modes-code body.' })
+  })
+
   it('loads a skill for the calling agent cwd', async () => {
     const home = await tempDir('tool-load')
     const project = await tempDir('tool-project')
