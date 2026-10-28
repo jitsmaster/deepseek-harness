@@ -24,6 +24,7 @@ import {
 import { SessionCommandController, hasPromptContent } from './commands.ts'
 import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
+import { readRequestPayload } from './request-payload.ts'
 import { SessionFileReferences } from './file-references.ts'
 import { ApiSessionList } from './list.ts'
 import { buildModelCatalog, hasProviderApiKey } from './catalog.ts'
@@ -62,6 +63,8 @@ import type {
   SessionProjectionsRequest,
   SessionProjectionsValue,
   SessionProjectionValues,
+  SessionRequestPayloadRequest,
+  SessionRequestPayloadValue,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
 } from './types.ts'
@@ -496,6 +499,17 @@ export class SessionController extends TypertRemoteService {
   @Remote('attachment')
   attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue> {
     return this.commands.attachment(request)
+  }
+
+  /**
+   * Read one recorded LLM request payload without activating an Agent.
+   * @param request - Session identity and blob name from a `request/payload` event.
+   * @param signal - cancellation for the read.
+   * @returns the stored payload, or undefined when none exists.
+   */
+  @Remote('requestPayload')
+  requestPayload(request: SessionRequestPayloadRequest, signal: AbortSignal): Promise<SessionRequestPayloadValue> {
+    return readRequestPayload(this.ctx.get('sessionPersistence'), request, signal)
   }
 
   /**

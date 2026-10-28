@@ -62,6 +62,8 @@ import type {
   SessionSelectModelRequest,
   SessionSelectModelValue,
   SessionProjectionsRequest,
+  SessionRequestPayloadRequest,
+  SessionRequestPayloadValue,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
 } from '../src/types.ts'
@@ -81,6 +83,7 @@ export interface TestSessionRemote {
   fork(request: SessionForkRequest): Promise<RemoteResult<SessionForkValue>>
   prompt(request: SessionPromptRequest, signal?: AbortSignal): Promise<RemoteResult<SessionPromptValue>>
   attachment(request: SessionAttachmentRequest): Promise<RemoteResult<SessionAttachmentValue>>
+  requestPayload(request: SessionRequestPayloadRequest, signal?: AbortSignal): Promise<RemoteResult<SessionRequestPayloadValue>>
   updateQueue(request: SessionUpdateQueueRequest): Promise<RemoteResult<SessionUpdateQueueValue>>
   cancel(request: SessionCancelRequest): Promise<RemoteResult<SessionCancelValue>>
   openWorkspacePath(
@@ -395,6 +398,10 @@ export async function createSessionTestRemote(
       signal,
     ),
     attachment: request => remoteResult(() => direct.attachment(request)),
+    requestPayload: (request, signal = new AbortController().signal) => remoteResult(
+      () => direct.requestPayload(request, signal),
+      signal,
+    ),
     updateQueue: request => remoteResult(() => direct.updateQueue(request)),
     cancel: request => remoteResult(() => direct.cancel(request)),
     openWorkspacePath: (request, signal = new AbortController().signal) => remoteResult(

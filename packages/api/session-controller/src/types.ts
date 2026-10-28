@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
-import type { TextBlock } from '@deepseek-ai/dsh-llm'
+import type { RequestPayload, TextBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionMap, SessionProjectionSummaryExcluded, SessionProjectionSummaryValues } from '@deepseek-ai/dsh-session-projection/types'
 import type { Principal } from '@deepseek-ai/dsh-typert-protocol'
@@ -338,6 +338,16 @@ export interface SessionAttachmentValue {
   readonly attachment: ImageAttachmentRef
   readonly data: string
 }
+
+/** Recorded request payload read request. */
+export interface SessionRequestPayloadRequest {
+  readonly sessionId: SessionId
+  /** Blob file name from a `request/payload` event. */
+  readonly blob: string
+}
+
+/** Recorded request payload; `undefined` when none was stored. */
+export type SessionRequestPayloadValue = (RequestPayload & { readonly truncated?: true }) | undefined
 
 /** Pending queue mutation request. */
 export interface SessionUpdateQueueRequest {
