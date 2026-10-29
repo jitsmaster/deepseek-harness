@@ -30,17 +30,3 @@
   /* ConversationRoot publishes the floating composer's live height. */
   --dsh-trajectory-bottom-clearance: calc(var(--dsh-composer-height, 152px) + 16px);
 }
-
-/* Docked Inspect request panel beside the ledger. */
-.inspector {
-  display: flex;
-  flex: 0 0 min(440px, 45%);
-  min-width: 0;
-  min-height: 0;
-  padding-bottom: var(--dsh-trajectory-bottom-clearance);
-}
-
-.inspector > * {
-  flex: 1;
-  min-width: 0;
-}

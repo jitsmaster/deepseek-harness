@@ -197,13 +197,10 @@ export const zh = {
   'layout.toolsRemovedCount': '移除 {count} 个',
   'layout.systemPromptAndToolsUpdated': '系统提示词和工具已更新',
   'layout.compactionInterrupted': '上下文压缩在完成前被中断。',
-  'inspect.menu': '检查请求',
-  'inspect.title': '请求负载',
+  'inspect.breakdown': '请求构成',
   'inspect.loading': '正在加载请求…',
   'inspect.notCaptured': '未捕获负载',
   'inspect.truncated': '负载已截断以符合大小限制',
-  'inspect.copyJson': '复制为 JSON',
-  'inspect.close': '关闭',
   'inspect.total': '合计',
   'inspect.preface': '转录约定',
   'inspect.system': '系统提示词',
@@ -211,7 +208,6 @@ export const zh = {
   'inspect.transcript': '对话记录',
   'inspect.tokens': '约 {value} 个令牌',
   'inspect.bytes': '{value} 字节',
-  'inspect.showAll': '显示全部',
 } as const
 
 /** The trajectory dictionary key union. */
@@ -422,13 +418,10 @@ export const en: Record<TrajectoryKey, string> = {
   'layout.toolsRemovedCount': '{count} removed',
   'layout.systemPromptAndToolsUpdated': 'System Prompt and Tools Updated',
   'layout.compactionInterrupted': 'Compaction was interrupted before completion.',
-  'inspect.menu': 'Inspect request',
-  'inspect.title': 'Request payload',
+  'inspect.breakdown': 'Request breakdown',
   'inspect.loading': 'Loading request…',
   'inspect.notCaptured': 'Payload not captured',
   'inspect.truncated': 'Payload truncated to fit its size limit',
-  'inspect.copyJson': 'Copy as JSON',
-  'inspect.close': 'Close',
   'inspect.total': 'Total',
   'inspect.preface': 'Transcript convention',
   'inspect.system': 'System prompt',
@@ -436,7 +429,6 @@ export const en: Record<TrajectoryKey, string> = {
   'inspect.transcript': 'Transcript',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} bytes',
-  'inspect.showAll': 'Show all',
 }
 
 /** Japanese copy, checked against the English keys. */
@@ -633,13 +625,10 @@ export const ja = {
   'layout.toolsRemovedCount': '{count} 件削除',
   'layout.systemPromptAndToolsUpdated': 'システムプロンプトとツールを更新',
   'layout.compactionInterrupted': '圧縮は完了前に中断されました。',
-  'inspect.menu': 'リクエストを検査',
-  'inspect.title': 'リクエストのペイロード',
+  'inspect.breakdown': 'リクエストの内訳',
   'inspect.loading': 'リクエストを読み込み中…',
   'inspect.notCaptured': 'ペイロードは記録されていません',
   'inspect.truncated': 'ペイロードはサイズ上限に合わせて切り詰められました',
-  'inspect.copyJson': 'JSON としてコピー',
-  'inspect.close': '閉じる',
   'inspect.total': '合計',
   'inspect.preface': 'トランスクリプト規約',
   'inspect.system': 'システムプロンプト',
@@ -647,7 +636,6 @@ export const ja = {
   'inspect.transcript': 'トランスクリプト',
   'inspect.tokens': '約 {value} トークン',
   'inspect.bytes': '{value} バイト',
-  'inspect.showAll': 'すべて表示',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -844,13 +832,10 @@ export const es = {
   'layout.toolsRemovedCount': '{count} eliminado',
   'layout.systemPromptAndToolsUpdated': 'Aviso del sistema y herramientas actualizadas',
   'layout.compactionInterrupted': 'La compactación se interrumpió antes de finalizar.',
-  'inspect.menu': 'Inspeccionar solicitud',
-  'inspect.title': 'Carga de la solicitud',
+  'inspect.breakdown': 'Desglose de la solicitud',
   'inspect.loading': 'Cargando solicitud…',
   'inspect.notCaptured': 'Carga no capturada',
   'inspect.truncated': 'Carga truncada para ajustarse al límite de tamaño',
-  'inspect.copyJson': 'Copiar como JSON',
-  'inspect.close': 'Cerrar',
   'inspect.total': 'Total',
   'inspect.preface': 'Convención de transcripción',
   'inspect.system': 'Prompt del sistema',
@@ -858,7 +843,6 @@ export const es = {
   'inspect.transcript': 'Transcripción',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} bytes',
-  'inspect.showAll': 'Mostrar todo',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -1055,13 +1039,10 @@ export const fr = {
   'layout.toolsRemovedCount': '{count} supprimé',
   'layout.systemPromptAndToolsUpdated': 'Invite système et outils mis à jour',
   'layout.compactionInterrupted': 'Le compactage a été interrompu avant la fin.',
-  'inspect.menu': 'Inspecter la requête',
-  'inspect.title': 'Charge utile de la requête',
+  'inspect.breakdown': 'Détail de la requête',
   'inspect.loading': 'Chargement de la requête…',
   'inspect.notCaptured': 'Charge utile non capturée',
   'inspect.truncated': 'Charge utile tronquée pour respecter la limite de taille',
-  'inspect.copyJson': 'Copier en JSON',
-  'inspect.close': 'Fermer',
   'inspect.total': 'Total',
   'inspect.preface': 'Convention de transcription',
   'inspect.system': 'Prompt système',
@@ -1069,7 +1050,6 @@ export const fr = {
   'inspect.transcript': 'Transcription',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} octets',
-  'inspect.showAll': 'Tout afficher',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -1266,13 +1246,10 @@ export const de = {
   'layout.toolsRemovedCount': '{count} entfernt',
   'layout.systemPromptAndToolsUpdated': 'Systemaufforderung und Tools aktualisiert',
   'layout.compactionInterrupted': 'Die Verdichtung wurde vor der Fertigstellung unterbrochen.',
-  'inspect.menu': 'Anfrage untersuchen',
-  'inspect.title': 'Anfrage-Nutzdaten',
+  'inspect.breakdown': 'Aufschlüsselung der Anfrage',
   'inspect.loading': 'Anfrage wird geladen…',
   'inspect.notCaptured': 'Nutzdaten nicht erfasst',
   'inspect.truncated': 'Nutzdaten wegen der Größenbegrenzung gekürzt',
-  'inspect.copyJson': 'Als JSON kopieren',
-  'inspect.close': 'Schließen',
   'inspect.total': 'Gesamt',
   'inspect.preface': 'Transkript-Konvention',
   'inspect.system': 'Systemprompt',
@@ -1280,7 +1257,6 @@ export const de = {
   'inspect.transcript': 'Transkript',
   'inspect.tokens': '~{value} Tokens',
   'inspect.bytes': '{value} Byte',
-  'inspect.showAll': 'Alles anzeigen',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -1477,13 +1453,10 @@ export const ru = {
   'layout.toolsRemovedCount': '{count} удален.',
   'layout.systemPromptAndToolsUpdated': 'Системная подсказка и инструменты обновлены',
   'layout.compactionInterrupted': 'Уплотнение было прервано до завершения.',
-  'inspect.menu': 'Проверить запрос',
-  'inspect.title': 'Данные запроса',
+  'inspect.breakdown': 'Состав запроса',
   'inspect.loading': 'Загрузка запроса…',
   'inspect.notCaptured': 'Данные не записаны',
   'inspect.truncated': 'Данные усечены по лимиту размера',
-  'inspect.copyJson': 'Копировать как JSON',
-  'inspect.close': 'Закрыть',
   'inspect.total': 'Всего',
   'inspect.preface': 'Соглашение о транскрипте',
   'inspect.system': 'Системный промпт',
@@ -1491,7 +1464,6 @@ export const ru = {
   'inspect.transcript': 'Транскрипт',
   'inspect.tokens': '~{value} токенов',
   'inspect.bytes': '{value} байт',
-  'inspect.showAll': 'Показать всё',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -1688,13 +1660,10 @@ export const pt = {
   'layout.toolsRemovedCount': '{count} removido',
   'layout.systemPromptAndToolsUpdated': 'Prompt do sistema e ferramentas atualizadas',
   'layout.compactionInterrupted': 'A compactação foi interrompida antes da conclusão.',
-  'inspect.menu': 'Inspecionar solicitação',
-  'inspect.title': 'Carga da solicitação',
+  'inspect.breakdown': 'Detalhamento da solicitação',
   'inspect.loading': 'Carregando solicitação…',
   'inspect.notCaptured': 'Carga não capturada',
   'inspect.truncated': 'Carga truncada para caber no limite de tamanho',
-  'inspect.copyJson': 'Copiar como JSON',
-  'inspect.close': 'Fechar',
   'inspect.total': 'Total',
   'inspect.preface': 'Convenção de transcrição',
   'inspect.system': 'Prompt do sistema',
@@ -1702,5 +1671,4 @@ export const pt = {
   'inspect.transcript': 'Transcrição',
   'inspect.tokens': '~{value} tokens',
   'inspect.bytes': '{value} bytes',
-  'inspect.showAll': 'Mostrar tudo',
 } satisfies Record<keyof typeof en, string>

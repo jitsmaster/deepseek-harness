@@ -1,0 +1,38 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heading {
+  margin: 0;
+  font: var(--dsw-font-xxs-12);
+  font-weight: 600;
+}
+
+.note {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.total {
+  margin: 0;
+  font-weight: 600;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.row dt,
+.row dd {
+  margin: 0;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RequestPayload } from '@deepseek-ai/dsh-llm'
-import { composeRequest } from '../src/client/request-composition.ts'
+import { applyUsage, composeRequest, measureRequest } from '../src/client/request-composition.ts'
 
 const LT = String.fromCharCode(60)
 const PREFACE = 'The user message you receive is a transcript of the conversation so far, one element per content block; continue it as the assistant.'
@@ -49,26 +49,38 @@ describe('composeRequest', () => {
 
   it('splits the transcript preface from the system prompt', () => {
     const result = composeRequest(payload())
-    expect(category(result, 'preface').items[0]?.text).toBe(PREFACE)
-    expect(category(result, 'system').items[0]?.text).toBe('You are DSH.')
+    expect(category(result, 'preface').items[0]?.bytes).toBe(bytes(PREFACE))
+    expect(category(result, 'system').items[0]?.bytes).toBe(bytes('You are DSH.'))
   })
 
   it('keeps the whole system text as system when there is no preface', () => {
     const result = composeRequest(payload({ system: 'plain prompt' }))
     expect(category(result, 'preface').items).toEqual([])
-    expect(category(result, 'system').items[0]?.text).toBe('plain prompt')
+    expect(category(result, 'system').items[0]?.bytes).toBe(bytes('plain prompt'))
   })
 
   it('makes one tool item per schema', () => {
     const tools = category(composeRequest(payload()), 'tools')
     expect(tools.items.map(item => item.label)).toEqual(['mcp__dsh__read', 'mcp__dsh__write'])
-    expect(tools.items[0]?.text).toContain('Read a file')
+    expect(tools.items[0]?.bytes).toBeGreaterThan(bytes('Read a file'))
   })
 
   it('splits stdin into one item per transcript element, labelled by role', () => {
     const transcript = category(composeRequest(payload()), 'transcript')
     expect(transcript.items.map(item => item.label)).toEqual(['user', 'assistant', 'tool_result: read'])
-    expect(transcript.items[0]?.text).toBe(element('user', '', 'hello'))
+    expect(transcript.items[0]?.bytes).toBe(bytes(element('user', '', 'hello')))
+  })
+
+  it('carries sizes only, never the item text', () => {
+    for (const entry of composeRequest(payload()).categories) {
+      for (const item of entry.items) expect(item).not.toHaveProperty('text')
+    }
+  })
+
+  it('counts UTF-8 bytes of multi-byte text, surrogate pairs and lone surrogates exactly', () => {
+    const text = `é日本語😀${String.fromCharCode(0xd800)}x`
+    const result = composeRequest(payload({ system: text }))
+    expect(category(result, 'system').items[0]?.bytes).toBe(bytes(text))
   })
 
   it('sums items to their category and categories to the total', () => {
@@ -104,7 +116,7 @@ describe('composeRequest', () => {
   it('falls back to one raw item when stdin is not the stream-json envelope', () => {
     const transcript = category(composeRequest(payload({ stdin: 'not json' })), 'transcript')
     expect(transcript.items).toHaveLength(1)
-    expect(transcript.items[0]).toMatchObject({ label: 'stdin', text: 'not json', bytes: bytes('not json') })
+    expect(transcript.items[0]).toMatchObject({ label: 'stdin', bytes: bytes('not json') })
   })
 
   it('uses the original sizes for a truncated payload', () => {
@@ -137,5 +149,32 @@ describe('composeRequest', () => {
     const empty = payload({ system: '', tools: [], stdin: '' })
     expect(composeRequest(empty).totalBytes).toBe(0)
     expect(composeRequest(empty, { input: 1, cacheRead: 0, cacheWrite: 0 }).totalTokens).toBe(1)
+  })
+})
+
+describe('measureRequest and applyUsage', () => {
+  it('measures sizes without tokens', () => {
+    const measured = measureRequest(payload())
+    expect(measured.totalTokens).toBeUndefined()
+    expect(measured.totalBytes).toBeGreaterThan(0)
+  })
+
+  it('applying usage to a measurement equals composing with that usage', () => {
+    const usage = { input: 100, cacheRead: 2000, cacheWrite: 53 }
+    expect(applyUsage(measureRequest(payload()), usage)).toEqual(composeRequest(payload(), usage))
+  })
+
+  it('returns the measurement unchanged when no usage was reported', () => {
+    const measured = measureRequest(payload())
+    expect(applyUsage(measured)).toBe(measured)
+  })
+
+  it('does not mutate the measurement, so new usage can be applied later', () => {
+    const measured = measureRequest(payload())
+    const first = applyUsage(measured, { input: 10, cacheRead: 0, cacheWrite: 0 })
+    const second = applyUsage(measured, { input: 500, cacheRead: 0, cacheWrite: 0 })
+    expect(first.totalTokens).toBe(10)
+    expect(second.totalTokens).toBe(500)
+    expect(measured.totalTokens).toBeUndefined()
   })
 })

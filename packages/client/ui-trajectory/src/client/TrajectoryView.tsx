@@ -13,8 +13,7 @@ import {
   type TrajectoryRequestNumber,
   type TrajectoryUsage,
 } from './TrajectoryTable.tsx'
-import { RequestInspectorPanel, type RequestInspectorState } from './RequestInspectorPanel.tsx'
-import type { ComposableRequestPayload, ReportedUsage } from './request-composition.ts'
+import type { ReadRequestPayload } from './RequestBreakdown.tsx'
 import { TrajectoryToolbar } from './TrajectoryToolbar.tsx'
 import { TrajectoryTimeline } from './TrajectoryTimeline.tsx'
 import {
@@ -85,21 +84,8 @@ export interface TrajectoryViewInjected {
   loadOlder: () => Promise<boolean>
   loadImage: MessageImageLoader
   setActualDuration: (actualDuration: boolean) => void
-  /** Read one recorded request payload by sidecar blob name; absent hides Inspect request. */
-  readRequestPayload?: (blob: string) => Promise<
-    | { readonly ok: true; readonly value: ComposableRequestPayload | undefined }
-    | { readonly ok: false }
-  >
-}
-
-type InspectedRequest = {
-  readonly request: TrajectoryRequestNumber
-  readonly state: RequestInspectorState
-}
-
-function reportedUsage(usage: TrajectoryUsage | undefined): ReportedUsage | undefined {
-  if (usage?.input === undefined) return undefined
-  return { input: usage.input, cacheRead: usage.cacheRead ?? 0, cacheWrite: usage.cacheWrite ?? 0 }
+  /** Read one recorded request payload by sidecar blob name; absent hides the request breakdown. */
+  readRequestPayload?: ReadRequestPayload
 }
 
 interface UsageLike {
@@ -522,40 +508,11 @@ export function TrajectoryView({
     })
   }
 
-  const [inspected, setInspected] = useState<InspectedRequest | null>(null)
-  const inspectToken = useRef(0)
-  const inspectRequest = useCallback((request: TrajectoryRequestNumber) => {
-    if (readRequestPayload === undefined) return
-    const token = ++inspectToken.current
-    const settle = (state: RequestInspectorState) => {
-      if (inspectToken.current === token) setInspected({ request, state })
-    }
-    if (request.payloadBlob === undefined) {
-      settle({ kind: 'missing' })
-      return
-    }
-    setInspected({ request, state: { kind: 'loading' } })
-    readRequestPayload(request.payloadBlob).then(
-      (result) => {
-        settle(result.ok && result.value !== undefined
-          ? { kind: 'ready', payload: result.value }
-          : { kind: 'missing' })
-      },
-      () => { settle({ kind: 'missing' }) },
-    )
-  }, [readRequestPayload])
-  const closeInspector = useCallback(() => {
-    inspectToken.current++
-    setInspected(null)
-  }, [])
-
   const loadEarlierHistory = useCallback(async () => {
     if (!hasResidentOlderHistory && !await loadOlder()) return false
     setHistoryNodeLimit(limit => limit + HISTORY_PAGE_NODES)
     return true
   }, [hasResidentOlderHistory, loadOlder])
-
-  const inspectedUsage = inspected === null ? undefined : reportedUsage(inspected.request.usage)
 
   return (
     <div className={css.root} data-conversation-composer-overlay="">
@@ -621,19 +578,8 @@ export function TrajectoryView({
           onToggleAssistant={toggleAssistant}
           inspectCallId={inspectCallId}
           onInspectApplied={completeViewRequest}
-          onInspectRequest={readRequestPayload === undefined ? undefined : inspectRequest}
+          readRequestPayload={readRequestPayload}
         />
-        {inspected !== null && (
-          <div className={css.inspector}>
-            <RequestInspectorPanel
-              state={inspected.state}
-              {...(inspectedUsage === undefined ? {} : { usage: inspectedUsage })}
-              {...(inspected.request.model === undefined ? {} : { model: inspected.request.model })}
-              t={t}
-              onClose={closeInspector}
-            />
-          </div>
-        )}
       </div>
     </div>
   )

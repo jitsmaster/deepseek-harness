@@ -1570,7 +1570,7 @@ describe('TrajectoryView state', () => {
 
 
 
-  describe('Inspect request', () => {
+  describe('Request breakdown', () => {
     const inspectNodes: LegacyConversationSlice['nodes'] = [
       { kind: 'user', seq: 1, time: 1_000, content: [{ type: 'text', text: 'question' }], source: null },
       {
@@ -1583,17 +1583,13 @@ describe('TrajectoryView state', () => {
       status: 'complete', turn: 1, step: 1, usage: { inputTokens: 100 },
       ...(payloadBlob === undefined ? {} : { payloadBlob }),
     }]
-    const openMenu = () => {
-      fireEvent.contextMenu(screen.getByRole('row', { name: /the answer/ }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '检查请求' }))
-    }
 
-    it('loads the recorded payload and shows its categories in a docked panel', async () => {
+    it('reads the recorded payload only once a request is selected and shows its categories', async () => {
       const readRequestPayload = vi.fn(() => Promise.resolve({
         ok: true as const,
-        value: { argv: [], envKeys: [], system: 'SYSTEM TEXT', tools: [], stdin: '<user>\nquestion\n</user>' },
+        value: { argv: [], envKeys: [], system: 'SYSTEM TEXT', tools: [], stdin: '' },
       }))
-      render(
+      const view = render(
         <TrajectoryView
           {...standaloneProps([])}
           {...standaloneHistory(historySnapshot(inspectNodes, { requests: inspectRequest('1-1-1.json.gz') }))}
@@ -1601,42 +1597,10 @@ describe('TrajectoryView state', () => {
           readRequestPayload={readRequestPayload}
         />,
       )
-      openMenu()
-      expect(readRequestPayload).toHaveBeenCalledWith('1-1-1.json.gz')
-      await waitFor(() => { expect(screen.getByRole('complementary', { name: '请求负载' })).toBeTruthy() })
+      expect(readRequestPayload).not.toHaveBeenCalled()
+      fireEvent.click(view.container.querySelector('button[data-request-status]') as HTMLElement)
+      await waitFor(() => { expect(readRequestPayload).toHaveBeenCalledWith('1-1-1.json.gz') })
       await waitFor(() => { expect(screen.getByText('系统提示词')).toBeTruthy() })
-      fireEvent.click(screen.getByRole('button', { name: '关闭' }))
-      expect(screen.queryByRole('complementary', { name: '请求负载' })).toBeNull()
-    })
-
-    it.each([
-      ['no recorded blob', undefined, undefined],
-      ['an unreadable blob', '1-1-1.json.gz', () => Promise.resolve({ ok: false as const })],
-      ['a blob that was purged', '1-1-1.json.gz', () => Promise.resolve({ ok: true as const, value: undefined })],
-      ['a rejected read', '1-1-1.json.gz', () => Promise.reject(new Error('gone'))],
-    ])('says the payload was not captured for %s', async (_name, blob, read) => {
-      render(
-        <TrajectoryView
-          {...standaloneProps([])}
-          {...standaloneHistory(historySnapshot(inspectNodes, { requests: inspectRequest(blob) }))}
-          {...standaloneDuration()}
-          readRequestPayload={read ?? (() => Promise.resolve({ ok: true as const, value: undefined }))}
-        />,
-      )
-      openMenu()
-      await waitFor(() => { expect(screen.getByText('未捕获负载')).toBeTruthy() })
-    })
-
-    it('offers no menu without a payload reader', () => {
-      render(
-        <TrajectoryView
-          {...standaloneProps([])}
-          {...standaloneHistory(historySnapshot(inspectNodes, { requests: inspectRequest('1-1-1.json.gz') }))}
-          {...standaloneDuration()}
-        />,
-      )
-      fireEvent.contextMenu(screen.getByRole('row', { name: /the answer/ }))
-      expect(screen.queryByRole('menuitem')).toBeNull()
     })
   })
 

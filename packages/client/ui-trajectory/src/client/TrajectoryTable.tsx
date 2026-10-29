@@ -18,7 +18,6 @@ import {
   IconUserOutlineRegular,
   JsonTree,
   MarkdownText,
-  Menu,
   StateDot,
   Tooltip,
   writeClipboard,
@@ -42,6 +41,7 @@ import { trajectoryPreviewText } from './trajectory-preview.ts'
 import type { TrajectoryKey, TrajectoryTranslate } from './locales.ts'
 import { COMPACTION_INTERRUPTED_ERROR } from './copy-codes.ts'
 import { codeProgram, PTC_TOOL_NAME, type CodeProgram } from './code-program.ts'
+import { RequestBreakdown, type ReadRequestPayload } from './RequestBreakdown.tsx'
 import css from './TrajectoryTable.module.css'
 
 const BOTTOM_FOLLOW_THRESHOLD_PX = 2
@@ -198,13 +198,6 @@ interface ToolCallTextParts {
   program: boolean
   name: string
   args?: string
-}
-
-/** Open right-click menu on an assistant row, positioned in viewport coordinates. */
-interface InspectMenuState {
-  x: number
-  y: number
-  request: TrajectoryRequestNumber
 }
 
 interface SelectedRequest {
@@ -446,8 +439,8 @@ export interface TrajectoryTableProps {
   inspectCallId?: string | null
   /** Acknowledge a consumed (or unresolvable) inspect request. */
   onInspectApplied?: (() => void) | undefined
-  /** Open the request payload inspector for one assistant call; absent hides the row menu. */
-  onInspectRequest?: ((request: TrajectoryRequestNumber) => void) | undefined
+  /** Read a recorded request payload by blob name; absent hides the summary's request breakdown. */
+  readRequestPayload?: ReadRequestPayload | undefined
 }
 
 /** Request-inspector fields shared by ordinary generation and compaction. */
@@ -2122,9 +2115,8 @@ export function TrajectoryTable({
   onToggleAssistant,
   inspectCallId = null,
   onInspectApplied,
-  onInspectRequest,
+  readRequestPayload,
 }: TrajectoryTableProps) {
-  const [inspectMenu, setInspectMenu] = useState<InspectMenuState | null>(null)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [selectedRequest, setSelectedRequest] = useState<SelectedRequest | null>(null)
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
@@ -2611,40 +2603,12 @@ export function TrajectoryTable({
     virtualizationEnabled,
   ])
 
-  const closeInspectMenu = useCallback(() => { setInspectMenu(null) }, [])
-  const inspectMenuAnchor = useCallback((): DOMRect | null => {
-    if (inspectMenu === null) return null
-    const { x, y } = inspectMenu
-    return {
-      x, y, left: x, top: y, right: x, bottom: y, width: 0, height: 0, toJSON: () => ({}),
-    }
-  }, [inspectMenu])
-  const inspectMenuItems = useMemo(
-    () => [{ id: 'inspect', label: t('inspect.menu') }],
-    [t],
-  )
-
   const olderBusy = olderHistoryLoading || olderLoading
   const showInitialLoading = historyLoading || !tableScrollReady
   const historyRowOffset = hasOlderRecords ? 1 : 0
 
   return (
     <div ref={rootRef} className={css.split} style={splitStyle}>
-      <Menu
-        open={inspectMenu !== null}
-        anchor={null}
-        portal
-        autoFocus
-        compact
-        items={inspectMenuItems}
-        getAnchorRect={inspectMenuAnchor}
-        onClose={closeInspectMenu}
-        onSelect={() => {
-          const request = inspectMenu?.request
-          setInspectMenu(null)
-          if (request !== undefined) onInspectRequest?.(request)
-        }}
-      />
       <div
         ref={tablePaneRef}
         className={css.tablePane}
@@ -2829,16 +2793,6 @@ export function TrajectoryTable({
                         event.preventDefault()
                         onToggleTurn(record.turn)
                       }}
-                      onContextMenu={onInspectRequest === undefined
-                        || record.cell.kind !== 'message'
-                        || isCollapsedSummary
-                        || requestInfo === undefined
-                        || requestInfo.purpose === 'compaction'
-                        ? undefined
-                        : (event) => {
-                          event.preventDefault()
-                          setInspectMenu({ x: event.clientX, y: event.clientY, request: requestInfo })
-                        }}
                       onKeyDown={(event) => {
                         if (isRequestOnly || singleToolNotice) return
                         if (event.key !== 'Enter' && event.key !== ' ') return
@@ -3282,6 +3236,23 @@ export function TrajectoryTable({
                   <OverviewSection label={t('tab.usage')} onOpen={() => { activateTab('usage') }}>
                     <UsageRows usage={selectedRequestUsage} t={t} />
                   </OverviewSection>
+                  {selectedRequestInfo.purpose !== 'compaction' && (
+                    <RequestBreakdown
+                      key={requestIdentity(selectedRequestInfo)}
+                      {...selectedRequestInfo.payloadBlob === undefined
+                        ? {}
+                        : { blob: selectedRequestInfo.payloadBlob }}
+                      {...readRequestPayload === undefined ? {} : { read: readRequestPayload }}
+                      {...selectedRequestUsage?.input === undefined ? {} : {
+                        usage: {
+                          input: selectedRequestUsage.input,
+                          cacheRead: selectedRequestUsage.cacheRead ?? 0,
+                          cacheWrite: selectedRequestUsage.cacheWrite ?? 0,
+                        },
+                      }}
+                      t={t}
+                    />
+                  )}
                   <OverviewSection label={t('tab.timing')} onOpen={() => { activateTab('timing') }}>
                     <RequestTiming
                       assistant={selectedRequestAssistant}

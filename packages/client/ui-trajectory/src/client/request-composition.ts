@@ -1,6 +1,6 @@
 /**
  * Pure breakdown of one recorded LLM request payload into categories and items
- * for the Inspect request panel. Bytes are exact; token counts are estimates
+ * for the Summary tab request breakdown. Bytes are exact; token counts are estimates
  * that scale each item's share of the bytes to the usage the provider reported.
  */
 
@@ -24,7 +24,6 @@ export type ComposableRequestPayload = RequestPayload & {
 
 export interface ComposedItem {
   readonly label: string
-  readonly text: string
   readonly bytes: number
   /** Estimated tokens; absent when no usage was reported. */
   readonly tokens?: number
@@ -52,20 +51,35 @@ const PREFACE_START = 'The user message you receive is a transcript of the conve
 /** Opening tag of a transcript element: `<user>`, `<assistant>`, `<developer>`, `<tool_result ...>`. */
 const ELEMENT_OPEN = /^\x3c(user|assistant|developer|tool_result)\b([^>]*)>/u
 const NAME_ATTRIBUTE = /\bname="([^"]*)"/u
-const encoder = new TextEncoder()
-
+/** UTF-8 byte length without allocating an encoded copy; lone surrogates count as U+FFFD (3 bytes). */
 function byteLength(text: string): number {
-  return encoder.encode(text).length
+  let bytes = 0
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length
+      && (text.charCodeAt(index + 1) & 0xfc00) === 0xdc00) {
+      bytes += 4
+      index++
+    } else bytes += 3
+  }
+  return bytes
 }
 
-function item(label: string, text: string, bytes = byteLength(text)): ComposedItem {
-  return { label, text, bytes }
+function item(label: string, text: string): ComposedItem {
+  return { label, bytes: byteLength(text) }
+}
+
+/** An item whose size is already known, e.g. the original size of a truncated part. */
+function sizedItem(label: string, bytes: number): ComposedItem {
+  return { label, bytes }
 }
 
 /** Split the system file into the transcript convention and the DSH system prompt. */
 function systemItems(payload: ComposableRequestPayload): { preface: ComposedItem[]; system: ComposedItem[] } {
   if (payload.truncated === true && payload.systemBytes !== undefined) {
-    return { preface: [], system: [item('System prompt', payload.system, payload.systemBytes)] }
+    return { preface: [], system: [sizedItem('System prompt', payload.systemBytes)] }
   }
   const text = payload.system
   if (text.length === 0) return { preface: [], system: [] }
@@ -91,7 +105,7 @@ function labelOf(text: string): string {
 /** One item per text block of the stream-json user message; a raw item when stdin has another shape. */
 function transcriptItems(payload: ComposableRequestPayload): ComposedItem[] {
   if (payload.truncated === true && payload.stdinBytes !== undefined) {
-    return [item('stdin', payload.stdin, payload.stdinBytes)]
+    return [sizedItem('stdin', payload.stdinBytes)]
   }
   if (payload.stdin.length === 0) return []
   try {
@@ -130,19 +144,19 @@ function shares(weights: readonly number[], total: number): number[] {
 }
 
 /**
- * Break a recorded request payload into the preface, system prompt, tool schemas
- * and transcript elements.
+ * Measure a recorded request payload: preface, system prompt, tool schemas and
+ * transcript elements, as byte sizes only (no item text is kept).
  * @param payload - the stored payload (possibly truncated).
- * @param reported - provider-reported usage; when given, items carry token estimates summing to its total.
- * @returns categories in display order with byte sizes and optional token estimates.
+ * @returns categories in display order with byte sizes and no token estimates.
  */
-export function composeRequest(payload: ComposableRequestPayload, reported?: ReportedUsage): ComposedRequest {
+export function measureRequest(payload: ComposableRequestPayload): ComposedRequest {
   const { preface, system } = systemItems(payload)
   const tools = payload.truncated === true && payload.toolsBytes !== undefined && payload.tools.length === 0
-    ? [item('Tools', '', payload.toolsBytes)]
+    ? [sizedItem('Tools', payload.toolsBytes)]
+    // Compact JSON approximates the schema size the provider receives; only truncated payloads record it exactly.
     : payload.tools.map(tool => item(
       tool.name,
-      JSON.stringify({ description: tool.description, inputSchema: tool.inputSchema }, null, 2),
+      JSON.stringify({ description: tool.description, inputSchema: tool.inputSchema }),
     ))
   const groups: readonly [ComposedCategoryId, ComposedItem[]][] = [
     ['preface', preface],
@@ -150,23 +164,44 @@ export function composeRequest(payload: ComposableRequestPayload, reported?: Rep
     ['tools', tools],
     ['transcript', transcriptItems(payload)],
   ]
-  const totalTokens = reported === undefined ? undefined : reported.input + reported.cacheRead + reported.cacheWrite
-  const flat = groups.flatMap(([, items]) => items)
-  const tokenShares = totalTokens === undefined ? undefined : shares(flat.map(entry => entry.bytes), totalTokens)
-  let cursor = 0
-  const categories = groups.map(([id, items]): ComposedCategory => {
-    const withTokens = tokenShares === undefined
-      ? items
-      : items.map((entry): ComposedItem => ({ ...entry, tokens: tokenShares[cursor++] as number }))
-    const bytes = withTokens.reduce((sum, entry) => sum + entry.bytes, 0)
-    return tokenShares === undefined
-      ? { id, bytes, items: withTokens }
-      : { id, bytes, tokens: withTokens.reduce((sum, entry) => sum + (entry.tokens ?? 0), 0), items: withTokens }
-  })
+  const categories = groups.map(([id, items]): ComposedCategory => ({
+    id,
+    bytes: items.reduce((sum, entry) => sum + entry.bytes, 0),
+    items,
+  }))
   return {
     categories,
     totalBytes: categories.reduce((sum, entry) => sum + entry.bytes, 0),
-    ...totalTokens === undefined ? {} : { totalTokens },
     ...payload.truncated === true ? { truncated: true as const } : {},
   }
+}
+
+/**
+ * Attach token estimates to a measurement. Does not mutate measured.
+ * @param measured - result of {@link measureRequest}.
+ * @param reported - provider-reported usage; when given, items carry token estimates summing to its total.
+ * @returns measured itself when no usage was reported, otherwise a copy with tokens.
+ */
+export function applyUsage(measured: ComposedRequest, reported?: ReportedUsage): ComposedRequest {
+  if (reported === undefined) return measured
+  const totalTokens = reported.input + reported.cacheRead + reported.cacheWrite
+  const flat = measured.categories.flatMap(category => category.items)
+  const tokenShares = shares(flat.map(entry => entry.bytes), totalTokens)
+  let cursor = 0
+  const categories = measured.categories.map((category): ComposedCategory => {
+    const items = category.items.map((entry): ComposedItem => ({ ...entry, tokens: tokenShares[cursor++] as number }))
+    return { id: category.id, bytes: category.bytes, tokens: items.reduce((sum, entry) => sum + (entry.tokens ?? 0), 0), items }
+  })
+  return { ...measured, categories, totalTokens }
+}
+
+/**
+ * Break a recorded request payload into the preface, system prompt, tool schemas
+ * and transcript elements.
+ * @param payload - the stored payload (possibly truncated).
+ * @param reported - provider-reported usage; when given, items carry token estimates summing to its total.
+ * @returns categories in display order with byte sizes and optional token estimates.
+ */
+export function composeRequest(payload: ComposableRequestPayload, reported?: ReportedUsage): ComposedRequest {
+  return applyUsage(measureRequest(payload), reported)
 }
