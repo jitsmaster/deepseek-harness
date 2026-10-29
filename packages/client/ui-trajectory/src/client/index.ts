@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import { createDetailTabSource } from './detail-tab-slot.ts'
 import { createTrajectoryDurationStore } from './duration-store.ts'
 import { createTrajectoryStringWrappingStore } from './string-wrapping-store.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh } from './locales.ts'
@@ -30,6 +31,8 @@ import { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.ts
 
 export type { TrajectoryKey } from './locales.ts'
 export type {
+  TrajectoryDetailTabOwnerProps,
+  TrajectoryDetailTabRecord,
   TrajectoryContribution,
   TrajectoryConversationViewNode,
   TrajectoryRequestHeaderState,
@@ -66,6 +69,7 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   const duration = createTrajectoryDurationStore()
   const stringWrapping = createTrajectoryStringWrappingStore()
+  const detailTabs = createDetailTabSource(ctx.slots)
   registerTrajectoryMessageDefinitions(ctx)
   registerTrajectoryRequestHeaderDefinition(ctx)
   registerTrajectoryAssistantDefinition(ctx)
@@ -82,7 +86,10 @@ export function apply(ctx: Context): void {
     order: 10,
     locale: NS,
     label: () => t('view.trajectory'),
-    children: { 'conversation.trajectory.images': { kind: 'single', scope: 'session' } },
+    children: {
+      'conversation.trajectory.images': { kind: 'single', scope: 'session' },
+      'conversation.trajectory.detail.tabs': { kind: 'list', scope: 'session' },
+    },
     inject: (sessionId: SessionId): TrajectoryViewInjected => {
       const session = ctx.sessions.binding(sessionId)?.session
       if (session === undefined) {
@@ -106,6 +113,7 @@ export function apply(ctx: Context): void {
         ),
         setActualDuration: (value) => { duration.set(value) },
         readRequestPayload: blob => session.readRequestPayload(blob),
+        detailTabs,
       }
     },
   }, TrajectoryView))

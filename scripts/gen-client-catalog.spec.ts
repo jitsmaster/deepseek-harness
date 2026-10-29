@@ -120,6 +120,30 @@ describe('client slot projection', () => {
     expect(entry?.registerOptions.map(option => option.name)).toEqual(['id', 'order', 'label'])
   })
 
+  it('appends the slot-declared register options after the cardinality options', () => {
+    const [entry] = resolveSlotEntries(
+      [declaration({
+        kind: 'list',
+        registerOptions: [{
+          name: 'when',
+          optional: true,
+          type: '(record: Demo) => boolean',
+          jsDoc: '/** Show the entry only while this returns true. */',
+        }],
+      })],
+      [],
+      OWNER_TYPES,
+      kits,
+    )
+    expect(entry?.registerOptions.map(option => option.name)).toEqual(['id', 'order', 'label', 'when'])
+    expect(entry?.registerOptions.at(-1)).toEqual({
+      name: 'when',
+      requirement: 'optional',
+      type: '(record: Demo) => boolean',
+      doc: 'Show the entry only while this returns true.',
+    })
+  })
+
   it('names the entry whose mount makes a child seat exist', () => {
     const parent = registration({ key: 'demo.parent', children: ['demo.seat'] })
     const entries = resolveSlotEntries(

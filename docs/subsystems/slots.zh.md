@@ -113,6 +113,8 @@ Renderer 还会根据声明的 store 创建 `useStore`，并根据声明的 loca
 
 当每个 occupant 都需要同一种能力时，slot owner 可以在 child 声明里放置 `inject` face。普通成员会原样交给所有 occupant；其 `hooks` 对象中的函数成员是 hook factory，它会收到 slot 的标准 props 与可选的逐次渲染 `hookContext`，再返回提供给 occupant 的受限 hook。`conversation.chat.node` 正是通过这种机制，为当前渲染的 node 提供 `useTurnData(key)`。
 
+Slot 声明可以添加 `registerOptions`（内联对象类型），列出向该 Slot 注册时除 `id`/`order`/`label`、`key` 或 `select` 之外可额外传入的选项。核心不解释这些选项，只把它们保存在已存条目的 `custom` 记录中，由 Slot owner 读取。`conversation.trajectory.detail.tabs` 用它提供可选的 `when(record)` 可见性断言。
+
 一次渲染时 owner 已知的值走 owner props；单个 entry 的 callback 与私有 observable 走注册项 `inject`；由 slot owner 控制、所有 occupant 共享的能力走 slot 级 `inject`；需要跨 entry 共享或跨重新挂载保留的可变视图状态走声明的 store。React node 通过 child slot 组合，不通过注入值传递。
 
 <a id="current-hierarchy"></a>
@@ -160,7 +162,8 @@ Factory: conversation.content [ConversationContent]
 │     │           ├─ conversation.chat.turnTail
 │     │           └─ conversation.chat.assistant-actions
 │     └─ id=trajectory [TrajectoryView / TrajectoryTable]
-│        └─ conversation.trajectory.images [MessageImages]
+│        ├─ conversation.trajectory.images [MessageImages]
+│        └─ conversation.trajectory.detail.tabs [plugin detail tab]
 ├─ conversation.composer
 │  ├─ conversation.approval.detail
 │  └─ conversation.plan-review.actions

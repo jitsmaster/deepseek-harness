@@ -111,6 +111,8 @@ A reserved `hooks` object in that return value accepts bare `getSnapshot`/`subsc
 
 The owner of a slot may put an `inject` face in the child declaration when every occupant needs the same capability. Plain members reach all occupants unchanged. Function-valued members inside its `hooks` object are hook factories; they receive the slot's standard props and optional per-render `hookContext`, then return the constrained hook exposed to the occupant. `conversation.chat.node` uses this mechanism to provide `useTurnData(key)` for the node currently being rendered.
 
+A slot declaration may add `registerOptions`, an inline object type naming extra options that every registration into that slot may pass beside `id`/`order`/`label`, `key`, or `select`. The core keeps them on the stored entry's `custom` record without interpreting them; the slot owner reads them. `conversation.trajectory.detail.tabs` uses this for its optional `when(record)` visibility predicate.
+
 Use owner props for values already known at one render occurrence, registration `inject` for one entry's callbacks and private observables, slot-level `inject` for a capability controlled by the slot owner, and a declared store for mutable view state shared across entries or preserved across remounts. React nodes compose through child slots, not through injected values.
 
 <a id="current-hierarchy"></a>
@@ -158,7 +160,8 @@ Factory: conversation.content [ConversationContent]
 │     │           ├─ conversation.chat.turnTail
 │     │           └─ conversation.chat.assistant-actions
 │     └─ id=trajectory [TrajectoryView / TrajectoryTable]
-│        └─ conversation.trajectory.images [MessageImages]
+│        ├─ conversation.trajectory.images [MessageImages]
+│        └─ conversation.trajectory.detail.tabs [plugin detail tab]
 ├─ conversation.composer
 │  ├─ conversation.approval.detail
 │  └─ conversation.plan-review.actions

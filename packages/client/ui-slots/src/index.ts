@@ -132,6 +132,13 @@ export interface SlotEntryDef {
    */
   hookContext?: unknown
   /**
+   * Optional extra register options every registration into this slot may
+   * pass beside the cardinality's own (`id`/`order`/`label`, `key`, `select`).
+   * The core stores them verbatim on {@link StoredEntry.custom} for the owner
+   * to read; it never interprets them.
+   */
+  registerOptions?: object
+  /**
    * Optional Slot-level inject face supplied by the parent registration's
    * child declaration. Every registered entry receives its bound component
    * face; child registrants do not own or replace this common capability.
@@ -796,6 +803,10 @@ export type KindOptions<
           priority?: number
         }
 
+/** Extra register options a slot declares through {@link SlotEntryDef.registerOptions}. */
+type RegisterOptionsOf<K extends keyof SlotMap & string> =
+  SlotMap[K] extends { registerOptions: infer R extends object } ? R : object
+
 /**
  * Compile-time presence check: an entry declaring children MUST consume
  * `renderSlot` (or `renderSlotChain` when its only children are chain slots)
@@ -835,7 +846,7 @@ type BaseOptions<
   locale?: N
   /** Registrant identity label for diagnostics (the runtime Service wrapper stamps the caller's fiber name). */
   registrant?: string
-} & KindOptions<K, EntryKey, M>
+} & KindOptions<K, EntryKey, M> & RegisterOptionsOf<K>
 
 /**
  * One stored registration, as recorded by the core and read by the render
@@ -845,6 +856,8 @@ type BaseOptions<
 export interface StoredEntry {
   component: unknown
   options: { key?: string; id?: string; order?: number; label?: SlotLabel; priority?: number }
+  /** Options beyond the common set, as declared by the slot's `registerOptions`; absent when none were passed. */
+  custom?: Readonly<Record<string, unknown>> | undefined
   /** Chain routing selector (type-erased like `inject`; present exactly on chain-slot entries). */
   select?: ((owner: never) => unknown) | undefined
   /** Registrant business face; positional params derive from the declaration (sessionId?, actions?). */
@@ -920,6 +933,12 @@ interface FactoryRecord {
 }
 
 const NO_ENTRIES: readonly StoredEntry[] = Object.freeze([])
+
+/** Register options the core interprets itself; any other option is kept on {@link StoredEntry.custom}. */
+const COMMON_REGISTER_OPTIONS: ReadonlySet<string> = new Set([
+  'name', 'key', 'id', 'order', 'label', 'select', 'priority',
+  'children', 'store', 'locale', 'inject', 'registrant',
+])
 
 /** JSON-safe live occupant returned by slot inspection. */
 export interface LiveSlotOccupant {
@@ -1262,8 +1281,11 @@ export class SlotCore {
       else this.handleScopes.set(options.store, { scope: spec.scope, count: 1 })
     }
 
+    const customEntries = Object.entries(options)
+      .filter(([name, value]) => !COMMON_REGISTER_OPTIONS.has(name) && value !== undefined)
     const entry: StoredEntry = {
       component,
+      ...(customEntries.length > 0 ? { custom: Object.fromEntries(customEntries) } : {}),
       options: {
         ...(options.key !== undefined ? { key: options.key } : {}),
         ...(options.id !== undefined ? { id: options.id } : {}),

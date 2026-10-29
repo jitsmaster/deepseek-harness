@@ -36,12 +36,26 @@ export interface SlotDeclaration {
   hookContext?: string
   /** Type name of the slot-level inject face, absent when the slot declares none. */
   injectType?: string
+  /** Extra register options declared by the slot's inline `registerOptions` type literal, absent otherwise. */
+  registerOptions?: readonly SlotRegisterOption[]
   /** The member's JSDoc with container indentation removed, '' when undocumented. */
   jsDoc: string
   /** Workspace package that declares the contract. */
   package: string
   /** Source pointer `packages/…/file.ts:line`. */
   source: string
+}
+
+/** One member of a slot's `registerOptions` type literal. */
+export interface SlotRegisterOption {
+  /** Option name as written in the register options object. */
+  name: string
+  /** Whether the member is optional (`?`). */
+  optional: boolean
+  /** Type text on one line. */
+  type: string
+  /** The member's JSDoc with container indentation removed, '' when undocumented. */
+  jsDoc: string
 }
 
 /** One `slots.register()` or `slots.registerFactory()` call site. */
@@ -166,6 +180,7 @@ export function slotDeclarations(file: ScannedFile): SlotDeclaration[] {
         const keyProps = memberTypeText(entry, 'keyProps', file.sf)
         const hookContext = memberTypeText(entry, 'hookContext', file.sf)
         const injectType = memberTypeText(entry, 'inject', file.sf)
+        const registerOptions = registerOptionMembers(entry, file.sf)
         out.push({
           key,
           kind: literalMember(entry, 'kind'),
@@ -174,6 +189,7 @@ export function slotDeclarations(file: ScannedFile): SlotDeclaration[] {
           ...keyProps === undefined ? {} : { keyProps },
           ...hookContext === undefined ? {} : { hookContext },
           ...injectType === undefined ? {} : { injectType },
+          ...registerOptions.length === 0 ? {} : { registerOptions },
           jsDoc: jsDocOf(member, file.sf),
           package: file.package,
           source: `${file.rel}:${String(lineOf(file.sf, member))}`,
@@ -376,6 +392,20 @@ function literalMember(entry: ts.TypeLiteralNode | undefined, name: string): str
   return ts.isLiteralTypeNode(member.type) && ts.isStringLiteral(member.type.literal)
     ? member.type.literal.text
     : ''
+}
+
+/** The members of an inline `registerOptions` type literal; empty when absent or not a literal. */
+function registerOptionMembers(entry: ts.TypeLiteralNode | undefined, sf: ts.SourceFile): SlotRegisterOption[] {
+  const member = namedMember(entry, 'registerOptions')
+  if (member?.type === undefined || !ts.isTypeLiteralNode(member.type)) return []
+  return member.type.members.flatMap(option => ts.isPropertySignature(option) && option.type !== undefined
+    ? [{
+      name: memberName(option.name),
+      optional: option.questionToken !== undefined,
+      type: collapse(option.type.getText(sf)),
+      jsDoc: jsDocOf(option, sf),
+    }]
+    : [])
 }
 
 /** A type-literal member's type text on one line, absent when the member is. */

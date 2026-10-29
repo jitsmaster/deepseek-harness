@@ -37,11 +37,16 @@ import {
 } from './trajectory-virtual-rows.ts'
 import type { TrajectoryVirtualRow } from './trajectory-virtual-rows.ts'
 import type { TrajectoryTurnModel } from './layout.ts'
+import type { TrajectoryDetailTabRecord } from './trajectory-contract.ts'
 import { trajectoryPreviewText } from './trajectory-preview.ts'
 import type { TrajectoryKey, TrajectoryTranslate } from './locales.ts'
 import { COMPACTION_INTERRUPTED_ERROR } from './copy-codes.ts'
 import { codeProgram, PTC_TOOL_NAME, type CodeProgram } from './code-program.ts'
 import { RequestBreakdown, type ReadRequestPayload } from './RequestBreakdown.tsx'
+import {
+  DETAIL_TAB_SLOT, detailTabRowLabel, useDetailTabRows, visibleDetailTabRows,
+  type PluginDetailTabId, type TrajectoryDetailTabSource,
+} from './detail-tab-slot.ts'
 import css from './TrajectoryTable.module.css'
 
 const BOTTOM_FOLLOW_THRESHOLD_PX = 2
@@ -182,12 +187,12 @@ type DetailTab =
   | 'usage'
   | 'timing'
   | 'diff'
+  | PluginDetailTabId
 type RecordState = 'complete' | 'running' | 'error'
 
-interface DetailTabItem {
-  id: DetailTab
-  labelKey: TrajectoryKey
-}
+type DetailTabItem =
+  | { id: Exclude<DetailTab, PluginDetailTabId>; labelKey: TrajectoryKey }
+  | { id: PluginDetailTabId; label: string }
 
 interface ParentRecords {
   message?: TableRecord
@@ -395,6 +400,11 @@ export interface TrajectoryTableProps {
   t: TrajectoryTranslate
   /** Slot-backed durable image renderer shared with the Chat gallery. */
   renderSlot: PropsRenderSlots<'conversation.trajectory.images'>['renderSlot']
+  /** Plugin detail tabs: live tab rows and the renderer for their panels; absent means none. */
+  pluginTabs?: {
+    readonly source: TrajectoryDetailTabSource
+    readonly renderSlot: PropsRenderSlots<typeof DETAIL_TAB_SLOT>['renderSlot']
+  } | undefined
   /** Session-bound loader for durable message image attachments. */
   loadImage: MessageImageLoader
   /** Session-global request numbers for the request groups visible in this context. */
@@ -2116,7 +2126,9 @@ export function TrajectoryTable({
   inspectCallId = null,
   onInspectApplied,
   readRequestPayload,
+  pluginTabs,
 }: TrajectoryTableProps) {
+  const pluginTabRows = useDetailTabRows(pluginTabs?.source)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [selectedRequest, setSelectedRequest] = useState<SelectedRequest | null>(null)
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
@@ -2335,9 +2347,31 @@ export function TrajectoryTable({
   const activeSection = selectedRequestInfo === undefined
     ? selected?.section
     : selectedRequestRecords[0]?.section
+  const describeRecord = useCallback((record: TableRecord): TrajectoryDetailTabRecord => {
+    const requestNumber = record.cell.kind === 'message'
+      ? requestNumbers.get(requestKey(record.turn, record.group))
+      : undefined
+    const payloadBlob = requestNumber === undefined
+      ? undefined
+      : sessionRequestNumbers?.find(request => request.number === requestNumber)?.payloadBlob
+    return {
+      kind: record.cell.kind,
+      index: record.cell.index,
+      turn: record.turn,
+      ...payloadBlob === undefined ? {} : { payloadBlob },
+    }
+  }, [requestNumbers, sessionRequestNumbers])
+  const recordTabs = useCallback((record: TableRecord): readonly DetailTabItem[] => {
+    if (pluginTabRows.length === 0) return detailTabs(record)
+    return [
+      ...detailTabs(record),
+      ...visibleDetailTabRows(pluginTabRows, describeRecord(record))
+        .map(row => ({ id: row.tabId, label: detailTabRowLabel(row) })),
+    ]
+  }, [describeRecord, pluginTabRows])
   const selectedTabs = selectedRequestInfo !== undefined
     ? REQUEST_TABS.filter(tab => tab.id !== 'options' || selectedRequestOptions !== undefined)
-    : selected === undefined ? [] : detailTabs(selected)
+    : selected === undefined ? [] : recordTabs(selected)
   const selectedParents: ParentRecords = selected === undefined
     ? {}
     : parentRecords(allRecords, selected)
@@ -2386,11 +2420,18 @@ export function TrajectoryTable({
     setSelectedRequest(null)
     setSelectedRecordId(record === undefined ? null : trajectoryRecordId(record.cell))
     if (record === undefined) return
-    const tabs = detailTabs(record)
+    const tabs = recordTabs(record)
     const available = new Set(tabs.map(tab => tab.id))
     const recent = [...tabHistory.current].reverse().find(tab => available.has(tab))
     setActiveTab(recent ?? tabs[0]?.id ?? 'overview')
-  }, [allRecords, onRecordSelect, stringWrapping])
+  }, [allRecords, onRecordSelect, recordTabs, stringWrapping])
+  // A plugin tab that was active but is no longer offered (unregistered) falls back to the first tab.
+  const activeSlotTabGone = activeTab.startsWith('slot:')
+    && !selectedTabs.some(tab => tab.id === activeTab)
+  const fallbackTab: DetailTab = selectedTabs[0]?.id ?? 'overview'
+  useEffect(() => {
+    if (activeSlotTabGone) setActiveTab(fallbackTab)
+  }, [activeSlotTabGone, fallbackTab])
   useEffect(() => {
     if (
       recordSelection === null
@@ -3109,7 +3150,7 @@ export function TrajectoryTable({
                 className={activeTab === tab.id ? `${css.detailTab} ${css.detailTabActive}` : css.detailTab}
                 onClick={() => { activateTab(tab.id) }}
               >
-                {t(tab.labelKey)}
+                {'label' in tab ? tab.label : t(tab.labelKey)}
               </button>
             ))}
           </div>
@@ -3123,6 +3164,13 @@ export function TrajectoryTable({
             role="tabpanel"
             aria-labelledby={`trajectory-detail-${activeTab}`}
           >
+            {pluginTabs !== undefined && selectedRequestInfo === undefined
+              && selected !== undefined && activeTab.startsWith('slot:') && (
+              pluginTabs.renderSlot(DETAIL_TAB_SLOT, {
+                record: describeRecord(selected),
+                readRequestPayload,
+              }, { only: activeTab.slice('slot:'.length) })
+            )}
             {selectedRequestInfo !== undefined
               && selectedRequestState !== undefined
               && activeTab === 'overview' && (

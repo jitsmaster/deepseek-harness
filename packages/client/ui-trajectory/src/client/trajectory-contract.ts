@@ -4,6 +4,28 @@ import type {
   RequestView, RunningToolCall, SystemPromptNode, ToolCallBlock,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ReadRequestPayload } from './RequestBreakdown.tsx'
+import type { TrajectoryCellKind } from './trajectory-record.ts'
+
+/** Read-only description of the Trajectory record selected in the details panel. */
+export interface TrajectoryDetailTabRecord {
+  /** Ledger kind of the record (`message` is an assistant message). */
+  readonly kind: TrajectoryCellKind
+  /** Ledger index of the record. */
+  readonly index: number
+  /** Turn number, or null for records outside a turn. */
+  readonly turn: number | null
+  /** Sidecar blob name of the request behind an assistant message; absent when not recorded or not an assistant message. */
+  readonly payloadBlob?: string
+}
+
+/** Owner props handed to a plugin detail tab's component. */
+export interface TrajectoryDetailTabOwnerProps {
+  /** The selected record. */
+  readonly record: TrajectoryDetailTabRecord
+  /** Read a recorded request payload by blob name; absent when the session has no payload reader. */
+  readonly readRequestPayload?: ReadRequestPayload | undefined
+}
 
 /** Request-header facts retained by the Trajectory target. */
 export interface TrajectoryRequestHeaderState {
@@ -101,5 +123,24 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * images are omitted.
      */
     'conversation.trajectory.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
+    /**
+     * Extra detail tabs in the Trajectory details panel. Each registration
+     * adds one tab labelled by `label` and positioned by `order` among the
+     * plugin tabs, which always follow the built-in tabs of the selected
+     * record. The tab renders the registered component inside the details
+     * panel when selected; the owner supplies a read-only description of the
+     * selected record and the recorded request payload reader. Pass `when` to
+     * show the tab only for matching records; without it the tab appears on
+     * every record. Without registrations the tab list is unchanged.
+     */
+    'conversation.trajectory.detail.tabs': {
+      kind: 'list'
+      scope: 'session'
+      owner: TrajectoryDetailTabOwnerProps
+      registerOptions: {
+        /** Predicate over the selected record; the tab is hidden while it returns false. */
+        when?: (record: TrajectoryDetailTabRecord) => boolean
+      }
+    }
   }
 }

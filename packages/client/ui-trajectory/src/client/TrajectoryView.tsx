@@ -14,6 +14,7 @@ import {
   type TrajectoryUsage,
 } from './TrajectoryTable.tsx'
 import type { ReadRequestPayload } from './RequestBreakdown.tsx'
+import type { DETAIL_TAB_SLOT, TrajectoryDetailTabSource } from './detail-tab-slot.ts'
 import { TrajectoryToolbar } from './TrajectoryToolbar.tsx'
 import { TrajectoryTimeline } from './TrajectoryTimeline.tsx'
 import {
@@ -86,6 +87,8 @@ export interface TrajectoryViewInjected {
   setActualDuration: (actualDuration: boolean) => void
   /** Read one recorded request payload by sidecar blob name; absent hides the request breakdown. */
   readRequestPayload?: ReadRequestPayload
+  /** Live plugin detail tabs; absent means the details panel keeps only its built-in tabs. */
+  detailTabs?: TrajectoryDetailTabSource
 }
 
 interface UsageLike {
@@ -134,9 +137,9 @@ function addUsage(
 
 export function TrajectoryView({
   useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration,
-  viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping, readRequestPayload,
+  viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping, readRequestPayload, detailTabs,
 }: ConvViewProps
-  & Pick<PropsRenderSlots<'conversation.trajectory.images'>, 'renderSlot'>
+  & Pick<PropsRenderSlots<'conversation.trajectory.images' | typeof DETAIL_TAB_SLOT>, 'renderSlot'>
   & InjectFace<TrajectoryViewInjected>
   & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
@@ -579,6 +582,7 @@ export function TrajectoryView({
           inspectCallId={inspectCallId}
           onInspectApplied={completeViewRequest}
           readRequestPayload={readRequestPayload}
+          pluginTabs={detailTabs === undefined ? undefined : { source: detailTabs, renderSlot }}
         />
       </div>
     </div>

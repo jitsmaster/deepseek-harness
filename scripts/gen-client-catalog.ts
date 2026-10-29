@@ -283,7 +283,15 @@ function entryOf(
     scope: declaration.scope,
     summary: firstSentence(doc),
     doc,
-    registerOptions: REGISTER_OPTIONS[declaration.kind as (typeof KINDS)[number]],
+    registerOptions: [
+      ...REGISTER_OPTIONS[declaration.kind as (typeof KINDS)[number]],
+      ...(declaration.registerOptions ?? []).map((option): OptionDoc => ({
+        name: option.name,
+        requirement: option.optional ? 'optional' : 'required',
+        type: option.type,
+        doc: docProse(option.jsDoc),
+      })),
+    ],
     ownerProps: owner.declarations.map(type => truncate(type.text)),
     ownerPropsReferences: owner.references,
     standardProps: kits.get(declaration.scope) ?? [],
