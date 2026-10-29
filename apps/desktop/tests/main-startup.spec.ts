@@ -2367,6 +2367,26 @@ describe('desktop main startup', () => {
     await harness.quitCompleted.promise
   })
 
+  it('writes a renderer crash report without a dialog when a UI slot crashes, once per interval', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    harness.prepared.resolve()
+    await harness.hostStarted.promise
+    const host = harness.hosts[0]!
+    host.ready.resolve()
+    await Promise.resolve(invoke(DESKTOP_IPC.boot))
+    const window = harness.windows[0]!
+    const crash = { level: 'error', message: "slot entry crashed in 'root': Error: boom", sourceId: 'dsh-app://app/assets/entry.js', lineNumber: 7 }
+    window.webContents.emit('console-message', crash)
+    window.webContents.emit('console-message', crash)
+    await vi.waitFor(() => { expect(writeCrashReport).toHaveBeenCalledOnce() })
+    const [, report] = vi.mocked(writeCrashReport).mock.calls[0]!
+    expect(report.source).toBe('renderer')
+    expect((report.error as Error).message).toContain("slot entry crashed in 'root'")
+    expect(report.rendererConsole).toEqual(["dsh-app://app/assets/entry.js:7 slot entry crashed in 'root': Error: boom"])
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+  })
+
   it.each([0, 1, 2])('waits for Host exit before recovery action %s', async (response) => {
     harness.dialog.showMessageBox.mockResolvedValue({ response, checkboxChecked: false })
     await import('../src/main.ts')

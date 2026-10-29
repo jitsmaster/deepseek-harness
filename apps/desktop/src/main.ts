@@ -40,7 +40,7 @@ import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
-import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
+import { isSlotCrashMessage, pruneCrashReports, RendererConsoleTail, SlotCrashThrottle, writeCrashReport, type CrashReportSource } from './crash-report.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { clearStaleHostCookies } from './stale-host-cookies.ts'
@@ -83,6 +83,8 @@ let windowsLanguage: string | undefined
 let backendReady = false
 /** Error-level console output of the primary window, attached to crash reports. */
 const rendererConsole = new RendererConsoleTail()
+/** Slot-crash reports are written at most once a minute. */
+const slotCrashes = new SlotCrashThrottle(60_000)
 
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
@@ -1182,6 +1184,10 @@ async function main(): Promise<void> {
     window.webContents.on('console-message', (details) => {
       if (details.level !== 'error') return
       rendererConsole.push(`${details.sourceId}:${String(details.lineNumber)} ${details.message}`)
+      // A crashed UI slot (notably 'root') leaves a blank window with no other trace: record it, without a dialog.
+      if (isSlotCrashMessage(details.message) && slotCrashes.admit(Date.now())) {
+        void persistCrashReport(new Error(details.message), 'renderer')
+      }
     })
     window.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
       if (isMainFrame && code !== -3 && !quitting && !window.isDestroyed()) {

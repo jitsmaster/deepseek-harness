@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
-  CRASH_REPORTS_RETAINED, crashReportFileName, ERROR_SECTION_MAX_CHARS, pruneCrashReports, renderCrashReport, RendererConsoleTail,
-  writeCrashReport,
+  CRASH_REPORTS_RETAINED, crashReportFileName, ERROR_SECTION_MAX_CHARS, isSlotCrashMessage, pruneCrashReports, renderCrashReport,
+  RendererConsoleTail, SlotCrashThrottle, writeCrashReport,
   type CrashReportInput,
 } from '../src/crash-report.ts'
 
@@ -104,6 +104,20 @@ it('treats a missing logs directory as nothing to prune', async () => {
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   await pruneCrashReports(join(await scratch(), 'absent'))
   expect(error).not.toHaveBeenCalled()
+})
+
+it('recognizes the renderer console lines that report a crashed UI slot', () => {
+  expect(isSlotCrashMessage("slot entry crashed in 'root': Error: boom")).toBe(true)
+  expect(isSlotCrashMessage("slot factory occurrence crashed in 'x': Error: boom")).toBe(true)
+  expect(isSlotCrashMessage("chain selector crashed in 'main' (a), treating as declined: Error")).toBe(true)
+  expect(isSlotCrashMessage('Failed to load resource: the server responded with a status of 404')).toBe(false)
+})
+
+it('lets a slot crash report through once per interval and drops the repeats', () => {
+  const gate = new SlotCrashThrottle(1000)
+  expect(gate.admit(0)).toBe(true)
+  expect(gate.admit(999)).toBe(false)
+  expect(gate.admit(1000)).toBe(true)
 })
 
 it('keeps the newest renderer console lines within the byte cap, never cutting a line', () => {

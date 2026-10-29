@@ -85,6 +85,37 @@ export class RendererConsoleTail {
   }
 }
 
+/** Console prefixes the UI slot renderer logs when an entry, factory occurrence or chain selector throws (see `scoped-slots.tsx`). */
+const SLOT_CRASH_MESSAGE = /^(?:slot entry crashed in|slot factory occurrence crashed in|chain selector crashed in) /u
+
+/**
+ * Whether a renderer console line reports a crashed UI slot. A crashed `root` slot leaves the window blank except for
+ * the preload-injected menu, and nothing else records it.
+ * @param message - the formatted console message.
+ * @returns true for a slot crash report line.
+ */
+export function isSlotCrashMessage(message: string): boolean {
+  return SLOT_CRASH_MESSAGE.test(message)
+}
+
+/** Lets one slot crash report through per interval, so a crash loop writes one file rather than a flood. */
+export class SlotCrashThrottle {
+  private last: number | undefined
+
+  /** @param intervalMs - minimum milliseconds between admitted reports. */
+  constructor(private readonly intervalMs: number) {}
+
+  /**
+   * @param now - current time in milliseconds.
+   * @returns true when a report may be written now.
+   */
+  admit(now: number): boolean {
+    if (this.last !== undefined && now - this.last < this.intervalMs) return false
+    this.last = now
+    return true
+  }
+}
+
 /**
  * The report file name: sortable by time, then the source.
  * @param time - failure time.
