@@ -17,7 +17,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
-import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GlobalStandardProps, HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
@@ -83,6 +83,7 @@ function props(snapshot: ActiveSessionStatsSnapshot): PersistentStatsBarProps {
     useActiveSessionStats: bindSnapshotSelector(makeSource(snapshot)),
     ...allowAllAccess,
     usePanelInfo,
+    useContextMenu: contextMenuHook(),
     useResource,
     useSessions: emptySessions(),
     useSessionStatus: noSessionStatus(),

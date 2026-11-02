@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 /** First-run DeepSeek prompt behavior over the shared Models join. */
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -154,6 +155,7 @@ function harness(options: {
     useWorkspaces: unusedHook,
     useActiveSessionStats: unusedHook,
     ...allowAllAccess,
+    useContextMenu: contextMenuHook(),
     controller,
     useModels: bindSnapshotSelector(controller.store),
     operations,

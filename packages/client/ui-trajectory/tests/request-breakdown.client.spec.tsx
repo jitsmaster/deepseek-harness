@@ -183,6 +183,8 @@ function renderTable(readRequestPayload?: Read) {
     onToggleTurn={() => {}}
     collapsedAssistants={new Set()}
     onToggleAssistant={() => {}}
+    collapsedTools={new Set()}
+    onToggleTool={() => {}}
     {...readRequestPayload === undefined ? {} : { readRequestPayload }}
   />)
 }

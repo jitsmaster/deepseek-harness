@@ -39,6 +39,8 @@ const FOLD_PROPS = {
   onToggleTurn: () => {},
   collapsedAssistants: new Set<string>(),
   onToggleAssistant: () => {},
+  collapsedTools: new Set<string>(),
+  onToggleTool: () => {},
 }
 
 const PluginTab = ({ record, readRequestPayload }: TrajectoryDetailTabOwnerProps) => (

@@ -101,7 +101,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-通过 `dsh-tool-web` 间接影响模型体验。该工具保留本提供方的回答文本、经 `maxResults` 限制的链接与标题，或在消费方的错误包装层内保留其原样失败消息。每个查询会启动一个无头 Claude Code 进程，约需十秒并消耗一条 Claude 订阅消息；一次 `web_search` 调用中的各个查询（至多到其查询数上限）作为并发进程运行。
+通过 `dsh-tool-web` 间接影响模型体验。该工具保留本提供方的回答文本、经 `maxResults` 限制的链接与标题，或在消费方的错误包装层内保留其原样失败消息。每个查询会启动一个无头 Claude Code 进程，约需十秒并消耗一条 Claude 订阅消息。该进程使用简短的 DSH 系统提示词（`--system-prompt-file`）、不加载任何设置来源（`--setting-sources ""`，因此用户的 CLAUDE.md、钩子和插件不会进入）且不加载技能（`--disable-slash-commands`）；实测每个查询的成本从约 17k 降到约 4.9k token；一次 `web_search` 调用中的各个查询（至多到其查询数上限）作为并发进程运行。
 
 #### KV Cache 影响
 

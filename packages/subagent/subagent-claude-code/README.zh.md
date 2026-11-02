@@ -41,6 +41,7 @@ kind: "package-bundle"
 |---|---|---|
 | `providerName` | `claude-code` | `ctx.subagents` 上的非空注册名称；每个已挂载实例都需要唯一值 |
 | `model` | Claude 原生设置 | 为本提供方实例的每次运行固定的可选非空模型名称；省略时不发送 SDK 覆盖 |
+| `executable` | 未设置 | 用户自己的 `claude` 可执行文件路径。设置后，每次运行都是使用原生登录的无头 `claude -p --output-format stream-json` 子进程，任务经 stdin 传入，不使用 Agent SDK；此模式还会声明 `outputSchema`（schema 传给 `--json-schema`，校验后的 `structured_output` 成为结构化结果，Ralph 循环需要它）；未设置时由平台固定的运行时通过 SDK 驱动 |
 | `env` | `{}` | 叠加在已清理凭据的父环境之上的显式 SDK/CLI 环境 |
 | `permissionMode` | `dontAsk` | 为本提供方实例的每次运行固定的原生非交互权限策略 |
 | `disposeGraceMs` | `3000` | 共享 managed-range owner 各终止层级之间的宽限 |
@@ -140,6 +141,8 @@ Claude Code 子级会在一个全新的 SDK query 中接收独立文本任务。
 #### Token 影响
 
 子级需为独立的 Claude Code 上下文和 query 承担 token 成本。子级 token 不会进入父级上下文。
+
+无头运行会让该上下文保持精简：`--system-prompt` 用简短的 DSH 委派提示词取代 Claude Code 的默认提示词，`--settings '{"disableAllHooks":true}'` 使用户交互会话用的钩子（会话启动例程、通知器）不会在子级内重复运行。设置文件、技能和命令仍会加载，因此用户的权限规则（让 `dontAsk` 与 `acceptEdits` 运行可以使用 Bash 和编辑工具）、项目的 `CLAUDE.md`、MCP 服务器和 Skill 工具的行为不变；以 `Skill(modes:<slug>)` 开头的任务说明仍然有效。在真实二进制上测量一个小型 Bash 加 Read 任务：启用钩子时约 294k token、11 轮，禁用后约 68k、3 轮。
 
 #### KV Cache 影响
 

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -128,6 +129,7 @@ const kit: Omit<QuestionComposerProps, 'matched'> = {
   useWorkspaces: selector => selector(workspaceState),
   useActiveSessionStats,
   ...allowAllAccess,
+  useContextMenu: contextMenuHook(),
   useConversation: selector => selector(conversationState),
   useChat: selector => selector(chatState),
   useTrajectory: selector => selector(trajectoryState),
