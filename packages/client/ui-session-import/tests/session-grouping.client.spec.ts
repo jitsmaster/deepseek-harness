@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DiscoveredSessionView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { DiscoveredSessionView } from '../src/client/types.ts'
 import { groupAndSortSessions } from '../src/client/session-grouping.ts'
 
 /** Minimal fixture: only `status` and `startedAt` matter to the function under test. */

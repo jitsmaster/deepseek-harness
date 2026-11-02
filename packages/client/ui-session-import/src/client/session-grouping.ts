@@ -4,7 +4,7 @@
  * after, each newest-first.
  */
 
-import type { DiscoveredSessionView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { DiscoveredSessionView } from './types.ts'
 
 /**
  * Statuses (compared case-insensitively) treated as terminal.
