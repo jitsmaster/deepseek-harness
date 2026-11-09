@@ -18,7 +18,9 @@ afterEach(cleanup)
 const icons = Object.fromEntries(
   Object.entries(primitives).filter(([name]) => name.startsWith('Icon')),
 ) as Record<string, (p: primitives.IconProps) => React.JSX.Element>
-const iconNames = Object.keys(icons)
+// The fork's IconClaudeCodeOutline16 is a raw fixed-colour brand mark, not a sprite product glyph.
+const FORK_BRAND_MARK = 'IconClaudeCodeOutline16'
+const iconNames = Object.keys(icons).filter(name => name !== FORK_BRAND_MARK)
 const glyphs = Object.keys(ICON_ARTWORK) as IconGlyph[]
 
 function artwork(glyph: IconGlyph, weight: IconWeight): Document {
