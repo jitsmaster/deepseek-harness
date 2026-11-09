@@ -170,7 +170,6 @@ interface AgentInitializationOptions {
   readonly stored?: StoredSession | undefined
   readonly setup?: AgentSetup | undefined
   readonly signal?: AbortSignal | undefined
-  readonly parentAgent?: Agent | undefined
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -477,14 +476,14 @@ export class AgentLoop extends Service implements AgentFactory {
    * Registers factory teardown and caller cancellation before constructing the scope.
    * Failed initialization drains cleanup while retaining stored events and inbox input.
    * @param ownerCtx - caller context that owns the Agent lifecycle.
-   * @param options - acquired Session/write handle, loop options, start source, parent Agent, setup, and cancellation.
+   * @param options - acquired Session/write handle, loop options, start source, setup, and cancellation.
    * @returns the initialized Agent and its shared disposer.
    */
   private async initializeAgent(
     ownerCtx: Context,
     options: AgentInitializationOptions,
   ): Promise<AgentHandle> {
-    const { session, agentOptions, source, stored, setup, signal: callerSignal, parentAgent } = options
+    const { session, agentOptions, source, stored, setup, signal: callerSignal } = options
     const id = session.id
     const loopCtx = this.runtime.ctx
 
@@ -651,7 +650,7 @@ export class AgentLoop extends Service implements AgentFactory {
           assertLive()
           // The mounted backend routes announced live events into the active
           // write handle by session id; the loop only owns the handle itself.
-          detachAgent = loopCtx.agents.enter(agent, parentAgent)
+          detachAgent = loopCtx.agents.enter(agent)
           await loopCtx.agents.announce(agent, source, abort.signal)
           assertLive()
           ready = true
@@ -756,7 +755,6 @@ export class AgentLoop extends Service implements AgentFactory {
         setup: options.setup,
         signal: options.signal,
         source: 'startup',
-        parentAgent: options.parentAgent,
       })
     })()
     this.ownership.trackWrapper(published)
@@ -841,7 +839,6 @@ export class AgentLoop extends Service implements AgentFactory {
           setup: options.setup,
           signal: options.signal,
           source: 'resume',
-          parentAgent: options.parentAgent,
         })
       } finally {
         preparation?.[Symbol.dispose]()
