@@ -226,7 +226,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       keyProps: { [Id in UserTextId]: { node: UserTextNode<Id> } }
     }
     /** Conversation shell beneath its root-scoped main-panel entry. */
-    'main.conversation': { kind: 'single'; scope: 'session-maybe' }
+    'main.conversation': { kind: 'single'; scope: 'session-maybe'; inject: ConversationShellInjected }
     /** Strict per-Session Conversation body. */
     'conversation.session': {
       kind: 'single'
@@ -466,10 +466,32 @@ export interface ConvViewOwnerProps {
 /** Base props of one target-owned Conversation View entry. */
 export type ConvViewProps = PropsRuntime<'conversation.view'>
 
-/** Business callbacks injected into the resident Conversation shell. */
+/**
+ * Moves the draft of the Session a Hero shows to the Session that replaces it. The occurrence owner calls it at most
+ * once per pick, synchronously with the step that shows the new Session, while it still retains both Sessions.
+ */
+export type WorkspaceSessionAdopter = (sessionId: SessionId) => void
+
+/**
+ * Handles a Workspace the Hero's picker chose: resolves that Workspace's blank Session, shows it in place of the
+ * Session shown before, and calls `adopt` with it in the same step. A pick the owner no longer wants resolves
+ * without calling `adopt`; a pick that failed rejects, and the owner reports the failure.
+ */
+export type WorkspaceSelectedHandler = (workspaceId: WorkspaceId, adopt: WorkspaceSessionAdopter) => Promise<void>
+
+/** Business callbacks injected into the main Conversation shell. */
+export interface ConversationShellInjected {
+  /** Open the Workspace's blank Session as the main Session. */
+  openWorkspace: WorkspaceSelectedHandler
+}
+
+/** Business callbacks injected into the shared Conversation content. */
 export interface ConversationInjected {
-  /** Connect and open a blank Session in the selected Workspace. */
-  selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
+  /**
+   * Move this occurrence's draft text and attachments to another Session. Both Sessions must be retained; a draft
+   * with a submission in flight stays where it is.
+   */
+  moveDraft: WorkspaceSessionAdopter
   /** Session-addressed composer block source, or the stable absent source. */
   hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
 }
@@ -545,6 +567,8 @@ export interface ConversationSessionHeaderInjected {
 export interface ComposerBarOwnerProps {
   /** Hero uses centered placement; composer uses the active bottom placement. */
   variant: 'hero' | 'composer'
+  /** Conversation content occurrence rendering this composer; an unaddressed document paste reaches the main one. */
+  occurrence: ConversationContentInputProps['variant']
   /** A feature-owned reason that makes message input inert while leaving model selection live. */
   blocked?: { readonly reason: string }
   /** Lock all message actions while preserving the resident composer surface. */
@@ -558,8 +582,33 @@ export interface ComposerBarOwnerProps {
   accessory?: ReactNode
 }
 
+/** One composer's entry in the document-level paste route. */
+export interface ComposerFileIntakeTarget {
+  /** Composer card containing every control of this composer. */
+  readonly card: HTMLElement
+  /** Conversation content occurrence rendering the composer. */
+  readonly occurrence: ConversationContentInputProps['variant']
+  /** Whether a routed paste may enter now; a refusing composer is skipped, and when no composer accepts the browser keeps the event. */
+  readonly accepts: () => boolean
+  /**
+   * Add one routed paste through the composer's intake validation.
+   * @param files - pasted browser files in clipboard order.
+   * @param directories - members of `files` the clipboard entry API identified as directories.
+   */
+  readonly add: (files: readonly File[], directories?: ReadonlySet<File>) => void
+}
+
+/**
+ * Join the document-level paste route shared by every composer of the plugin instance.
+ * @param target - the registering composer.
+ * @returns the disposer leaving the route; the last disposer removes the route's document listeners.
+ */
+export type ComposerFileIntake = (target: ComposerFileIntakeTarget) => () => void
+
 /** Package-private operations injected into the resident composer bar. */
 export interface ComposerBarInjected {
+  /** Document paste routing across mounted composers. */
+  registerFileIntake: ComposerFileIntake
   keyboard: ComposerKeyboard | undefined
   /**
    * Register one picked batch; resolves to the rejection copy or null. Where
@@ -656,6 +705,10 @@ export interface ConversationContentInputProps {
   variant: 'main' | 'embedded'
   phase: 'settling' | 'hero' | 'active'
   hero: boolean
+  /** What a Workspace picked in the Hero does in this occurrence; the main occurrence opens it as the main Session. */
+  onWorkspaceSelected: WorkspaceSelectedHandler
+  /** Text the blank-session Hero shows instead of its default headline and preview badge. */
+  headline?: string | undefined
 }
 
 /** Values passed from shared content to its occurrence-selected width controls. */

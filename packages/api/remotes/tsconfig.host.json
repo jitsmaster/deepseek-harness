@@ -96,10 +96,7 @@
       "path": "../../host/plugin-inventory"
     },
     {
-      "path": "../account-controller"
-    },
-    {
-      "path": "../../credentials/deepseek-account"
+      "path": "../../account/deepseek-account"
     },
     {
       "path": "../../web/web"

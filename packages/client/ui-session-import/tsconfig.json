@@ -21,7 +21,7 @@
       "path": "../ui-renderer"
     },
     {
-      "path": "../ui-workspace"
+      "path": "../ui-workspace/tsconfig.client.json"
     },
     {
       "path": "../locale/tsconfig.client.json"

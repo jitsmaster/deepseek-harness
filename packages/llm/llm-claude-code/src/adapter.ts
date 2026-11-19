@@ -161,6 +161,19 @@ function resultDetail(result: ResultLine): string {
 }
 
 /**
+ * Build a failure whose code this provider chose (`PROVIDER_ERROR`, `PROVIDER_UNAVAILABLE`, or a
+ * classified text code): the `LlmError` constructor takes only built-in codes, so a provider-owned
+ * code is raised again through `LlmError.fromFailure`.
+ * @param message - human-readable failure summary.
+ * @param code - provider-chosen machine code.
+ * @param options - optional cause.
+ * @returns the error to throw.
+ */
+function providerFailure(message: string, code: string, options?: ErrorOptions): LlmError {
+  return LlmError.fromFailure({ message, code }, options)
+}
+
+/**
  * Pick the shared failure code for a Claude error text.
  * @param detail - the error text of the `result` line.
  * @returns a retryable or terminal provider-neutral code, generic when nothing matches.
@@ -239,7 +252,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
     }
     const executable = locateExecutable(this.options.executable)
     if (executable === undefined) {
-      throw new LlmError(`Claude Code executable "${this.options.executable}" was not found`, PROVIDER_UNAVAILABLE_CODE)
+      throw providerFailure(`Claude Code executable "${this.options.executable}" was not found`, PROVIDER_UNAVAILABLE_CODE)
     }
     const directory = await mkdtemp(join(tmpdir(), 'dsh-claude-llm-'))
     try {
@@ -309,7 +322,7 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
         ...Object.keys(env).length === 0 ? {} : { env },
       })
     } catch (error: unknown) {
-      throw new LlmError(`Claude Code could not start: ${errorText(error)}`, PROVIDER_UNAVAILABLE_CODE, { cause: error })
+      throw providerFailure(`Claude Code could not start: ${errorText(error)}`, PROVIDER_UNAVAILABLE_CODE, { cause: error })
     }
 
     const decoder = new ClaudeStreamDecoder(aliases)
@@ -373,20 +386,20 @@ export class ClaudeCodeLlmAdapter extends LlmAdapter {
       try {
         outcome = await child.done
       } catch (error: unknown) {
-        throw new LlmError(`Claude Code failed: ${errorText(error)}`, PROVIDER_ERROR_CODE, { cause: error })
+        throw providerFailure(`Claude Code failed: ${errorText(error)}`, PROVIDER_ERROR_CODE, { cause: error })
       }
       if (cancelled(signal)) throw this.cancellation(signal)
       const stderr = child.collected.stderr?.readFrom(0).text.trim() ?? ''
       const tail = stderr.length > 0 ? `: ${stderr.slice(-DETAIL_CHARS)}` : ''
       if (outcome.exitCode !== 0) {
         const how = outcome.exitCode === null ? `was terminated by ${outcome.signal ?? 'a signal'}` : `exited with code ${outcome.exitCode}`
-        throw new LlmError(`Claude Code ${how}${tail}`, PROVIDER_ERROR_CODE)
+        throw providerFailure(`Claude Code ${how}${tail}`, PROVIDER_ERROR_CODE)
       }
-      throw new LlmError(`Claude Code ended without a result line${tail}`, PROVIDER_ERROR_CODE)
+      throw providerFailure(`Claude Code ended without a result line${tail}`, PROVIDER_ERROR_CODE)
     }
     if (result.is_error === true || result.subtype !== 'success') {
       const detail = resultDetail(result)
-      throw new LlmError(`Claude Code failed (${detail})`, classify(detail))
+      throw providerFailure(`Claude Code failed (${detail})`, classify(detail))
     }
     // A clean result: give the process a moment to exit by itself; the final cleanup terminates a lingerer.
     await within(child.done.catch(() => undefined), EXIT_GRACE_MS)

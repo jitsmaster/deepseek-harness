@@ -11,8 +11,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-credentials'
-import { recordKeyFor } from '@deepseek-ai/dsh-llm-pi-ai'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-web'
@@ -75,6 +74,9 @@ export const Config: z<Config> = z.object({
   maxUses: z.number().step(1).min(1).default(ANTHROPIC_DEFAULT_MAX_USES),
 })
 
+/** Credential-record scope `llm-pi-ai` stores its provider-route grants under; that package no longer exports its key builder. */
+const PI_AI_RECORD_SCOPE = 'llm-pi-ai'
+
 /** Safety margin subtracted from a grant's `expires` timestamp before treating it as usable. */
 const EXPIRY_SAFETY_MARGIN_MS = 30_000
 
@@ -100,7 +102,7 @@ function resolveOptions(ctx: Context, config: Config): AnthropicSearchProviderOp
     resolveAccessToken: async () => {
       const credentials = ctx.get('credentials')
       if (credentials === undefined) return undefined
-      const record = await credentials.readRecord(recordKeyFor(route))
+      const record = await credentials.readRecord(credentialKey(PI_AI_RECORD_SCOPE, route))
       if (record === undefined || record.kind !== 'grant') return undefined
       const payload = record.payload as StoredOAuthGrant
       if (payload.type !== 'oauth' || typeof payload.access !== 'string' || payload.access.length === 0) {

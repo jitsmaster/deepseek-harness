@@ -11,7 +11,7 @@ import { projectToolSchema } from './schema.ts'
 import { assertSupportedJsonSchema } from './json-schema.ts'
 import { RUN_CODE_NAME, ToolActivationError } from './contracts.ts'
 import type {
-  ToolDefinition, ToolRestriction, ToolExecution, ToolGuard,
+  ToolDefinition, ToolRestriction, ToolExecution, ToolGuard, ToolGuardDenial,
   ResolvedToolSet, ToolActivationContext, ToolRegistrationOptions,
 } from './contracts.ts'
 
@@ -95,6 +95,16 @@ class GuardLayer {
   isEmpty(): boolean { return this.guards.isEmpty() }
 }
 
+/** Configuration of the tool registry. */
+export interface ToolsConfig {
+  /** Removed. Mount a native or PTC tool executor instead. */
+  readonly mode?: never
+  /** Moved to the PTC tool executor configuration. */
+  readonly maxParallelSubCalls?: never
+  /** Accept clean numeric and boolean strings for number, integer and boolean tool parameters; defaults to true. */
+  readonly coerceScalarStrings?: boolean
+}
+
 /** Concrete tool registry and scoped executor dispatcher. */
 export class ToolsService extends Service {
   static inject = ['systemPrompt']
@@ -112,7 +122,7 @@ export class ToolsService extends Service {
   private root: Registration | undefined
   private readonly guards = new ScopedLayers(() => new GuardLayer(), () => {})
 
-  constructor(ctx: Context, config: { coerceScalarStrings?: boolean } = {}) {
+  constructor(ctx: Context, config: ToolsConfig = {}) {
     super(ctx, 'tools')
     this.coerceScalarStrings = config.coerceScalarStrings ?? true
     ctx.systemPrompt.tools(({ scope, toolSet }) => {
@@ -393,13 +403,13 @@ export class ToolsService extends Service {
   /**
    * Check global and inherited guards after pre-execute policy and approval resolve.
    * @param exec - invocation whose guards are checked before dispatch.
-   * @returns the first denial reason, or undefined when no guard denies.
+   * @returns the first denial with its optional structured identity, or undefined when no guard denies.
    */
-  checkGuards(exec: ToolExecution): string | undefined {
+  checkGuards(exec: ToolExecution): ToolGuardDenial | undefined {
     for (const layer of [this.guards.global, ...this.guards.chainLayers(exec.agent)]) {
       for (const guard of layer.guards.values()) {
-        const reason = guard(exec)
-        if (reason !== undefined) return reason
+        const denial = guard(exec)
+        if (denial !== undefined) return typeof denial === 'string' ? { reason: denial } : denial
       }
     }
     return undefined

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
-import { recordKeyFor } from '@deepseek-ai/dsh-llm-pi-ai'
 import WebRuntime, { WebError } from '@deepseek-ai/dsh-web'
 import {
   AnthropicSearchProvider,
@@ -309,7 +309,7 @@ describe('web-search-anthropic plugin registration', () => {
       await expect(ctx.web.search({ query: 'missing' }))
         .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_CREDENTIAL_MISSING' }))
 
-      const key = recordKeyFor('anthropic')
+      const key = credentialKey('llm-pi-ai', 'anthropic')
       await ctx.credentials.modifyRecord(key, async () => ({
         kind: 'grant',
         payload: { type: 'oauth', access: 'sk-ant-oat-stored', refresh: 'sk-ant-ort-stored', expires: Date.now() + 3_600_000 },
@@ -332,7 +332,7 @@ describe('web-search-anthropic plugin registration', () => {
       await ctx.plugin(LocalCredentialProvider, { path: join(dir, '.credentials.yaml'), watch: false })
       await ctx.plugin(anthropicPlugin, {})
 
-      const key = recordKeyFor('anthropic')
+      const key = credentialKey('llm-pi-ai', 'anthropic')
       await ctx.credentials.modifyRecord(key, async () => ({
         kind: 'grant',
         payload: { type: 'oauth', access: 'sk-ant-oat-stale', expires: Date.now() - 1_000 },

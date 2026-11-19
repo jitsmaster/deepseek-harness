@@ -13,8 +13,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import * as yaml from 'js-yaml'
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import { parseEntryYaml } from '@deepseek-ai/cordis-plugin-include'
 import { Context } from '@deepseek-ai/cordis'
 import WebRuntime from '@deepseek-ai/dsh-web'
 
@@ -26,10 +25,7 @@ interface PatchRow {
 /** Read and flatten the base bundle's real patch rows, exactly as it ships. */
 function loadBaseRows(): PatchRow[] {
   const root = fileURLToPath(new URL('..', import.meta.url))
-  const parsed = yaml.load(
-    readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
-    { schema: entryListSchema },
-  )
+  const parsed = parseEntryYaml(readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'))
   if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
   return parsed.flatMap((patch): PatchRow[] =>
     typeof patch === 'object' && patch !== null ? (patch as { insert?: PatchRow[] }).insert ?? [] : [])

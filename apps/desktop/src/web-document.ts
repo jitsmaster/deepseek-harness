@@ -35,21 +35,6 @@ export async function serveWebDocument(request: Request, root: string): Promise<
   })
 }
 
-/**
- * Exchange the Host launch URL for an authority-bound browser cookie.
- * @param url - Authenticated URL reported by the owned Host process.
- * @returns Cookie header for requests forwarded to that Host.
- */
-export async function authenticateWebHost(url: string): Promise<string> {
-  const response = await fetch(url, { redirect: 'manual' })
-  const cookie = response.headers.get('set-cookie')
-  await response.body?.cancel()
-  // The Host redirects (303) or, for a token URL, serves the index directly (200); either mints the cookie.
-  if ((response.status !== 303 && response.status !== 200) || cookie === null) throw new Error('Desktop Host authentication failed')
-  const end = cookie.indexOf(';')
-  return end < 0 ? cookie : cookie.slice(0, end)
-}
-
 /** Cookie store operations used to remove legacy Host authentication cookies. */
 export interface HostCookieStore {
   get(filter: { url: string }): Promise<readonly { readonly name: string }[]>
@@ -92,7 +77,7 @@ const PLUGIN_BUNDLE_PATH = /^\/plugins\//u
  * no later launch can reuse.
  * @param request - Request from the application origin.
  * @param host - Owned Host URL.
- * @param cookie - Host-issued authentication cookie.
+ * @param cookie - Desktop-private credential carried in the Cookie header for the owned Host.
  * @returns Host response without connection-level headers.
  */
 export async function forwardWebRequest(request: Request, host: string, cookie: string): Promise<Response> {

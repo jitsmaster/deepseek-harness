@@ -627,3 +627,5 @@ export interface GenerateOptions<Purpose extends string = LlmRequestPurpose> {
    */
   onRequest?: (payload: RequestPayload) => void
 }
+
+export type { MessageId, ToolCallId, ProviderRequestId, LlmAttemptId, ReasoningEffortId } from './brand.ts'
