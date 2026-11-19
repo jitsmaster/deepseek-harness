@@ -66,7 +66,11 @@ function response() {
   const state: { status?: number; headers?: Readonly<Record<string, string>> | undefined; body?: string | undefined } = {}
   const res = {
     destroyed: false,
-    writeHead(status: number, headers?: Readonly<Record<string, string>>) { state.status = status; state.headers = headers },
+    writeHead(status: number, headers?: Readonly<Record<string, string>>) {
+      state.status = status
+      state.headers = { ...state.headers, ...headers }
+    },
+    setHeader(name: string, value: string) { state.headers = { ...state.headers, [name]: value } },
     end(body?: string) { state.body = body },
   } as ServerResponse
   return { res, state }
@@ -91,23 +95,28 @@ it('exchanges a root token, passes other routes on, and keeps browser authentica
   const { ctx, providers, createPeer, auth } = await mounted()
   const url = new URL(auth.authenticatedUrl('http://localhost:3080/'))
   const reply = response(); const next = vi.fn(async () => {})
-  await ctx.waterfall('webserver/request', request(url.pathname + url.search), reply.res, next)
-  expect(reply.state.status).toBe(303)
-  expect(next).not.toHaveBeenCalled()
+  const exchange = request(url.pathname + url.search)
+  exchange.headers.cookie = 'unrelated=1'
+  await ctx.waterfall('webserver/request', exchange, reply.res, next)
+  // The fork serves the index directly: the cookie rides the response the next handler completes.
+  expect(reply.state.status).toBeUndefined()
+  expect(next).toHaveBeenCalledOnce()
   const cookie = reply.state.headers?.['set-cookie']?.split(';', 1)[0]
   expect(cookie).toBeDefined()
+  // The route behind the exchange admits by cookie, so the request now carries the minted one.
+  expect(exchange.headers.cookie).toBe(`unrelated=1; ${cookie}`)
   const facts = { headers: { host: 'localhost:3080', cookie } }
   const peer = providers[0]!.authenticate(facts)
   expect(peer).toBe(createPeer.mock.results[0]!.value)
   expect(providers[0]!.authenticate(facts)).toBe(peer)
   await ctx.waterfall('webserver/request', request('/product.html?token=other'), response().res, next)
-  expect(next).toHaveBeenCalledTimes(1)
-  await ctx.waterfall('webserver/request', request('/'), response().res, next)
   expect(next).toHaveBeenCalledTimes(2)
+  await ctx.waterfall('webserver/request', request('/'), response().res, next)
+  expect(next).toHaveBeenCalledTimes(3)
   const noTarget = request('/')
   noTarget.url = undefined
   await ctx.waterfall('webserver/request', noTarget, response().res, next)
-  expect(next).toHaveBeenCalledTimes(3)
+  expect(next).toHaveBeenCalledTimes(4)
   const disconnected = request(url.pathname + url.search)
   Object.assign(disconnected.socket, { destroyed: true })
   const dropped = response()

@@ -6,6 +6,7 @@ import { CONNECT_PATH } from '@deepseek-ai/dsh-client-connection'
 import type { ConnectionTrustRequest, PeerScope } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { BrowserAuth } from './browser-auth.ts'
+import type { ConnectionIndexResponse } from './types.ts'
 
 /** Stable plugin name. */
 export const name = 'host-authentication-token'
@@ -22,6 +23,18 @@ export interface Config {
 export const Config: z<Config> = z.object({
   cookieMaxAgeDays: z.natural().min(1).default(30),
 })
+
+/**
+ * Add one `name=value` cookie pair to a request Cookie header, replacing any pair of the same name.
+ * @param header - the request's current Cookie header, if any.
+ * @param pair - the cookie pair to carry.
+ * @returns the Cookie header carrying the pair last.
+ */
+function withCookie(header: string | undefined, pair: string): string {
+  const prefix = `${pair.slice(0, pair.indexOf('='))}=`
+  const kept = (header ?? '').split(';').map(part => part.trim()).filter(part => part !== '' && !part.startsWith(prefix))
+  return [...kept, pair].join('; ')
+}
 
 /**
  * Register the token provider and its optional Web transport integration.
@@ -57,7 +70,24 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         await next()
         return
       }
-      auth.authorizeIndex(request, response, webCtx.webServer.protocol === 'https:')
+      // A valid token mints the cookie on this response and the index is served
+      // directly (no redirect), so the token stays in the URL; a refusal has
+      // already been answered with the minimal 401.
+      let minted: string | undefined
+      const exchange: ConnectionIndexResponse = {
+        writeHead: (status, headers) => response.writeHead(status, headers),
+        setHeader: (header, value) => {
+          if (header.toLowerCase() === 'set-cookie') minted = value
+          return response.setHeader(header, value)
+        },
+        end: body => response.end(body),
+      }
+      if (!auth.authorizeIndex(request, exchange, webCtx.webServer.protocol === 'https:')) return
+      // The route behind this exchange admits by cookie, so admit this very
+      // request on the cookie it just minted.
+      const pair = minted?.split(';', 1)[0]
+      if (pair !== undefined) request.headers.cookie = withCookie(request.headers.cookie, pair)
+      await next()
     })
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact', path: CONNECT_PATH, auth: 'anonymous',

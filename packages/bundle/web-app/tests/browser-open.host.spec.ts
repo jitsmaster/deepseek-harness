@@ -40,8 +40,9 @@ it('opens its tokenized URL only after the complete authenticated page is reacha
   WebApp.internals.openBrowser = async (url) => {
     try {
       const login = await fetch(url, { redirect: 'manual' })
-      expect(login.status).toBe(303)
-      expect(login.headers.get('location')).toBe('./')
+      // The token exchange serves the page directly (no redirect).
+      expect(login.status).toBe(200)
+      expect(login.headers.get('location')).toBeNull()
       const cookie = login.headers.get('set-cookie')?.split(';', 1)[0]
       if (cookie === undefined) throw new Error('Token startup did not issue a browser Cookie')
       const page = await fetch(new URL('./', url), { headers: { cookie } })

@@ -44,9 +44,13 @@ it('serves token exchanges through WebServer and keeps token-owned Peers outside
   const auth = await BrowserAuth.create(ctx[Context.root], ctx.credentials, 30)
   const login = new URL(auth.authenticatedUrl(origin))
   expect(login.searchParams.get('token')).toMatch(/^[A-Za-z0-9_-]{43}$/)
+  // Stands in for the frontend: the token exchange serves the index directly (no redirect).
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/', auth: 'anonymous',
+    resource: async () => new Response('index'),
+  }))
   const exchanged = await fetch(login, { redirect: 'manual' })
-  expect(exchanged.status).toBe(303)
-  expect(exchanged.headers.get('location')).toBe('./')
+  expect(exchanged.status).toBe(200)
+  expect(exchanged.headers.get('location')).toBeNull()
   const cookie = exchanged.headers.get('set-cookie')?.split(';', 1)[0]
   expect(cookie).toBeDefined()
   const headers = { host: new URL(origin).host, cookie }
