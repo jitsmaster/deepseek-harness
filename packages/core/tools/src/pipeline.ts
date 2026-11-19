@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import { assertNever, deepFreeze, snapshotJsonValue, type JsonValue } from '@deepseek-ai/dsh-util-values'
 import { TOOL_ABORTED, TOOL_ABORTED_BEFORE_DISPATCH, ToolNotFoundError, ToolOutputError } from './contracts.ts'
 import { validateJsonSchemaValue } from './json-schema.ts'
+import { coerceScalarArgs } from './coerce.ts'
 import type { ToolsService } from './index.ts'
 import type { ResolvedToolSet, ToolDefinition, ToolExecutionInput, ToolExecutionMode, ToolExecution, ToolRunContext, ToolExecutionResult, ToolExecutionSuccess, ToolErrorInfo, ToolExecutionToken, PreToolDecision, PostToolDecision } from './contracts.ts'
 
@@ -80,8 +81,29 @@ export class ToolExecutionPipeline {
     return tool !== undefined && this.source.reject?.(name, nested) === undefined ? tool : undefined
   }
 
+  /**
+   * Arguments as the tool receives them: clean numeric/boolean strings for declared
+   * number, integer and boolean parameters become scalars when `coerceScalarStrings` is on.
+   * `exec.arguments` itself stays the model's raw value.
+   */
+  private toolArgs(tool: ToolDefinition, args: unknown): unknown {
+    return this.tools.coerceScalarStrings ? coerceScalarArgs(tool.parameters, args) : args
+  }
+
+  /** Arguments the tool body and its render/projection receive for one execution. */
+  private runArgs(exec: ToolExecution): unknown {
+    return this.coercedArguments.get(exec) ?? exec.arguments
+  }
+
   /** Context deferred by a running tool body, keyed by its scheduler-owned execution. */
   private deferredContexts = new WeakMap<ToolRunContext, UserMessage[]>()
+
+  /**
+   * Coerced arguments computed once per execution while the tool was still resolvable:
+   * a tool's `parameters` may depend on a runtime that unloads before dispatch settles
+   * (for example `run_code`), so they are not re-read at execute/render time.
+   */
+  private coercedArguments = new WeakMap<object, unknown>()
 
   /** Executions whose tool body declared the current turn complete. */
   private concludingExecutions = new WeakSet<ToolExecution>()
@@ -106,7 +128,8 @@ export class ToolExecutionPipeline {
     const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== undefined, exec.toolSet)
     if (!tool?.isConcurrencySafe) return { kind: 'exclusive' }
     try {
-      const concurrencySafe: unknown = tool.isConcurrencySafe(exec.arguments)
+      // Classify on the same coerced arguments the tool body will see.
+      const concurrencySafe: unknown = tool.isConcurrencySafe(this.toolArgs(tool, exec.arguments))
       return concurrencySafe === true ? { kind: 'parallel' } : { kind: 'exclusive' }
     } catch {
       return { kind: 'exclusive' }
@@ -154,7 +177,14 @@ export class ToolExecutionPipeline {
       if (detached === undefined) {
         throw new TypeError('tool execution arguments must be losslessly JSON-serializable')
       }
+      // exec.arguments stays the model's raw args so hooks, auto-review and the log agree;
+      // scalar coercion happens only where the tool receives its args (see `toolArgs`).
       const execution: MutableToolRunContext = { ...base, arguments: deepFreeze(detached) }
+      if (this.tools.coerceScalarStrings && visible !== undefined) {
+        const coerced = coerceScalarArgs(visible.parameters, execution.arguments)
+        // Children are already frozen with `execution.arguments`; only the new top level needs freezing.
+        if (coerced !== execution.arguments) this.coercedArguments.set(execution, Object.freeze(coerced))
+      }
       this.deferredContexts.set(execution, deferredContexts)
       this.contentFinalizers.set(execution, finalizerFor())
       if (!rejected) this.contentProjectors.set(execution, capturedProjector)
@@ -272,7 +302,7 @@ export class ToolExecutionPipeline {
       const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== undefined, exec.toolSet)
       if (!tool) throw new ToolNotFoundError(exec.name)
       state.bodyInvoked = true
-      const returned = await tool.execute(exec.arguments, exec)
+      const returned = await tool.execute(this.runArgs(exec), exec)
       const result = this.createSuccessResult(exec, tool, returned)
       return isAborted(signal)
         ? toolAbortedResult(result)
@@ -541,7 +571,7 @@ export class ToolExecutionPipeline {
     const value = deepFreeze(detached)
     let rendered: ContentBlock[]
     try {
-      rendered = tool.output.render(exec.arguments, value)
+      rendered = tool.output.render(this.runArgs(exec), value)
     } catch (error: unknown) {
       throw projectionError(tool.name, 'render', error)
     }
@@ -550,7 +580,7 @@ export class ToolExecutionPipeline {
     if (tool.output.presentationMeta !== undefined) {
       let projected: JsonValue
       try {
-        projected = tool.output.presentationMeta(exec.arguments, value)
+        projected = tool.output.presentationMeta(this.runArgs(exec), value)
       } catch (error: unknown) {
         throw projectionError(tool.name, 'presentationMeta', error)
       }

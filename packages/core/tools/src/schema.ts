@@ -4,6 +4,7 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { coerceScalarArgs } from './coerce.ts'
 import type { ToolDefinition, ToolExecution, ToolExecutionResult, ToolRunContext, ToolResult } from './contracts.ts'
 import { assertSupportedJsonSchema, isJsonSchemaRecord, isPlainJsonArray, JsonSchemaError, validateJsonSchemaValue } from './json-schema.ts'
 import type { JsonSchemaNode, JsonSchemaScalar, ObjectJsonSchema } from './json-schema.ts'
@@ -612,13 +613,19 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
   // fall back to `undefined` (a generic UI presentation) on any mismatch, rather
   // than the hard `ToolArgsError` the execute path raises.
   if (userPresentCall) {
-    tool.presentCall = (args: unknown): ToolCallView | undefined => {
+    tool.presentCall = (rawArgs: unknown): ToolCallView | undefined => {
+      // The durable log keeps the model's raw args, so a quoted clean scalar that the
+      // pipeline coerced before execute must be coerced here too, or the card falls back.
+      // Unconditional on purpose: display-only, and `defineTool` cannot see the
+      // `ToolsService.coerceScalarStrings` flag (with the flag off, execute still rejects).
+      const args = coerceScalarArgs(parameters, rawArgs)
       if (validate(args).length > 0) return undefined
       return userPresentCall(args as InferArgs<S>)
     }
   }
   if (userPresentResult) {
-    tool.presentResult = (args: unknown, result: ToolResult): ToolResultView | undefined => {
+    tool.presentResult = (rawArgs: unknown, result: ToolResult): ToolResultView | undefined => {
+      const args = coerceScalarArgs(parameters, rawArgs)
       if (validate(args).length > 0) return undefined
       return userPresentResult(args as InferArgs<S>, result)
     }

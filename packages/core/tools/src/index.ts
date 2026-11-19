@@ -101,15 +101,20 @@ export class ToolsService extends Service {
   static Config = z.object({
     mode: z.never().description('Removed. Mount a native or PTC tool executor instead.'),
     maxParallelSubCalls: z.never().description('Moved to the PTC tool executor configuration.'),
+    coerceScalarStrings: z.boolean().default(true).description('Accept clean numeric and boolean strings (for example "600000" or "true") for number, integer and boolean tool parameters. Set false for strict validation.'),
   })
+
+  /** Whether clean numeric and boolean strings are coerced before validation. */
+  readonly coerceScalarStrings: boolean
 
   private readonly layers = new ScopedLayers(scope => new ToolLayer(scope), () => { this.ctx.emit('tools/change') })
   private readonly scoped = new WeakMap<ScopeKey, Registration>()
   private root: Registration | undefined
   private readonly guards = new ScopedLayers(() => new GuardLayer(), () => {})
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: { coerceScalarStrings?: boolean } = {}) {
     super(ctx, 'tools')
+    this.coerceScalarStrings = config.coerceScalarStrings ?? true
     ctx.systemPrompt.tools(({ scope, toolSet }) => {
       const executor = this.selectExecutor(scope)
       const description = executor.describe(this.definitions(scope, toolSet))

@@ -181,7 +181,16 @@ export interface ToolExecutionInput {
   readonly name: string
   /** Binding-time tool schema for a PTC inner call; frozen by its producer and never logged. */
   readonly schema?: ToolSchema
-  /** Losslessly JSON-serializable parsed arguments (tools validate their own schema). */
+  /**
+   * Losslessly JSON-serializable parsed arguments (tools validate their own schema).
+   * These are the model's raw arguments, equal to the durable tool-call log. With
+   * `coerceScalarStrings` on, the tool's `execute`, `output.render` and
+   * `isConcurrencySafe` receive a copy with clean numeric/boolean strings turned into
+   * scalars; hooks and guards see the raw values. A policy or hook that inspects a
+   * number or boolean parameter must therefore treat the quoted form (`"true"`,
+   * `"600000"`) as equivalent to the scalar, or it will miss a call the tool accepts.
+   * A tool body that reads `exec.arguments` directly also sees the raw values.
+   */
   readonly arguments: unknown
   /** The agent on whose behalf the call runs (set by the agent loop). */
   readonly agent?: Agent

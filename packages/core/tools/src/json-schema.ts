@@ -13,6 +13,7 @@
 
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { assertNever, isJsonValue, type JsonValue } from '@deepseek-ai/dsh-util-values'
+import { quotedScalarHint } from './coerce.ts'
 
 /** Scalar JSON values supported by `enum` and `const`. */
 export type JsonSchemaScalar = string | number | boolean | null
@@ -608,20 +609,20 @@ function checkValue(schema: JsonSchemaNode, value: unknown, path: string): strin
           break
         case 'number':
           finish(typeof frame.value !== 'number'
-            ? [`"${diagnosticPath(frame.path)}" must be a number`]
+            ? [`"${diagnosticPath(frame.path)}" must be a number${quotedScalarHint('number', frame.value)}`]
             : !isJsonNumber(frame.value)
               ? [`"${diagnosticPath(frame.path)}" must be a finite JSON number`]
               : checkScalarValue(frame.node, frame.value, frame.path))
           break
         case 'integer':
           finish(!isJsonNumber(frame.value) || !Number.isInteger(frame.value)
-            ? [`"${diagnosticPath(frame.path)}" must be an integer`]
+            ? [`"${diagnosticPath(frame.path)}" must be an integer${quotedScalarHint('integer', frame.value)}`]
             : checkScalarValue(frame.node, frame.value, frame.path))
           break
         case 'boolean':
           finish(typeof frame.value === 'boolean'
             ? checkScalarValue(frame.node, frame.value, frame.path)
-            : [`"${diagnosticPath(frame.path)}" must be a boolean`])
+            : [`"${diagnosticPath(frame.path)}" must be a boolean${quotedScalarHint('boolean', frame.value)}`])
           break
         case 'null':
           finish(frame.value === null

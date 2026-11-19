@@ -303,11 +303,13 @@ describe('validateJsonSchemaValue', () => {
 
   it('rejects wrong scalar types and lossy numbers', () => {
     expect(validateJsonSchemaValue(asserted({ type: 'string' }), 1)).toEqual(['"value" must be a string'])
-    expect(validateJsonSchemaValue(asserted({ type: 'number' }), '1')).toEqual(['"value" must be a number'])
+    expect(validateJsonSchemaValue(asserted({ type: 'number' }), '1')).toEqual(['"value" must be a number: pass a JSON number without quotes, e.g. 1'])
+    expect(validateJsonSchemaValue(asserted({ type: 'number' }), 'x')).toEqual(['"value" must be a number'])
     expect(validateJsonSchemaValue(asserted({ type: 'number' }), Number.NaN)).toEqual(['"value" must be a finite JSON number'])
     expect(validateJsonSchemaValue(asserted({ type: 'number' }), -0)).toEqual(['"value" must be a finite JSON number'])
     expect(validateJsonSchemaValue(asserted({ type: 'integer' }), 1.5)).toEqual(['"value" must be an integer'])
-    expect(validateJsonSchemaValue(asserted({ type: 'boolean' }), 'true')).toEqual(['"value" must be a boolean'])
+    expect(validateJsonSchemaValue(asserted({ type: 'boolean' }), 'true')).toEqual(['"value" must be a boolean: pass a JSON boolean without quotes, e.g. true'])
+    expect(validateJsonSchemaValue(asserted({ type: 'boolean' }), 'yes')).toEqual(['"value" must be a boolean'])
     expect(validateJsonSchemaValue(asserted({ type: 'null' }), 0)).toEqual(['"value" must be null'])
   })
 
