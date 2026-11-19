@@ -194,7 +194,7 @@ Agent 步骤的并发上限使用 [agent-loop 配置](../agent-loop/README.zh.md
 这些限制说明注册表何时需要特别留意。它们是当前包约束，不是任务积压。
 
 - **并发策略不是事件门禁**：`executionMode()` 直接读取已解析的工具定义；插件只能在自身拥有的定义上声明分类器。
-- **`tools/pre-execute` 有意不允许改写 `exec.arguments`**：否则日志记录与呈现的参数会与实际运行内容失去同步；改写设计记录在[拟议的 Agent Note](../../../.agents/notes/proposed/feature/2026-06-30-pre-tool-input-rewrite.zh.md)中。
+- **`tools/pre-execute` 有意不允许改写 `exec.arguments`**：否则日志记录与呈现的参数会与实际运行内容失去同步；改写设计记录在[拟议的 Agent Note](../../../.agents/notes/proposed/feature/2026-06-30-pre-tool-input-rewrite.zh.md)中。唯一的例外是内置的标量强制转换（`coerceScalarStrings`，默认开启）：对于顶层 `number`、`integer` 或 `boolean` 参数，干净的数字或布尔字符串（`"600000"`、`"true"`）只会在工具自身接收时（`execute`、`output.render`、`output.presentationMeta`、`isConcurrencySafe`）变成真正的标量。`exec.arguments`、钩子、守卫和持久日志保留模型的原始参数，`defineTool` 的呈现器以同样方式转换，因此映射是无损且确定的。设置 `coerceScalarStrings: false` 可恢复严格校验。
 - **调用方定义的 subagent 与工作流结构化输出仍要求对象根**：这是消费方层面的守卫；共享 schema 词汇与工具输出支持任意 JSON 根。
 - **定义中的 `timeoutMs` 仅作声明之用**：注册表绝不会强制执行截止时间；要强制执行，必须使用 `@deepseek-ai/dsh-tool-call-timeout-policy` 包装层。
 
