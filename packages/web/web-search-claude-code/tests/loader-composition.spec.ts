@@ -35,7 +35,7 @@ afterEach(async () => {
   root = undefined
 })
 
-const agent = { id: SessionId('claude-code-search-composition') } as Agent
+const agent = { id: SessionId('claude-code-search-composition'), session: { requestContext: () => undefined } } as Agent
 
 /** Boot the cordis.yml and bind a session scope so the conditional web_search tool is admitted. */
 async function boot(searchProviderLines: readonly string[]): Promise<Context> {

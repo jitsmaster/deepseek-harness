@@ -44,6 +44,9 @@
     ".page .action: border-radius: 12px",
     ".indicator: border-radius: 6px"
   ],
+  "ui-settings-claude-accounts/src/client/ClaudeAccountsCard.module.css": [
+    ".noticeCode: border-radius: 6px"
+  ],
   "ui-settings-models/src/client/AuthorizationDialog.module.css": [
     ".noticeCode: border-radius: 6px"
   ],

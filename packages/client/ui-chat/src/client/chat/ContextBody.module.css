@@ -23,8 +23,10 @@
   cursor: pointer;
 }
 
-.showFull:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .showFull:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 /* Source fields beneath the text: dimmer than the content they describe. */

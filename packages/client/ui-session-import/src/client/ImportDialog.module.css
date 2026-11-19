@@ -34,13 +34,20 @@
   cursor: pointer;
 }
 
-.row:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .row:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
-.row[aria-selected='true'],
-.row[aria-selected='true']:hover {
+.row[aria-selected='true'] {
   background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
+}
+
+@media (hover: hover) {
+  .row[aria-selected='true']:hover {
+    background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
+  }
 }
 
 .cellName {
